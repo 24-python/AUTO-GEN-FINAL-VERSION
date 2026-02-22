@@ -1,5 +1,5 @@
 """
-Парсер с двумя стоп-сигналами: чек-бокс ИЛИ граница ячейки
+Парсер с категориями из исходного чек-листа
 """
 
 import zipfile
@@ -10,12 +10,34 @@ import re
 from parser.models import ChecklistData, ChecklistItem, Category
 
 
-class DualStopParser:
-    """Парсер, который останавливается на чек-боксе ИЛИ границе ячейки"""
+class CategoryParser:
+    """Парсер с определением категорий по заголовкам"""
 
     NAMESPACES = {
         'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     }
+
+    # Категории из исходного чек-листа
+    CATEGORY_HEADERS = {
+        'Поверхности:': Category.SURFACE,
+        'Бытовая техника:': Category.HOUSEHOLD_APPLIANCES,
+        'Тепловое оборудование:': Category.THERMAL_EQUIPMENT,
+        'Упаковочное оборудование:': Category.PACKAGING_EQUIPMENT,
+        'Технологическое оборудование:': Category.TECH_EQUIPMENT,
+        'Инвентарь, посуда и т.д.': Category.INVENTORY,
+        'Моечный, уборочный инвентарь и оборудование:': Category.CLEANING_EQUIPMENT,
+        'Посудомоечное оборудование:': Category.DISHWASHING_EQUIPMENT,
+        'Холодильное оборудование:': Category.REFRIGERATION_EQUIPMENT,
+        'Дозирующее оборудование': Category.DOSING_EQUIPMENT,
+        'Сантехническое оборудование:': Category.PLUMBING,
+        'Мебель:': Category.FURNITURE,
+        'Офисная техника:': Category.OFFICE_EQUIPMENT,
+        'Санитарный пост': Category.SANITARY_POST,
+        'Многоразовые резиновые СИЗ': Category.PPE,
+    }
+
+    def __init__(self):
+        self.current_category = Category.OTHER
 
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
@@ -35,17 +57,27 @@ class DualStopParser:
                 for cell in cells:
                     self._process_cell(cell, data)
 
+        # Группируем по категориям для вывода
+        self._print_statistics(data)
+
         print(f"\n✅ Найдено элементов: {len(data.items)}")
         return data
 
     def _process_cell(self, cell, data: ChecklistData):
         """Обрабатывает одну ячейку таблицы"""
 
-        # Получаем все текстовые элементы в ячейке с их позициями
+        # Получаем все текстовые элементы в ячейке
         text_elements = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
 
-        # Собираем полный текст ячейки для контекста
+        # Собираем полный текст ячейки
         full_text = ''.join([t.text for t in text_elements if t.text])
+
+        # Проверяем, не является ли ячейка заголовком категории
+        for header, category in self.CATEGORY_HEADERS.items():
+            if header in full_text:
+                print(f"\n📌 Найдена категория: {category.value}")
+                self.current_category = category
+                return
 
         # Если в ячейке есть ☒
         if '☒' in full_text:
@@ -77,16 +109,27 @@ class DualStopParser:
                         item_text = re.sub(r'[^\w\s\-\(\)]', '', item_text)
                         item_text = re.sub(r'\s+', ' ', item_text).strip()
 
+                        # Убираем одиночные буквы в конце
+                        item_text = re.sub(r'\s+[А-Я]$', '', item_text)
+
                         if item_text and len(item_text) > 1:
-                            print(f"  ✅ {item_text}")
+                            print(f"  [{self.current_category.value}] ✅ {item_text}")
                             data.items.append(ChecklistItem(
                                 name=item_text,
-                                category=Category.OTHER,
+                                category=self.current_category,
                                 checked=True
                             ))
                 i += 1
 
+    def _print_statistics(self, data: ChecklistData):
+        """Выводит статистику по категориям"""
+        print("\n📊 Статистика по категориям:")
+
+        grouped = data.group_checked_by_category()
+        for category, items in grouped.items():
+            print(f"  {category.value}: {len(items)} элементов")
+
 
 def parse_checklist(file_path: str) -> ChecklistData:
-    parser = DualStopParser()
+    parser = CategoryParser()
     return parser.parse(file_path)

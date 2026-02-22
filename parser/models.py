@@ -4,23 +4,22 @@ from enum import Enum
 
 
 class Category(Enum):
-    """Категории объектов"""
+    """Категории из исходного чек-листа"""
     SURFACE = "Поверхности"
     HOUSEHOLD_APPLIANCES = "Бытовая техника"
     THERMAL_EQUIPMENT = "Тепловое оборудование"
     PACKAGING_EQUIPMENT = "Упаковочное оборудование"
     TECH_EQUIPMENT = "Технологическое оборудование"
-    INVENTORY = "Инвентарь, посуда"
-    CLEANING_EQUIPMENT = "Моечный инвентарь"
+    INVENTORY = "Инвентарь, посуда и т.д."
+    CLEANING_EQUIPMENT = "Моечный, уборочный инвентарь и оборудование"
     DISHWASHING_EQUIPMENT = "Посудомоечное оборудование"
     REFRIGERATION_EQUIPMENT = "Холодильное оборудование"
     DOSING_EQUIPMENT = "Дозирующее оборудование"
     PLUMBING = "Сантехническое оборудование"
-    ELECTRICAL = "Электрооборудование"
     FURNITURE = "Мебель"
     OFFICE_EQUIPMENT = "Офисная техника"
     SANITARY_POST = "Санитарный пост"
-    PPE = "СИЗ"
+    PPE = "Многоразовые резиновые СИЗ"
     OTHER = "Прочее"
 
     @classmethod
