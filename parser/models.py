@@ -1,0 +1,60 @@
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
+from enum import Enum
+
+
+class Category(Enum):
+    """Категории объектов"""
+    SURFACE = "Поверхности"
+    HOUSEHOLD_APPLIANCES = "Бытовая техника"
+    THERMAL_EQUIPMENT = "Тепловое оборудование"
+    PACKAGING_EQUIPMENT = "Упаковочное оборудование"
+    TECH_EQUIPMENT = "Технологическое оборудование"
+    INVENTORY = "Инвентарь, посуда"
+    CLEANING_EQUIPMENT = "Моечный инвентарь"
+    DISHWASHING_EQUIPMENT = "Посудомоечное оборудование"
+    REFRIGERATION_EQUIPMENT = "Холодильное оборудование"
+    DOSING_EQUIPMENT = "Дозирующее оборудование"
+    PLUMBING = "Сантехническое оборудование"
+    ELECTRICAL = "Электрооборудование"
+    FURNITURE = "Мебель"
+    OFFICE_EQUIPMENT = "Офисная техника"
+    SANITARY_POST = "Санитарный пост"
+    PPE = "СИЗ"
+    OTHER = "Прочее"
+
+    @classmethod
+    def _missing_(cls, value):
+        return cls.OTHER
+
+
+@dataclass
+class ChecklistItem:
+    """Элемент чек-листа"""
+    name: str
+    category: Category = Category.OTHER
+    subcategory: Optional[str] = None
+    checked: bool = False
+    markers: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ChecklistData:
+    """Данные чек-листа"""
+    file_path: str
+    room_name: Optional[str] = None
+    enterprise: Optional[str] = None
+    items: List[ChecklistItem] = field(default_factory=list)
+
+    def get_checked_items(self) -> List[ChecklistItem]:
+        """Возвращает только отмеченные элементы"""
+        return [item for item in self.items if item.checked]
+
+    def group_checked_by_category(self) -> Dict[Category, List[ChecklistItem]]:
+        """Группирует отмеченные элементы по категориям"""
+        result = {}
+        for item in self.get_checked_items():
+            if item.category not in result:
+                result[item.category] = []
+            result[item.category].append(item)
+        return result
