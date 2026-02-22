@@ -1,6 +1,10 @@
 """
-Вспомогательные функции (минимальная версия)
+Вспомогательные функции
 """
+
+import re
+from typing import List, Optional, Tuple
+
 
 def extract_text_from_cell(cell) -> str:
     """Извлекает текст из ячейки таблицы"""
@@ -11,7 +15,7 @@ def extract_text_from_cell(cell) -> str:
     return ' '.join(texts)
 
 
-def merge_adjacent_cells(row) -> list:
+def merge_adjacent_cells(row) -> List[str]:
     """Объединяет текст из ячеек строки"""
     result = []
     for cell in row.cells:

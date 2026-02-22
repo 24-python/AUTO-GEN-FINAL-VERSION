@@ -240,6 +240,9 @@
 
         .category-items {
             padding: 15px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
         .item {
@@ -247,9 +250,14 @@
             background: #edf2f7;
             padding: 5px 12px;
             border-radius: 20px;
-            margin: 0 5px 5px 0;
             font-size: 0.9em;
             color: #2d3748;
+            transition: all 0.2s;
+        }
+
+        .item:hover {
+            background: #e2e8f0;
+            transform: translateY(-1px);
         }
 
         .error {
@@ -264,6 +272,15 @@
         .hidden {
             display: none;
         }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-size: 0.9em;
+            border-top: 1px solid #e2e8f0;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -274,6 +291,7 @@
         </div>
 
         <div class="content">
+            <!-- Область загрузки -->
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📎</div>
                 <div class="upload-text">Перетащите файл сюда или нажмите для выбора</div>
@@ -281,6 +299,7 @@
                 <input type="file" id="fileInput" accept=".docx" style="display: none;">
             </div>
 
+            <!-- Информация о выбранном файле -->
             <div id="fileInfo" class="file-info hidden">
                 <div>
                     <div class="file-name" id="fileName"></div>
@@ -289,16 +308,24 @@
                 <div class="remove-file" id="removeFile">Удалить</div>
             </div>
 
+            <!-- Кнопка обработки -->
             <button class="process-btn" id="processBtn" disabled>
                 🔄 Обработать чек-лист
             </button>
 
+            <!-- Индикатор загрузки -->
             <div id="loader" class="loader">
                 <div class="loader-spinner"></div>
                 <p>Обработка файла...</p>
             </div>
 
+            <!-- Результат -->
             <div id="result" class="result hidden"></div>
+
+            <!-- Футер -->
+            <div class="footer">
+                Автоматическая генерация технологических карт v1.0
+            </div>
         </div>
     </div>
 
@@ -315,10 +342,12 @@
 
         let selectedFile = null;
 
+        // Клик по области загрузки
         uploadArea.addEventListener('click', () => {
             fileInput.click();
         });
 
+        // Drag & Drop
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.classList.add('dragover');
@@ -338,12 +367,14 @@
             }
         });
 
+        // Выбор файла через диалог
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFileSelect(e.target.files[0]);
             }
         });
 
+        // Удаление файла
         removeFile.addEventListener('click', () => {
             selectedFile = null;
             fileInput.value = '';
@@ -352,37 +383,50 @@
             result.classList.add('hidden');
         });
 
+        // Обработка выбранного файла
         function handleFileSelect(file) {
+            // Проверка расширения
             if (!file.name.toLowerCase().endsWith('.docx')) {
                 alert('Пожалуйста, выберите файл .docx');
                 return;
             }
 
             selectedFile = file;
+
+            // Отображаем информацию о файле
             fileName.textContent = file.name;
             fileSize.textContent = formatFileSize(file.size);
             fileInfo.classList.remove('hidden');
+
+            // Активируем кнопку
             processBtn.disabled = false;
+
+            // Прячем предыдущий результат
             result.classList.add('hidden');
         }
 
+        // Форматирование размера файла
         function formatFileSize(bytes) {
             if (bytes < 1024) return bytes + ' Б';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
             return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
         }
 
+        // Обработка кнопки
         processBtn.addEventListener('click', async () => {
             if (!selectedFile) return;
 
+            // Показываем loader
             loader.style.display = 'block';
             processBtn.disabled = true;
             result.classList.add('hidden');
 
+            // Создаём FormData
             const formData = new FormData();
             formData.append('file', selectedFile);
 
             try {
+                // Отправляем на сервер
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
@@ -403,6 +447,7 @@
             }
         });
 
+        // Отображение результата
         function displayResult(data) {
             let html = `
                 <div class="result-header">
@@ -414,12 +459,12 @@
                         <h3>📊 Общая информация</h3>
                         <div class="summary-grid">
                             <div class="summary-item">
-                                <div class="summary-label">Участок</div>
-                                <div class="summary-value">${data.room_name}</div>
-                            </div>
-                            <div class="summary-item">
                                 <div class="summary-label">Предприятие</div>
                                 <div class="summary-value">${data.enterprise}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Участок</div>
+                                <div class="summary-value">${data.room_name}</div>
                             </div>
                             <div class="summary-item">
                                 <div class="summary-label">Всего позиций</div>
@@ -433,22 +478,25 @@
                     </div>
             `;
 
-            if (data.categories.length === 0) {
-                html += '<p style="text-align: center; padding: 20px;">❌ Нет отмеченных позиций</p>';
-            } else {
+            // Категории с элементами
+            if (data.categories && data.categories.length > 0) {
                 data.categories.forEach(category => {
-                    html += `
-                        <div class="category">
-                            <div class="category-header">📌 ${category.name}</div>
-                            <div class="category-items">
-                    `;
+                    if (category.items && category.items.length > 0) {
+                        html += `
+                            <div class="category">
+                                <div class="category-header">📌 ${category.name}</div>
+                                <div class="category-items">
+                        `;
 
-                    category.items.forEach(item => {
-                        html += `<span class="item">${item.name}</span>`;
-                    });
+                        category.items.forEach(item => {
+                            html += `<span class="item">${item.name}</span>`;
+                        });
 
-                    html += `</div></div>`;
+                        html += `</div></div>`;
+                    }
                 });
+            } else {
+                html += '<p style="text-align: center; padding: 20px;">❌ Нет отмеченных позиций</p>';
             }
 
             html += `</div>`;
@@ -456,6 +504,7 @@
             result.classList.remove('hidden');
         }
 
+        // Отображение ошибки
         function showError(message) {
             result.innerHTML = `
                 <div class="error">
