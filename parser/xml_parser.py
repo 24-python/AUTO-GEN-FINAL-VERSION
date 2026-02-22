@@ -1,5 +1,5 @@
 """
-Парсер с категориями из исходного чек-листа
+Парсер с правильным парсингом предприятия и участка
 """
 
 import zipfile
@@ -11,7 +11,7 @@ from parser.models import ChecklistData, ChecklistItem, Category
 
 
 class CategoryParser:
-    """Парсер с определением категорий по заголовкам"""
+    """Парсер с определением категорий и парсингом участка/предприятия"""
 
     NAMESPACES = {
         'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -50,6 +50,9 @@ class CategoryParser:
                 xml_content = xml_file.read()
                 root = etree.fromstring(xml_content)
 
+                # Сначала парсим информацию об участке и предприятии из первой строки
+                self._parse_header_from_first_row(root, data)
+
                 # Находим все ячейки таблиц
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
@@ -62,6 +65,39 @@ class CategoryParser:
 
         print(f"\n✅ Найдено элементов: {len(data.items)}")
         return data
+
+    def _parse_header_from_first_row(self, root, data: ChecklistData):
+        """Парсит предприятие и участок из первой строки таблицы"""
+
+        # Находим первую строку таблицы
+        first_row = root.xpath('.//w:tr[1]', namespaces=self.NAMESPACES)
+
+        if first_row:
+            # Находим все ячейки в первой строке
+            cells = first_row[0].xpath('.//w:tc', namespaces=self.NAMESPACES)
+
+            if len(cells) >= 2:
+                # Первая ячейка - предприятие
+                enterprise_text = self._get_cell_text(cells[0])
+                if enterprise_text and not data.enterprise:
+                    # Очищаем от лишнего
+                    data.enterprise = enterprise_text.strip()
+                    print(f"🏭 Найдено предприятие: {data.enterprise}")
+
+                # Вторая ячейка - участок
+                if len(cells) >= 2:
+                    room_text = self._get_cell_text(cells[1])
+                    if room_text and not data.room_name:
+                        data.room_name = room_text.strip()
+                        print(f"🏢 Найден участок: {data.room_name}")
+
+    def _get_cell_text(self, cell) -> str:
+        """Извлекает текст из ячейки"""
+        texts = []
+        for text_elem in cell.xpath('.//w:t', namespaces=self.NAMESPACES):
+            if text_elem.text:
+                texts.append(text_elem.text)
+        return ' '.join(texts)
 
     def _process_cell(self, cell, data: ChecklistData):
         """Обрабатывает одну ячейку таблицы"""

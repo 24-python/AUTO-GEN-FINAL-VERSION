@@ -46,7 +46,14 @@ def format_result(data):
     print(f"\n📊 Всего элементов: {len(data.items)}")
     print(f"✅ Отмечено: {len(data.get_checked_items())}")
 
+    # Информация об участке и предприятии
+    if data.room_name:
+        print(f"🏢 Участок: {data.room_name}")
+    if data.enterprise:
+        print(f"🏭 Предприятие: {data.enterprise}")
+
     # Покажем первые несколько элементов для проверки
+    print(f"\n📋 Первые 10 позиций:")
     for i, item in enumerate(data.get_checked_items()[:10]):
         print(f"  {i + 1}. [{item.category.value}] {item.name}")
 
