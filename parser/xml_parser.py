@@ -58,6 +58,7 @@ class CategoryParser:
         },
         {
             'base': r'ПММ',
+            'category': Category.DISHWASHING_EQUIPMENT,
             'modifiers': [
                 {'marker': 'купольная', 'name': 'купольная', 'format': '{base} {mod}'},
                 {'marker': 'туннельная', 'name': 'туннельная', 'format': '{base} {mod}'}
@@ -134,6 +135,7 @@ class CategoryParser:
         # Инвентарь, посуда
         ('доски', Category.INVENTORY),
         ('посуда', Category.INVENTORY),
+        ('инвентарь', Category.INVENTORY),
         ('ножи', Category.INVENTORY),
         ('мусаты', Category.INVENTORY),
         ('секачи', Category.INVENTORY),
@@ -145,10 +147,19 @@ class CategoryParser:
         ('листы для выпечки', Category.INVENTORY),
         ('съёмные детали оборудования', Category.INVENTORY),
         ('силапеновые коврики', Category.INVENTORY),
-        ('внутрицеховая тара', Category.INVENTORY),
+        ('внутрицеховая тара (вёдра, ящики)', Category.INVENTORY),
         ('дежи', Category.INVENTORY),
+        ('передвижные ёмкости', Category.INVENTORY),
         ('ёмкости для перетаривания', Category.INVENTORY),
         ('корзины для расстойки теста', Category.INVENTORY),
+        ('ёмкости для сыпучих продуктов', Category.INVENTORY),
+        ('шпильки', Category.INVENTORY),
+        ('тележки', Category.INVENTORY),
+        ('листы от шпилек', Category.INVENTORY),
+        ('тележки подкатные', Category.INVENTORY),
+        ('оборотная тара', Category.INVENTORY),
+        ('изотермические контейнеры (bigbox)', Category.INVENTORY),
+        ('расстоечные термочехлы', Category.INVENTORY),
         ('отсадочные мешки', Category.INVENTORY),
 
         # Поверхности
@@ -217,7 +228,6 @@ class CategoryParser:
         ('бисквиторезки', Category.TECH_EQUIPMENT),
         ('тестомесы', Category.TECH_EQUIPMENT),
         ('тестоделители', Category.TECH_EQUIPMENT),
-        ('депозитор волюметрический', Category.TECH_EQUIPMENT),
         ('тестоокруглители', Category.TECH_EQUIPMENT),
         ('тестораскатки', Category.TECH_EQUIPMENT),
         ('прессы для теста', Category.TECH_EQUIPMENT),
@@ -226,15 +236,24 @@ class CategoryParser:
         ('термощупы', Category.TECH_EQUIPMENT),
         ('дробилки', Category.TECH_EQUIPMENT),
         ('машина для резки', Category.TECH_EQUIPMENT),
+        ('ультразвуковые нарезки', Category.TECH_EQUIPMENT),
+        ('водяные бани', Category.TECH_EQUIPMENT),
+        ('минифилы (дозаторы крема)', Category.TECH_EQUIPMENT),
+        ('дозаторы для жидкостей', Category.TECH_EQUIPMENT),
+        ('распылители для желе и сиропов', Category.TECH_EQUIPMENT),
+        ('просеиватели', Category.TECH_EQUIPMENT),
+        ('солодоварки', Category.TECH_EQUIPMENT),
+        ('ферментаторы', Category.TECH_EQUIPMENT),
+        ('рентгеновские системы контроля', Category.TECH_EQUIPMENT),
+        ('вакуумные роторные шприцы', Category.TECH_EQUIPMENT),
         ('овощерезки', Category.TECH_EQUIPMENT),
         ('овощечистки', Category.TECH_EQUIPMENT),
         ('измельчители', Category.TECH_EQUIPMENT),
         ('слайсера', Category.TECH_EQUIPMENT),
         ('протирочные машины', Category.TECH_EQUIPMENT),
         ('картофелечистки', Category.TECH_EQUIPMENT),
+        ('депозитор волюметрический', Category.TECH_EQUIPMENT),
         ('металлодетектор', Category.TECH_EQUIPMENT),
-        ('рентгеновские системы контроля', Category.TECH_EQUIPMENT),
-        ('вакуумные роторные шприцы', Category.TECH_EQUIPMENT),
 
         # Сантехника
         ('раковина', Category.PLUMBING),
@@ -247,8 +266,6 @@ class CategoryParser:
 
         # Посудомоечное оборудование
         ('ПММ', Category.DISHWASHING_EQUIPMENT),
-        ('купольная', Category.DISHWASHING_EQUIPMENT),
-        ('туннельная', Category.DISHWASHING_EQUIPMENT),
         ('таромоечная машина', Category.DISHWASHING_EQUIPMENT),
 
         # Холодильное оборудование
@@ -341,9 +358,22 @@ class CategoryParser:
     def _get_category_by_keywords(self, item_text: str) -> Category:
         """Определяет категорию по ключевым словам"""
         item_lower = item_text.lower()
+
+        # Специальное правило для посудомоечного оборудования
+        if 'пмм' in item_lower:
+            return Category.DISHWASHING_EQUIPMENT
+        if 'таромоечная' in item_lower:
+            return Category.DISHWASHING_EQUIPMENT
+
+        # Специальное правило для машины для резки
+        if 'машина для резки' in item_lower and 'конд' in item_lower:
+            return Category.TECH_EQUIPMENT
+
+        # Для каждого ключевого слова проверяем наличие в тексте
         for keyword, category in self.KEYWORD_CATEGORIES:
             if keyword in item_lower:
                 return category
+
         return Category.OTHER
 
     def _is_checkbox_before(self, text: str, position: int) -> bool:
@@ -383,12 +413,11 @@ class CategoryParser:
 
             # Для каждого модификатора проверяем, отмечен ли он
             for modifier in pattern['modifiers']:
-                # Ищем ВСЕ вхождения модификатора в тексте
+                # Ищем все вхождения модификатора в тексте
                 for mod_match in re.finditer(modifier['marker'], full_text, re.IGNORECASE):
                     mod_pos = mod_match.start()
 
                     # Убеждаемся, что этот модификатор находится ПОСЛЕ базового объекта
-                    # и не является частью другого слова
                     if mod_pos < base_match.end():
                         continue  # Модификатор внутри базового объекта - пропускаем
 
@@ -400,14 +429,7 @@ class CategoryParser:
                     # Проверяем, есть ли чек-бокс перед модификатором
                     if self._is_checkbox_before(full_text, mod_pos):
                         checked_modifiers.append(modifier)
-                        print(f"      DEBUG: Found checked modifier '{modifier['marker']}' at position {mod_pos}")
                         break  # Нашли отмеченный, переходим к следующему модификатору
-
-            # ДЛЯ ОТЛАДКИ - выводим информацию
-            print(f"    DEBUG - Base: '{base_name}', checked: {base_checked}")
-            for mod in pattern['modifiers']:
-                is_checked = mod in checked_modifiers
-                print(f"    DEBUG - Modifier '{mod['marker']}': {is_checked}")
 
             # Формируем результат
             if checked_modifiers:
@@ -424,7 +446,12 @@ class CategoryParser:
                     # Очищаем имя
                     item_name = re.sub(r'\s+', ' ', item_name).strip()
 
-                    category = self._get_category_by_keywords(item_name)
+                    # Определяем категорию
+                    if 'category' in pattern:
+                        category = pattern['category']
+                    else:
+                        category = self._get_category_by_keywords(item_name)
+
                     print(f"  [{category.value}] ✅ {item_name}")
                     data.items.append(ChecklistItem(
                         name=item_name,
@@ -435,7 +462,12 @@ class CategoryParser:
 
             elif base_checked:
                 # Только базовый объект (без модификаторов)
-                category = self._get_category_by_keywords(base_name)
+                # Определяем категорию
+                if 'category' in pattern:
+                    category = pattern['category']
+                else:
+                    category = self._get_category_by_keywords(base_name)
+
                 print(f"  [{category.value}] ✅ {base_name}")
                 data.items.append(ChecklistItem(
                     name=base_name,
