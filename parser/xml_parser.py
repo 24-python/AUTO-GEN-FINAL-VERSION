@@ -1,5 +1,5 @@
 """
-Парсер с определением категорий по ключевым словам
+Парсер с определением категорий по ключевым словам и обработкой составных позиций
 """
 
 import zipfile
@@ -11,12 +11,96 @@ from parser.models import ChecklistData, ChecklistItem, Category
 
 
 class CategoryParser:
-    """Парсер с определением категорий по ключевым словам"""
+    """Парсер с определением категорий по ключевым словам и обработкой составных позиций"""
 
     NAMESPACES = {
         'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
         'w14': 'http://schemas.microsoft.com/office/word/2010/wordml'
     }
+
+    # Составные позиции, требующие специальной обработки
+    COMPOUND_PATTERNS = [
+        {
+            'base': r'потолок\s*\([^)]+\)',
+            'modifiers': [
+                {'marker': 'П', 'name': 'П', 'format': '{base} ({mod})'},
+                {'marker': 'ОК', 'name': 'ОК', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'вытяжные\s+зонты',
+            'modifiers': [
+                {'marker': 'Н', 'name': 'Н', 'format': '{base} ({mod})'},
+                {'marker': 'А', 'name': 'А', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'формы\s+для\s+выпечки',
+            'modifiers': [
+                {'marker': 'С', 'name': 'С', 'format': '{base} ({mod})'},
+                {'marker': 'Н', 'name': 'Н', 'format': '{base} ({mod})'},
+                {'marker': 'А', 'name': 'А', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'листы\s+для\s+выпечки',
+            'modifiers': [
+                {'marker': 'Н', 'name': 'Н', 'format': '{base} ({mod})'},
+                {'marker': 'А', 'name': 'А', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'съёмные\s+детали\s+оборудования',
+            'modifiers': [
+                {'marker': 'Н', 'name': 'Н', 'format': '{base} ({mod})'},
+                {'marker': 'А', 'name': 'А', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'ПММ',
+            'modifiers': [
+                {'marker': 'купольная', 'name': 'купольная', 'format': '{base} {mod}'},
+                {'marker': 'туннельная', 'name': 'туннельная', 'format': '{base} {mod}'}
+            ]
+        },
+        {
+            'base': r'камеры',
+            'modifiers': [
+                {'marker': r'холд\.?', 'name': 'холодильные', 'format': '{base} {mod}'},
+                {'marker': r'мороз\.?', 'name': 'морозильные', 'format': '{base} {mod}'},
+                {'marker': r'шок\.?\s+замор\.?', 'name': 'шоковой заморозки', 'format': '{base} {mod}'}
+            ]
+        },
+        {
+            'base': r'плиты',
+            'modifiers': [
+                {'marker': r'индук\.?', 'name': 'индукционные', 'format': '{base} {mod}'},
+                {'marker': r'элек\.?', 'name': 'электрические', 'format': '{base} {mod}'},
+                {'marker': r'газ\.?', 'name': 'газовые', 'format': '{base} {mod}'}
+            ]
+        },
+        {
+            'base': r'производственные\s+столы',
+            'modifiers': [
+                {'marker': 'Н', 'name': 'Н', 'format': '{base} ({mod})'},
+                {'marker': 'Д', 'name': 'Д', 'format': '{base} ({mod})'}
+            ]
+        },
+        {
+            'base': r'весы',
+            'modifiers': [
+                {'marker': r'напольные', 'name': 'напольные', 'format': '{base} {mod}'},
+                {'marker': r'настольные', 'name': 'настольные', 'format': '{base} {mod}'}
+            ]
+        },
+        {
+            'base': r'просеиватели',
+            'modifiers': [
+                {'marker': 'мука', 'name': 'для муки', 'format': '{base} {mod}'},
+                {'marker': 'сахар', 'name': 'для сахара', 'format': '{base} {mod}'}
+            ]
+        }
+    ]
 
     # Полный словарь категорий по ключевым словам
     KEYWORD_CATEGORIES = [
@@ -98,6 +182,21 @@ class CategoryParser:
         ('демосистема', Category.SURFACE),
         ('лестницы', Category.SURFACE),
         ('пол', Category.SURFACE),
+        ('мусорные корзины', Category.SURFACE),
+        ('контейнеры для отходов', Category.SURFACE),
+        ('трапы', Category.SURFACE),
+        ('стоки', Category.SURFACE),
+        ('резиновые коврики', Category.SURFACE),
+        ('гидравлические тележки', Category.SURFACE),
+        ('погрузчики', Category.SURFACE),
+        ('штабелёры', Category.SURFACE),
+        ('пластиковые паллеты', Category.SURFACE),
+        ('пластиковые подкаты', Category.SURFACE),
+        ('держатели для ножей', Category.SURFACE),
+        ('держатели для досок', Category.SURFACE),
+        ('часы', Category.SURFACE),
+        ('вентиляторы', Category.SURFACE),
+        ('держатели для инвентаря', Category.SURFACE),
 
         # Моечный инвентарь
         ('мопы', Category.CLEANING_EQUIPMENT),
@@ -247,6 +346,86 @@ class CategoryParser:
                 return category
         return Category.OTHER
 
+    def _is_checkbox_before(self, text: str, position: int) -> bool:
+        """
+        Проверяет, есть ли символ чек-бокса перед указанной позицией.
+        Пропускает пробелы.
+        """
+        pos = position - 1
+        # Пропускаем пробелы
+        while pos >= 0 and text[pos] == ' ':
+            pos -= 1
+        # Проверяем, есть ли чек-бокс
+        return pos >= 0 and text[pos] == '☒'
+
+    def _process_compound_cell(self, full_text: str, data: ChecklistData) -> bool:
+        """
+        Специальная обработка составных ячеек.
+        Возвращает True, если ячейка обработана как составная.
+        """
+        # Перебираем все паттерны составных позиций
+        for pattern in self.COMPOUND_PATTERNS:
+            # Ищем базовый объект
+            base_match = re.search(pattern['base'], full_text, re.IGNORECASE)
+            if not base_match:
+                continue
+
+            base_name = base_match.group(0)
+            base_start = base_match.start()
+
+            # Проверяем, отмечен ли базовый объект
+            base_checked = self._is_checkbox_before(full_text, base_start)
+
+            # Собираем все отмеченные модификаторы
+            checked_modifiers = []
+
+            # Для каждого модификатора проверяем, отмечен ли он
+            for modifier in pattern['modifiers']:
+                # Ищем все вхождения модификатора в тексте
+                for mod_match in re.finditer(modifier['marker'], full_text, re.IGNORECASE):
+                    mod_pos = mod_match.start()
+                    # Проверяем, есть ли чек-бокс перед модификатором
+                    if self._is_checkbox_before(full_text, mod_pos):
+                        checked_modifiers.append(modifier)
+                        break  # Нашли отмеченный, переходим к следующему модификатору
+
+            # Формируем результат
+            if checked_modifiers:
+                # Добавляем только отмеченные модификаторы (базовый объект не добавляем)
+                for modifier in checked_modifiers:
+                    if 'format' in modifier:
+                        item_name = modifier['format'].format(
+                            base=base_name,
+                            mod=modifier['name']
+                        )
+                    else:
+                        item_name = f"{base_name} {modifier['name']}"
+
+                    # Очищаем имя
+                    item_name = re.sub(r'\s+', ' ', item_name).strip()
+
+                    category = self._get_category_by_keywords(item_name)
+                    print(f"  [{category.value}] ✅ {item_name}")
+                    data.items.append(ChecklistItem(
+                        name=item_name,
+                        category=category,
+                        checked=True
+                    ))
+                return True
+
+            elif base_checked:
+                # Только базовый объект (без модификаторов)
+                category = self._get_category_by_keywords(base_name)
+                print(f"  [{category.value}] ✅ {base_name}")
+                data.items.append(ChecklistItem(
+                    name=base_name,
+                    category=category,
+                    checked=True
+                ))
+                return True
+
+        return False
+
     def _process_cell(self, cell, data: ChecklistData):
         """Обрабатывает одну ячейку"""
 
@@ -255,6 +434,11 @@ class CategoryParser:
 
         # Если есть ☒
         if '☒' in full_text:
+            # Сначала пробуем обработать как составную позицию
+            if self._process_compound_cell(full_text, data):
+                return
+
+            # Если не составная, обрабатываем как обычную
             # Разбиваем по чек-боксам
             parts = re.split(r'([☐☒])', full_text)
 
