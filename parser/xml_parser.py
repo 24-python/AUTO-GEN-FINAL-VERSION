@@ -349,12 +349,14 @@ class CategoryParser:
     def _is_checkbox_before(self, text: str, position: int) -> bool:
         """
         Проверяет, есть ли символ чек-бокса перед указанной позицией.
-        Пропускает пробелы.
+        Пропускает пробелы, табуляцию и знаки пунктуации (:, ;, и т.д.).
         """
         pos = position - 1
-        # Пропускаем пробелы
-        while pos >= 0 and text[pos] == ' ':
+
+        # Пропускаем пробелы, табуляцию, двоеточия и другие разделители
+        while pos >= 0 and text[pos] in [' ', '\t', ':', ';', ',', '.', '-', '—', '–']:
             pos -= 1
+
         # Проверяем, есть ли чек-бокс
         return pos >= 0 and text[pos] == '☒'
 
@@ -381,13 +383,31 @@ class CategoryParser:
 
             # Для каждого модификатора проверяем, отмечен ли он
             for modifier in pattern['modifiers']:
-                # Ищем все вхождения модификатора в тексте
+                # Ищем ВСЕ вхождения модификатора в тексте
                 for mod_match in re.finditer(modifier['marker'], full_text, re.IGNORECASE):
                     mod_pos = mod_match.start()
+
+                    # Убеждаемся, что этот модификатор находится ПОСЛЕ базового объекта
+                    # и не является частью другого слова
+                    if mod_pos < base_match.end():
+                        continue  # Модификатор внутри базового объекта - пропускаем
+
+                    # Проверяем окружение модификатора (не является ли он частью слова)
+                    if mod_pos > 0 and full_text[mod_pos - 1].isalpha() and mod_pos - 1 >= base_match.end():
+                        # Предыдущий символ - буква, значит это часть слова
+                        continue
+
                     # Проверяем, есть ли чек-бокс перед модификатором
                     if self._is_checkbox_before(full_text, mod_pos):
                         checked_modifiers.append(modifier)
+                        print(f"      DEBUG: Found checked modifier '{modifier['marker']}' at position {mod_pos}")
                         break  # Нашли отмеченный, переходим к следующему модификатору
+
+            # ДЛЯ ОТЛАДКИ - выводим информацию
+            print(f"    DEBUG - Base: '{base_name}', checked: {base_checked}")
+            for mod in pattern['modifiers']:
+                is_checked = mod in checked_modifiers
+                print(f"    DEBUG - Modifier '{mod['marker']}': {is_checked}")
 
             # Формируем результат
             if checked_modifiers:
