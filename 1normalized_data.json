@@ -1,10 +1,10 @@
 {
   "statistics": {
-    "total_objects": 191,
-    "objects_with_instructions": 68,
-    "objects_without_instructions": 123,
-    "total_instructions": 447,
-    "removed_empty_duplicates": 35
+    "total_objects": 194,
+    "objects_with_instructions": 65,
+    "objects_without_instructions": 129,
+    "total_instructions": 457,
+    "removed_empty_duplicates": 38
   },
   "categories": [
     {
@@ -62,23 +62,19 @@
     {
       "name": "Холодильное оборудование",
       "sort_order": 14
-    },
-    {
-      "name": "просеиватели мука сахар",
-      "sort_order": 15
     }
   ],
   "objects": [
     {
       "name": "потолок (высота _____м) П",
-      "base_name": "потолок (высота _____м)",
+      "base_name": "потолок",
       "modifier": "П",
       "category": "Поверхности",
       "sort_priority": 0
     },
     {
       "name": "потолок (высота _____м) ОК",
-      "base_name": "потолок (высота _____м)",
+      "base_name": "потолок",
       "modifier": "ОК",
       "category": "Поверхности",
       "sort_priority": 0
@@ -455,8 +451,15 @@
       "sort_priority": 0
     },
     {
-      "name": "санитарный пост корзины/диспенсеры для СИЗ",
-      "base_name": "санитарный пост корзины/диспенсеры для СИЗ",
+      "name": "санитарный пост",
+      "base_name": "санитарный пост",
+      "modifier": null,
+      "category": "Санитарный пост",
+      "sort_priority": 0
+    },
+    {
+      "name": "корзины/диспенсеры для СИЗ",
+      "base_name": "корзины/диспенсеры для СИЗ",
       "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0
@@ -1036,13 +1039,6 @@
       "sort_priority": 0
     },
     {
-      "name": "Дозирующее оборудование",
-      "base_name": "Дозирующее оборудование",
-      "modifier": null,
-      "category": "Холодильное оборудование",
-      "sort_priority": 0
-    },
-    {
       "name": "плиты индук.",
       "base_name": "плиты индук.",
       "modifier": null,
@@ -1281,80 +1277,101 @@
       "sort_priority": 0
     },
     {
-      "name": "солодоварки ферментаторы",
-      "base_name": "солодоварки ферментаторы",
+      "name": "просеиватели мука",
+      "base_name": "просеиватели мука",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
+      "sort_priority": 0
+    },
+    {
+      "name": "просеиватели сахар",
+      "base_name": "просеиватели сахар",
+      "modifier": null,
+      "category": "Технологическое оборудование",
+      "sort_priority": 0
+    },
+    {
+      "name": "солодоварки",
+      "base_name": "солодоварки",
+      "modifier": null,
+      "category": "Технологическое оборудование",
+      "sort_priority": 0
+    },
+    {
+      "name": "ферментаторы",
+      "base_name": "ферментаторы",
+      "modifier": null,
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "рентгеновские системы контроля",
       "base_name": "рентгеновские системы контроля",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "вакуумные роторные шприцы",
       "base_name": "вакуумные роторные шприцы",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "овощерезки",
       "base_name": "овощерезки",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "овощечистки",
       "base_name": "овощечистки",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "измельчители",
       "base_name": "измельчители",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "слайсера",
       "base_name": "слайсера",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "протирочные машины",
       "base_name": "протирочные машины",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "картофелечистки",
       "base_name": "картофелечистки",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "депозитор волюметрический",
       "base_name": "депозитор волюметрический",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
       "name": "металлодетектор",
       "base_name": "металлодетектор",
       "modifier": null,
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "sort_priority": 0
     },
     {
@@ -4739,7 +4756,22 @@
       "control_method": "визуальный контроль/технолог"
     },
     {
-      "object_name": "санитарный пост корзины/диспенсеры для СИЗ",
+      "object_name": "санитарный пост",
+      "category": "Санитарный пост",
+      "cleaning_method": "",
+      "instruction_number": "",
+      "product_name": "",
+      "cleaning_technique": "",
+      "concentration": "",
+      "temperature": "",
+      "exposure_time": "",
+      "inventory": "",
+      "frequency": "",
+      "executor": "",
+      "control_method": ""
+    },
+    {
+      "object_name": "корзины/диспенсеры для СИЗ",
       "category": "Санитарный пост",
       "cleaning_method": "",
       "instruction_number": "",
@@ -6151,17 +6183,122 @@
     {
       "object_name": "тележки",
       "category": "Инвентарь, посуда и т.д.",
-      "cleaning_method": "",
+      "cleaning_method": "мойка",
       "instruction_number": "",
-      "product_name": "",
-      "cleaning_technique": "",
-      "concentration": "",
-      "temperature": "",
+      "product_name": "ХИМИТЕК УНИВЕРСАЛ-ПД-Н",
+      "cleaning_technique": "ручной (замачивание)",
+      "concentration": "3,0 % – 4,0 %, дозирующая система ProMax",
+      "temperature": "не ниже 40°C",
       "exposure_time": "",
-      "inventory": "",
-      "frequency": "",
-      "executor": "",
-      "control_method": ""
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "дезинфекция",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР",
+      "cleaning_technique": "ручной (протирание)",
+      "concentration": "0,02 %–0,04 % (по НУК), спрей-система ProTwin",
+      "temperature": "18-20 ºС",
+      "exposure_time": "30 мин",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "мойка",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК УНИВЕРСАЛ-ПД-Н",
+      "cleaning_technique": "ручной (замачивание)",
+      "concentration": "3,0 % – 4,0 %, дозирующая система ProMax",
+      "temperature": "не ниже 40°C",
+      "exposure_time": "",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "дезинфекция",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР",
+      "cleaning_technique": "ручной (протирание)",
+      "concentration": "0,02 %–0,04 % (по НУК), спрей-система ProTwin",
+      "temperature": "18-20 ºС",
+      "exposure_time": "30 мин",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "мойка",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК УНИВЕРСАЛ-ПД-Н",
+      "cleaning_technique": "ручной (замачивание)",
+      "concentration": "3,0 % – 4,0 %, дозирующая система ProMax",
+      "temperature": "не ниже 40°C",
+      "exposure_time": "",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "дезинфекция",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР",
+      "cleaning_technique": "ручной (протирание)",
+      "concentration": "0,02 %–0,04 % (по НУК), спрей-система ProTwin",
+      "temperature": "18-20 ºС",
+      "exposure_time": "30 мин",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "мойка",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК УНИВЕРСАЛ-ПД-Н",
+      "cleaning_technique": "ручной (замачивание)",
+      "concentration": "3,0 % – 4,0 %, дозирующая система ProMax",
+      "temperature": "не ниже 40°C",
+      "exposure_time": "",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
+    },
+    {
+      "object_name": "тележки",
+      "category": "Инвентарь, посуда и т.д.",
+      "cleaning_method": "дезинфекция",
+      "instruction_number": "",
+      "product_name": "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР",
+      "cleaning_technique": "ручной (протирание)",
+      "concentration": "0,02 %–0,04 % (по НУК), спрей-система ProTwin",
+      "temperature": "18-20 ºС",
+      "exposure_time": "30 мин",
+      "inventory": "промаркированный",
+      "frequency": "1 раз в смену",
+      "executor": "сотрудник внутреннего клининга",
+      "control_method": "визуальный контроль/сотрудник отдела качества"
     },
     {
       "object_name": "листы от шпилек",
@@ -7049,21 +7186,6 @@
       "control_method": ""
     },
     {
-      "object_name": "Дозирующее оборудование",
-      "category": "Холодильное оборудование",
-      "cleaning_method": "",
-      "instruction_number": "",
-      "product_name": "",
-      "cleaning_technique": "",
-      "concentration": "",
-      "temperature": "",
-      "exposure_time": "",
-      "inventory": "",
-      "frequency": "",
-      "executor": "",
-      "control_method": ""
-    },
-    {
       "object_name": "плиты индук.",
       "category": "Тепловое оборудование",
       "cleaning_method": "",
@@ -7829,8 +7951,53 @@
       "control_method": ""
     },
     {
-      "object_name": "солодоварки ферментаторы",
-      "category": "просеиватели мука сахар",
+      "object_name": "просеиватели мука",
+      "category": "Технологическое оборудование",
+      "cleaning_method": "",
+      "instruction_number": "",
+      "product_name": "",
+      "cleaning_technique": "",
+      "concentration": "",
+      "temperature": "",
+      "exposure_time": "",
+      "inventory": "",
+      "frequency": "",
+      "executor": "",
+      "control_method": ""
+    },
+    {
+      "object_name": "просеиватели сахар",
+      "category": "Технологическое оборудование",
+      "cleaning_method": "",
+      "instruction_number": "",
+      "product_name": "",
+      "cleaning_technique": "",
+      "concentration": "",
+      "temperature": "",
+      "exposure_time": "",
+      "inventory": "",
+      "frequency": "",
+      "executor": "",
+      "control_method": ""
+    },
+    {
+      "object_name": "солодоварки",
+      "category": "Технологическое оборудование",
+      "cleaning_method": "",
+      "instruction_number": "",
+      "product_name": "",
+      "cleaning_technique": "",
+      "concentration": "",
+      "temperature": "",
+      "exposure_time": "",
+      "inventory": "",
+      "frequency": "",
+      "executor": "",
+      "control_method": ""
+    },
+    {
+      "object_name": "ферментаторы",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7845,7 +8012,7 @@
     },
     {
       "object_name": "рентгеновские системы контроля",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7860,7 +8027,7 @@
     },
     {
       "object_name": "вакуумные роторные шприцы",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7875,7 +8042,7 @@
     },
     {
       "object_name": "овощерезки",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7890,7 +8057,7 @@
     },
     {
       "object_name": "овощечистки",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7905,7 +8072,7 @@
     },
     {
       "object_name": "измельчители",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7920,7 +8087,7 @@
     },
     {
       "object_name": "слайсера",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7935,7 +8102,7 @@
     },
     {
       "object_name": "протирочные машины",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7950,7 +8117,7 @@
     },
     {
       "object_name": "картофелечистки",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7965,7 +8132,7 @@
     },
     {
       "object_name": "депозитор волюметрический",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
@@ -7980,7 +8147,7 @@
     },
     {
       "object_name": "металлодетектор",
-      "category": "просеиватели мука сахар",
+      "category": "Технологическое оборудование",
       "cleaning_method": "",
       "instruction_number": "",
       "product_name": "",
