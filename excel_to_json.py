@@ -1,191 +1,384 @@
 #!/usr/bin/env python3
 """
-Скрипт для конвертации Excel-файла с инструкциями в JSON-формат для загрузки в БД.
-Запуск: python excel_to_json.py "Объекты с определенной обработкой.xlsx"
+prepare_import_json.py
+
+Скрипт для подготовки JSON-файла импорта в базу данных.
+Читает:
+- текстовый файл с объектами (полный перечень всех поверхностей из чек-листа.txt)
+- Excel-файл с инструкциями (Объекты для базы данных.xlsx)
+
+Создает:
+- import_data.json (для импорта в БД)
 """
 
 import json
-import sys
+import re
 from pathlib import Path
-from openpyxl import load_workbook
+from typing import Dict, List, Optional
+from dataclasses import dataclass, field, asdict
+from collections import defaultdict
+
+# Для работы с Excel
+try:
+    import openpyxl
+except ImportError:
+    print("Установите openpyxl: pip install openpyxl")
+    exit(1)
 
 
-def clean_text(value):
-    """Очищает текст от лишних пробелов и переносов строк"""
-    if value is None:
-        return ""
-    return str(value).strip().replace('\n', ' ').replace('\r', ' ')
+# ============================================================
+# МОДЕЛИ ДАННЫХ
+# ============================================================
+
+@dataclass
+class Instruction:
+    """Инструкция по обработке объекта"""
+    cleaning_method: str = ""  # мойка/дезинфекция/очистка
+    instruction_number: str = ""  # № инструкции
+    product_name: str = ""  # средство
+    cleaning_technique: str = ""  # метод уборки
+    concentration: str = ""  # концентрация
+    temperature: str = ""  # температура
+    exposure_time: str = ""  # время выдержки
+    inventory: str = ""  # инвентарь
+    frequency: str = ""  # периодичность
+    executor: str = ""  # исполнитель
+    control_method: str = ""  # метод контроля
+
+    def to_dict(self) -> dict:
+        """Преобразует в словарь, исключая пустые поля (опционально)"""
+        result = {}
+        for key, value in asdict(self).items():
+            if value and value.strip():
+                result[key] = value
+        return result
 
 
-def parse_excel_to_json(excel_path, output_json="seed_data.json"):
+@dataclass
+class ImportObject:
+    """Объект для импорта в БД"""
+    name: str  # полное название из текстового файла
+    base_name: str  # базовая часть (без модификатора)
+    modifier: Optional[str]  # модификатор (П, ОК, Н, А, С, и т.д.)
+    category: str  # категория
+    sort_priority: int = 0  # приоритет сортировки внутри категории
+    instructions: List[Instruction] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "base_name": self.base_name,
+            "modifier": self.modifier,
+            "category": self.category,
+            "sort_priority": self.sort_priority,
+            "instructions": [instr.to_dict() for instr in self.instructions]
+        }
+
+
+# ============================================================
+# ПАРСЕР ТЕКСТОВОГО ФАЙЛА
+# ============================================================
+
+def parse_objects_from_txt(txt_path: str) -> List[ImportObject]:
     """
-    Парсит Excel и создает JSON в нужном формате
+    Парсит текстовый файл с объектами.
+    Формат:
+        Категория:
+        объект1
+        объект2
+        ...
     """
-    print(f"📂 Чтение файла: {excel_path}")
+    objects = []
+    current_category = None
 
-    # Загружаем книгу и активный лист
-    wb = load_workbook(excel_path, data_only=True)
+    with open(txt_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Проверка на заголовок категории (заканчивается на ":")
+        if line.endswith(':'):
+            current_category = line.rstrip(':')
+            continue
+
+        # Если нет активной категории, пропускаем
+        if current_category is None:
+            continue
+
+        # Парсим объект
+        obj = parse_object_line(line, current_category)
+        if obj:
+            objects.append(obj)
+
+    return objects
+
+
+def parse_object_line(line: str, category: str) -> Optional[ImportObject]:
+    """
+    Парсит строку объекта.
+    Определяет base_name и modifier.
+
+    Примеры:
+        "потолок (высота _____м)" → base_name="потолок", modifier=None
+        "потолок (высота _____м) П" → base_name="потолок", modifier="П"
+        "плиты индук." → base_name="плиты", modifier="индук."
+        "формы для выпечки С" → base_name="формы для выпечки", modifier="С"
+    """
+    name = line.strip()
+
+    # Определяем base_name и modifier
+    base_name = name
+    modifier = None
+
+    # Паттерны для извлечения модификатора
+    patterns = [
+        # "потолок (высота _____м) П" → modifier = "П"
+        (r'^(.*?)\s+([А-Яа-я0-9]+(?:\.[а-я]+)?)$', 1, 2),
+        # "плиты индук." → modifier = "индук."
+        (r'^(.*?)\s+([а-я]+\.?)$', 1, 2),
+        # "формы для выпечки С" → modifier = "С"
+        (r'^(.*?)\s+([А-Я])$', 1, 2),
+    ]
+
+    for pattern, base_idx, mod_idx in patterns:
+        match = re.match(pattern, name)
+        if match:
+            base_name = match.group(base_idx).strip()
+            modifier = match.group(mod_idx).strip()
+            break
+
+    # Очистка base_name от лишних символов
+    base_name = re.sub(r'\([^)]*\)', '', base_name).strip()
+    base_name = re.sub(r'\s+', ' ', base_name)
+
+    return ImportObject(
+        name=name,
+        base_name=base_name,
+        modifier=modifier,
+        category=category,
+        sort_priority=0
+    )
+
+
+# ============================================================
+# ПАРСЕР EXCEL-ФАЙЛА
+# ============================================================
+
+def parse_instructions_from_excel(xlsx_path: str) -> Dict[str, List[Instruction]]:
+    """
+    Парсит Excel-файл с инструкциями.
+    Возвращает словарь: {название_объекта: [список_инструкций]}
+    """
+    instructions_map = defaultdict(list)
+
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
     ws = wb.active
 
-    # Словарь для хранения уникальных объектов
-    objects_dict = {}
-    instructions_list = []
+    # Получаем заголовки (первая строка)
+    headers = []
+    for col in range(1, ws.max_column + 1):
+        value = ws.cell(row=1, column=col).value
+        headers.append(value if value else "")
 
-    current_category = None
-    current_object = None
+    # Определяем индексы колонок
+    col_indices = {
+        'object': 0,  # Объект обработки
+        'method': 1,  # Способ обработки
+        'instruction_no': 2,  # № инструкции
+        'product': 3,  # Наименование средства
+        'technique': 4,  # Метод уборки
+        'concentration': 5,  # Концентрация
+        'temperature': 6,  # Температура
+        'exposure': 7,  # Время выдержки
+        'inventory': 8,  # Инвентарь
+        'frequency': 9,  # Периодичность
+        'executor': 10,  # Исполнитель
+        'control': 11,  # Метод контроля
+    }
 
-    print("🔄 Обработка строк...")
-
-    for row_idx, row in enumerate(ws.iter_rows(min_row=1, values_only=True), 1):
-        # Пропускаем полностью пустые строки
-        if not any(row):
+    # Проходим по строкам (начиная со 2-й)
+    for row in range(2, ws.max_row + 1):
+        object_name = ws.cell(row=row, column=col_indices['object'] + 1).value
+        if not object_name or not str(object_name).strip():
             continue
 
-        object_name = clean_text(row[0]) if len(row) > 0 else ""
+        object_name = str(object_name).strip()
 
-        # Пропускаем заголовки разделов (они без инструкций)
+        # Пропускаем строки-заголовки категорий (если они попали)
         if object_name.endswith(':'):
-            current_category = object_name.rstrip(':').strip()
-            print(f"  📌 Раздел: {current_category}")
             continue
 
-        # Если есть название объекта - это новая инструкция
-        if object_name and object_name not in ["Объект обработки", ""]:
-            cleaning_method = clean_text(row[1]) if len(row) > 1 else ""
+        # Создаем инструкцию
+        instruction = Instruction(
+            cleaning_method=str(ws.cell(row=row, column=col_indices['method'] + 1).value or ""),
+            instruction_number=str(ws.cell(row=row, column=col_indices['instruction_no'] + 1).value or ""),
+            product_name=str(ws.cell(row=row, column=col_indices['product'] + 1).value or ""),
+            cleaning_technique=str(ws.cell(row=row, column=col_indices['technique'] + 1).value or ""),
+            concentration=str(ws.cell(row=row, column=col_indices['concentration'] + 1).value or ""),
+            temperature=str(ws.cell(row=row, column=col_indices['temperature'] + 1).value or ""),
+            exposure_time=str(ws.cell(row=row, column=col_indices['exposure'] + 1).value or ""),
+            inventory=str(ws.cell(row=row, column=col_indices['inventory'] + 1).value or ""),
+            frequency=str(ws.cell(row=row, column=col_indices['frequency'] + 1).value or ""),
+            executor=str(ws.cell(row=row, column=col_indices['executor'] + 1).value or ""),
+            control_method=str(ws.cell(row=row, column=col_indices['control'] + 1).value or "")
+        )
 
-            # Создаем запись инструкции со ВСЕМИ полями (даже пустыми)
-            instruction = {
-                "object_name": object_name,
-                "category": current_category or "",
-                "cleaning_method": cleaning_method,
-                "instruction_number": clean_text(row[2]) if len(row) > 2 else "",
-                "product_name": clean_text(row[3]) if len(row) > 3 else "",
-                "cleaning_technique": clean_text(row[4]) if len(row) > 4 else "",
-                "concentration": clean_text(row[5]) if len(row) > 5 else "",
-                "temperature": clean_text(row[6]) if len(row) > 6 else "",
-                "exposure_time": clean_text(row[7]) if len(row) > 7 else "",
-                "inventory": clean_text(row[8]) if len(row) > 8 else "",
-                "frequency": clean_text(row[9]) if len(row) > 9 else "",
-                "executor": clean_text(row[10]) if len(row) > 10 else "",
-                "control_method": clean_text(row[11]) if len(row) > 11 else ""
-            }
+        instructions_map[object_name].append(instruction)
 
-            # Убираем None, заменяем на пустые строки
-            for key, value in instruction.items():
-                if value is None:
-                    instruction[key] = ""
+    return instructions_map
 
-            instructions_list.append(instruction)
 
-            # Сохраняем уникальные объекты (для objects.json)
-            if object_name not in objects_dict:
-                # Пытаемся определить base_name и modifier
-                base_name = object_name
-                modifier = None
+# ============================================================
+# МАППИНГ НАЗВАНИЙ (если Excel названы иначе)
+# ============================================================
 
-                # Простая эвристика: если есть скобки - выделяем модификатор
-                if '(' in object_name and ')' in object_name:
-                    parts = object_name.split('(')
-                    base_name = parts[0].strip()
-                    modifier = parts[1].replace(')', '').strip()
+def create_name_mapping() -> Dict[str, str]:
+    """
+    Создает маппинг названий из Excel в названия из текстового файла.
+    Если названия совпадают, маппинг не нужен.
+    """
+    mapping = {
+        # Примеры (если нужно):
+        # "потолок подвесной": "потолок (высота _____м) П",
+        # "потолок окрашенный": "потолок (высота _____м) ОК",
+    }
+    return mapping
 
-                objects_dict[object_name] = {
-                    "name": object_name,
-                    "base_name": base_name,
-                    "modifier": modifier,
-                    "category": current_category or "",
-                    "sort_priority": 0
-                }
 
-    print(f"\n📊 Статистика:")
-    print(f"  - Найдено инструкций: {len(instructions_list)}")
-    print(f"  - Найдено уникальных объектов: {len(objects_dict)}")
+# ============================================================
+# ГЕНЕРАЦИЯ JSON
+# ============================================================
 
-    # Формируем итоговый JSON
-    result = {
-        "categories": [],  # Пока пусто, добавим отдельно
-        "objects": list(objects_dict.values()),
-        "instructions": instructions_list
+def generate_import_json(
+        txt_path: str,
+        xlsx_path: str,
+        output_path: str,
+        category_sort_order: Dict[str, int] = None
+):
+    """
+    Генерирует JSON-файл для импорта в БД.
+    """
+    print("🔧 ПОДГОТОВКА JSON ДЛЯ ИМПОРТА")
+    print("=" * 50)
+
+    # 1. Парсим объекты из текстового файла
+    print(f"\n📄 Чтение объектов из: {txt_path}")
+    objects = parse_objects_from_txt(txt_path)
+    print(f"   Найдено объектов: {len(objects)}")
+
+    # 2. Парсим инструкции из Excel
+    print(f"\n📊 Чтение инструкций из: {xlsx_path}")
+    instructions_map = parse_instructions_from_excel(xlsx_path)
+    print(f"   Найдено объектов с инструкциями: {len(instructions_map)}")
+    total_instructions = sum(len(instrs) for instrs in instructions_map.values())
+    print(f"   Всего инструкций: {total_instructions}")
+
+    # 3. Маппинг названий (если нужно)
+    name_mapping = create_name_mapping()
+
+    # 4. Связываем инструкции с объектами
+    print("\n🔗 Связывание инструкций с объектами...")
+    matched = 0
+    not_matched = []
+
+    for obj in objects:
+        # Проверяем прямое совпадение
+        if obj.name in instructions_map:
+            obj.instructions = instructions_map[obj.name]
+            matched += 1
+        # Проверяем маппинг
+        elif obj.name in name_mapping and name_mapping[obj.name] in instructions_map:
+            obj.instructions = instructions_map[name_mapping[obj.name]]
+            matched += 1
+        else:
+            not_matched.append(obj.name)
+
+    print(f"   Совпало: {matched}")
+    print(f"   Не совпало (будут без инструкций): {len(not_matched)}")
+
+    # 5. Категории с порядком сортировки
+    if category_sort_order is None:
+        # Порядок категорий из текстового файла
+        categories_order = [
+            "Поверхности",
+            "Сантехническое оборудование",
+            "Санитарный пост",
+            "Мебель",
+            "Офисная техника",
+            "Многоразовые резиновые СИЗ",
+            "Бытовая техника",
+            "Инвентарь, посуда и т.д.",
+            "Моечный, уборочный инвентарь и оборудование",
+            "Посудомоечное оборудование",
+            "Холодильное оборудование",
+            "Дозирующее оборудование",
+            "Тепловое оборудование",
+            "Технологическое оборудование",
+            "Упаковочное оборудование",
+        ]
+        category_sort_order = {name: idx for idx, name in enumerate(categories_order, 1)}
+
+    categories = [
+        {"name": name, "sort_order": order}
+        for name, order in category_sort_order.items()
+    ]
+
+    # 6. Формируем итоговый JSON
+    output_data = {
+        "version": "1.0",
+        "created_at": "2026-04-02",
+        "categories": categories,
+        "objects": [obj.to_dict() for obj in objects]
     }
 
-    # Сохраняем JSON
-    with open(output_json, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    # 7. Сохраняем JSON
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ JSON сохранен в: {output_json}")
+    print(f"\n✅ JSON файл создан: {output_path}")
+    print(f"   Размер: {Path(output_path).stat().st_size / 1024:.1f} KB")
 
-    # Также сохраняем отдельно список объектов для удобства
-    objects_json = output_json.replace('.json', '_objects.json')
-    with open(objects_json, 'w', encoding='utf-8') as f:
-        json.dump(list(objects_dict.values()), f, ensure_ascii=False, indent=2)
+    # 8. Отчет по несовпавшим объектам
+    if not_matched:
+        print(f"\n⚠️ ВНИМАНИЕ: Для {len(not_matched)} объектов нет инструкций:")
+        for name in not_matched[:20]:  # показываем первые 20
+            print(f"   - {name}")
+        if len(not_matched) > 20:
+            print(f"   ... и еще {len(not_matched) - 20} объектов")
 
-    print(f"✅ Список объектов сохранен в: {objects_json}")
-
-    return result
+    return output_data
 
 
-def validate_json_structure(json_data):
-    """
-    Проверяет соответствие JSON утвержденной структуре
-    """
-    print("\n🔍 Проверка структуры JSON...")
-
-    required_keys = {
-        "object_name": str,
-        "category": str,
-        "cleaning_method": str,
-        "instruction_number": str,
-        "product_name": str,
-        "cleaning_technique": str,
-        "concentration": str,
-        "temperature": str,
-        "exposure_time": str,
-        "inventory": str,
-        "frequency": str,
-        "executor": str,
-        "control_method": str
-    }
-
-    errors = 0
-    for i, instr in enumerate(json_data["instructions"][:5]):  # Проверяем первые 5
-        print(f"\n  Проверка инструкции {i + 1}: '{instr['object_name']}'")
-
-        for key, expected_type in required_keys.items():
-            if key not in instr:
-                print(f"    ❌ Отсутствует ключ: {key}")
-                errors += 1
-            elif not isinstance(instr[key], expected_type):
-                print(f"    ❌ Неверный тип для {key}: ожидался {expected_type}, получен {type(instr[key])}")
-                errors += 1
-            else:
-                print(
-                    f"    ✅ {key}: {instr[key][:30]}..." if len(str(instr[key])) > 30 else f"    ✅ {key}: {instr[key]}")
-
-    if errors == 0:
-        print("\n✅ Все проверки пройдены! Структура корректна.")
-    else:
-        print(f"\n⚠️ Найдено {errors} ошибок.")
-
-    return errors == 0
-
+# ============================================================
+# ТОЧКА ВХОДА
+# ============================================================
 
 def main():
-    if len(sys.argv) < 2:
-        print("Использование: python excel_to_json.py <путь_к_excel_файлу> [выходной_json]")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Подготовка JSON для импорта в БД")
+    parser.add_argument("--txt", default="полный перечень всех поверхностей из чек-листа.txt",
+                        help="Путь к текстовому файлу с объектами")
+    parser.add_argument("--xlsx", default="Объекты для базы данных.xlsx",
+                        help="Путь к Excel-файлу с инструкциями")
+    parser.add_argument("--output", "-o", default="import_data.json",
+                        help="Выходной JSON файл")
+
+    args = parser.parse_args()
+
+    # Проверяем существование файлов
+    if not Path(args.txt).exists():
+        print(f"❌ Файл не найден: {args.txt}")
         return
 
-    excel_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else "seed_data.json"
-
-    if not Path(excel_file).exists():
-        print(f"❌ Файл не найден: {excel_file}")
+    if not Path(args.xlsx).exists():
+        print(f"❌ Файл не найден: {args.xlsx}")
         return
 
-    # Конвертируем
-    json_data = parse_excel_to_json(excel_file, output_file)
-
-    # Проверяем структуру
-    validate_json_structure(json_data)
+    generate_import_json(args.txt, args.xlsx, args.output)
 
 
 if __name__ == "__main__":
