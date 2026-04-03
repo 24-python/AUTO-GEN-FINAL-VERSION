@@ -11,12 +11,12 @@ Base = declarative_base()
 
 
 class Category(Base):
-    """Категории объектов"""
+    """Категории объектов (15 штук, порядок сортировки задает умный маппинг)"""
     __tablename__ = 'categories'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, unique=True)
-    sort_order = Column(Integer, default=0)
+    name = Column(String(100), nullable=False, unique=True)  # Название категории
+    sort_order = Column(Integer, default=0)                   # Порядок вывода
 
     # Связи
     objects = relationship("Object", back_populates="category", cascade="all, delete-orphan")
@@ -26,17 +26,17 @@ class Category(Base):
 
 
 class Object(Base):
-    """Объекты обработки из чек-листа"""
+    """Объекты обработки из чек-листа (196+ позиций)"""
     __tablename__ = 'objects'
 
     id = Column(Integer, primary_key=True)
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False)
 
     # Основные поля
-    name = Column(String(250), nullable=False, unique=True)  # из текстового файла
-    base_name = Column(String(200), nullable=False)
-    modifier = Column(String(50), nullable=True)
-    sort_priority = Column(Integer, default=0)
+    name = Column(String(250), nullable=False, unique=True)    # Полное название из текстового файла
+    base_name = Column(String(200), nullable=False)            # Базовая часть (без модификатора)
+    modifier = Column(String(50), nullable=True)               # Модификатор (П, ОК, Н, А, С, и т.д.)
+    sort_priority = Column(Integer, default=0)                 # Приоритет внутри категории
 
     # Служебные поля
     created_at = Column(DateTime, default=datetime.now)
@@ -51,24 +51,24 @@ class Object(Base):
 
 
 class Instruction(Base):
-    """Инструкции по обработке объектов"""
+    """Инструкции по обработке объектов (из Excel)"""
     __tablename__ = 'instructions'
 
     id = Column(Integer, primary_key=True)
     object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
 
     # Поля из Excel
-    cleaning_method = Column(String(100), nullable=True)  # мойка/дезинфекция
-    instruction_number = Column(String(50), nullable=True)  # № инструкции
-    product_name = Column(String(200), nullable=True)  # средство
-    cleaning_technique = Column(String(200), nullable=True)  # метод уборки
-    concentration = Column(String(200), nullable=True)  # концентрация
-    temperature = Column(String(50), nullable=True)  # температура
-    exposure_time = Column(String(50), nullable=True)  # время выдержки
-    inventory = Column(String(100), nullable=True)  # инвентарь
-    frequency = Column(String(100), nullable=True)  # периодичность
-    executor = Column(String(200), nullable=True)  # исполнитель
-    control_method = Column(String(200), nullable=True)  # метод контроля
+    cleaning_method = Column(String(100), nullable=True)       # мойка/дезинфекция/очистка
+    instruction_number = Column(String(50), nullable=True)     # № инструкции
+    product_name = Column(String(200), nullable=True)          # наименование средства
+    cleaning_technique = Column(String(200), nullable=True)    # метод уборки
+    concentration = Column(String(200), nullable=True)         # концентрация
+    temperature = Column(String(50), nullable=True)            # температура раствора
+    exposure_time = Column(String(50), nullable=True)          # время выдержки
+    inventory = Column(String(100), nullable=True)             # инвентарь
+    frequency = Column(String(100), nullable=True)             # периодичность
+    executor = Column(String(200), nullable=True)              # исполнитель
+    control_method = Column(String(200), nullable=True)        # метод контроля
 
     # Служебные поля
     created_at = Column(DateTime, default=datetime.now)

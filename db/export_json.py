@@ -13,10 +13,8 @@ from db.database import SessionLocal
 from db.models import Category, Object, Instruction
 
 
-def export_to_json(output_path):
-    """
-    Экспортирует все данные из БД в JSON
-    """
+def export_to_json(output_path: str):
+    """Экспортирует все данные из БД в JSON"""
     session = SessionLocal()
 
     # Получаем категории
@@ -27,6 +25,9 @@ def export_to_json(output_path):
 
     # Получаем инструкции
     instructions = session.query(Instruction).all()
+
+    # Словарь объектов {id: name}
+    object_names = {obj.id: obj.name for obj in objects}
 
     # Формируем JSON
     data = {
@@ -46,7 +47,7 @@ def export_to_json(output_path):
         ],
         "instructions": [
             {
-                "object_name": obj.name,
+                "object_name": object_names[instr.object_id],
                 "category": obj.category.name,
                 "cleaning_method": instr.cleaning_method,
                 "instruction_number": instr.instruction_number,

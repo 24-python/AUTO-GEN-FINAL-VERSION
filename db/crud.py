@@ -16,6 +16,10 @@ def get_category(db: Session, category_id: int) -> Optional[models.Category]:
     return db.query(models.Category).filter(models.Category.id == category_id).first()
 
 
+def get_category_by_name(db: Session, name: str) -> Optional[models.Category]:
+    return db.query(models.Category).filter(models.Category.name == name).first()
+
+
 def create_category(db: Session, name: str, sort_order: int = 0) -> models.Category:
     category = models.Category(name=name, sort_order=sort_order)
     db.add(category)
