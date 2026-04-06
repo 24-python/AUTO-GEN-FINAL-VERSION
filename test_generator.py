@@ -20,7 +20,7 @@ def find_checklists():
 
     # Ищем в корне
     for f in project_root.glob("*.docx"):
-        if not f.name.startswith("~"):
+        if not f.name.startswith("~") and "tech_card" not in f.name.lower():
             checklist_files.append(f)
 
     # Ищем в папке uploads
@@ -124,7 +124,6 @@ def main():
         print("   2. Или создайте папку 'uploads' и положите файл туда")
         return
 
-    print("\n📋 Найденные чек-листы:")
     print("-" * 40)
     for i, f in enumerate(checklists, 1):
         size_kb = f.stat().st_size / 1024
