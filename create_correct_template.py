@@ -107,7 +107,7 @@ def create_template():
         "средство на безводной основе"
     ]
 
-    colors = ["FFFFFF", "FFFFFF", "FFFFFF", "FFFFFF", "FFFFFF"]
+    colors = ["99FF99", "CCCCFF", "FFCC99", "CCFFFF", "8FBFFA"]
 
     for col in range(10):
         cell = legend_table.rows[0].cells[col]
