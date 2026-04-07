@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""
+Инициализация базы данных: создание таблиц и категорий
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import engine, SessionLocal
+from db.models import Base, Category
+
+
+def create_tables():
+    """Создание таблиц (удаляет старые)"""
+    print("🔄 Создание таблиц...")
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    print("✅ Таблицы созданы")
+
+
+def seed_categories():
+    """Заполнение категорий (15 штук с порядком сортировки для умного маппинга)"""
+    print("🔄 Заполнение категорий...")
+
+    categories_data = [
+        ("Поверхности", 1),
+        ("Сантехническое оборудование", 2),
+        ("Санитарный пост", 3),
+        ("Мебель", 4),
+        ("Офисная техника", 5),
+        ("Многоразовые резиновые СИЗ", 6),
+        ("Бытовая техника", 7),
+        ("Инвентарь, посуда и т.д.", 8),
+        ("Моечный, уборочный инвентарь и оборудование", 9),
+        ("Посудомоечное оборудование", 10),
+        ("Холодильное оборудование", 11),
+        ("Дозирующее оборудование", 12),
+        ("Тепловое оборудование", 13),
+        ("Технологическое оборудование", 14),
+        ("Упаковочное оборудование", 15),
+    ]
+
+    session = SessionLocal()
+
+    for name, sort_order in categories_data:
+        category = Category(name=name, sort_order=sort_order)
+        session.add(category)
+        print(f"  ➕ {name}")
+
+    session.commit()
+    session.close()
+
+    print(f"✅ Добавлено {len(categories_data)} категорий")
+
+
+def main():
+    print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
+    print("=" * 50)
+
+    create_tables()
+    seed_categories()
+
+    print(f"\n📁 Файл БД: {engine.url.database}")
+    print("🎉 Готово!")
+
+
+if __name__ == "__main__":
+    main()

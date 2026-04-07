@@ -103,7 +103,7 @@ class CategoryParser:
         }
     ]
 
-    # Полный словарь категорий по ключевым словам
+    # Полный словарь категорий по ключевым словам (РАСШИРЕННЫЙ)
     KEYWORD_CATEGORIES = [
         # Бытовая техника
         ('чайники', Category.HOUSEHOLD_APPLIANCES),
@@ -121,9 +121,13 @@ class CategoryParser:
         ('термоусадочные туннели', Category.PACKAGING_EQUIPMENT),
         ('автоматический клипсаторы', Category.PACKAGING_EQUIPMENT),
         ('flow pack', Category.PACKAGING_EQUIPMENT),
+        ('принтера для этикеток', Category.PACKAGING_EQUIPMENT),
 
         # Тепловое оборудование
         ('плиты', Category.THERMAL_EQUIPMENT),
+        ('плиты индук', Category.THERMAL_EQUIPMENT),
+        ('плиты элек', Category.THERMAL_EQUIPMENT),
+        ('плиты газ', Category.THERMAL_EQUIPMENT),
         ('варочные котлы', Category.THERMAL_EQUIPMENT),
         ('сковороды', Category.THERMAL_EQUIPMENT),
         ('фритюры', Category.THERMAL_EQUIPMENT),
@@ -131,6 +135,8 @@ class CategoryParser:
         ('пароконвектоматы', Category.THERMAL_EQUIPMENT),
         ('печи подовые', Category.THERMAL_EQUIPMENT),
         ('печи ротационные', Category.THERMAL_EQUIPMENT),
+        ('расстоечные шкафы', Category.THERMAL_EQUIPMENT),
+        ('вафельницы', Category.THERMAL_EQUIPMENT),
 
         # Инвентарь, посуда
         ('доски', Category.INVENTORY),
@@ -147,7 +153,7 @@ class CategoryParser:
         ('листы для выпечки', Category.INVENTORY),
         ('съёмные детали оборудования', Category.INVENTORY),
         ('силапеновые коврики', Category.INVENTORY),
-        ('внутрицеховая тара (вёдра, ящики)', Category.INVENTORY),
+        ('внутрицеховая тара', Category.INVENTORY),
         ('дежи', Category.INVENTORY),
         ('передвижные ёмкости', Category.INVENTORY),
         ('ёмкости для перетаривания', Category.INVENTORY),
@@ -158,11 +164,11 @@ class CategoryParser:
         ('листы от шпилек', Category.INVENTORY),
         ('тележки подкатные', Category.INVENTORY),
         ('оборотная тара', Category.INVENTORY),
-        ('изотермические контейнеры (bigbox)', Category.INVENTORY),
+        ('изотермические контейнеры', Category.INVENTORY),
         ('расстоечные термочехлы', Category.INVENTORY),
         ('отсадочные мешки', Category.INVENTORY),
 
-        # Поверхности
+        # Поверхности (РАСШИРЕНО)
         ('потолок', Category.SURFACE),
         ('светильники', Category.SURFACE),
         ('вытяжные зонты', Category.SURFACE),
@@ -215,14 +221,15 @@ class CategoryParser:
         ('щётки', Category.CLEANING_EQUIPMENT),
         ('сгоны', Category.CLEANING_EQUIPMENT),
         ('ведра', Category.CLEANING_EQUIPMENT),
-        ('тележки', Category.CLEANING_EQUIPMENT),
         ('АВД', Category.CLEANING_EQUIPMENT),
         ('пылесосы', Category.CLEANING_EQUIPMENT),
         ('поломоечная машина', Category.CLEANING_EQUIPMENT),
 
-        # Технологическое оборудование
+        # Технологическое оборудование (РАСШИРЕНО)
         ('производственные столы', Category.TECH_EQUIPMENT),
         ('весы', Category.TECH_EQUIPMENT),
+        ('весы напольные', Category.TECH_EQUIPMENT),
+        ('весы настольные', Category.TECH_EQUIPMENT),
         ('блендеры', Category.TECH_EQUIPMENT),
         ('миксеры планетарные', Category.TECH_EQUIPMENT),
         ('бисквиторезки', Category.TECH_EQUIPMENT),
@@ -235,13 +242,15 @@ class CategoryParser:
         ('пневматические распылители', Category.TECH_EQUIPMENT),
         ('термощупы', Category.TECH_EQUIPMENT),
         ('дробилки', Category.TECH_EQUIPMENT),
-        ('машина для резки', Category.TECH_EQUIPMENT),
+        ('машина для резки конд. изделий', Category.TECH_EQUIPMENT),
         ('ультразвуковые нарезки', Category.TECH_EQUIPMENT),
         ('водяные бани', Category.TECH_EQUIPMENT),
-        ('минифилы (дозаторы крема)', Category.TECH_EQUIPMENT),
+        ('минифилы', Category.TECH_EQUIPMENT),
         ('дозаторы для жидкостей', Category.TECH_EQUIPMENT),
         ('распылители для желе и сиропов', Category.TECH_EQUIPMENT),
         ('просеиватели', Category.TECH_EQUIPMENT),
+        ('просеиватели мука', Category.TECH_EQUIPMENT),
+        ('просеиватели сахар', Category.TECH_EQUIPMENT),
         ('солодоварки', Category.TECH_EQUIPMENT),
         ('ферментаторы', Category.TECH_EQUIPMENT),
         ('рентгеновские системы контроля', Category.TECH_EQUIPMENT),
@@ -270,6 +279,9 @@ class CategoryParser:
 
         # Холодильное оборудование
         ('камеры', Category.REFRIGERATION_EQUIPMENT),
+        ('камеры холд', Category.REFRIGERATION_EQUIPMENT),
+        ('камеры мороз', Category.REFRIGERATION_EQUIPMENT),
+        ('камеры шок', Category.REFRIGERATION_EQUIPMENT),
         ('морозильный ларь', Category.REFRIGERATION_EQUIPMENT),
         ('холод. столы', Category.REFRIGERATION_EQUIPMENT),
         ('холод. шкафы', Category.REFRIGERATION_EQUIPMENT),
@@ -284,12 +296,25 @@ class CategoryParser:
         ('вешалки', Category.FURNITURE),
         ('скамейки', Category.FURNITURE),
         ('зеркала', Category.FURNITURE),
+        ('сушилка для обуви', Category.FURNITURE),
+        ('обувницы', Category.FURNITURE),
 
         # Офисная техника
         ('компьютеры', Category.OFFICE_EQUIPMENT),
         ('мониторы', Category.OFFICE_EQUIPMENT),
         ('принтера', Category.OFFICE_EQUIPMENT),
         ('телефоны', Category.OFFICE_EQUIPMENT),
+
+        # Санитарный пост
+        ('санитарный пост', Category.SANITARY_POST),
+        ('корзины/диспенсеры для СИЗ', Category.SANITARY_POST),
+        ('диспенсер для полотенец', Category.SANITARY_POST),
+        ('диспенсер для т/б', Category.SANITARY_POST),
+        ('дозаторы для мыла/антисептика', Category.SANITARY_POST),
+        ('сушилка для рук', Category.SANITARY_POST),
+        ('модульный санпропускник', Category.SANITARY_POST),
+        ('дезинфицирующие маты', Category.SANITARY_POST),
+        ('бак для грязной одежды', Category.SANITARY_POST),
 
         # СИЗ
         ('фартуки', Category.PPE),
@@ -366,8 +391,16 @@ class CategoryParser:
             return Category.DISHWASHING_EQUIPMENT
 
         # Специальное правило для машины для резки
-        if 'машина для резки' in item_lower and 'конд' in item_lower:
+        if 'машина для резки' in item_lower:
             return Category.TECH_EQUIPMENT
+
+        # Специальное правило для форм для выпечки
+        if 'форма для выпечки' in item_lower:
+            return Category.INVENTORY
+
+        # Специальное правило для листов для выпечки
+        if 'лист для выпечки' in item_lower:
+            return Category.INVENTORY
 
         # Для каждого ключевого слова проверяем наличие в тексте
         for keyword, category in self.KEYWORD_CATEGORIES:
@@ -419,21 +452,19 @@ class CategoryParser:
 
                     # Убеждаемся, что этот модификатор находится ПОСЛЕ базового объекта
                     if mod_pos < base_match.end():
-                        continue  # Модификатор внутри базового объекта - пропускаем
+                        continue
 
-                    # Проверяем окружение модификатора (не является ли он частью слова)
+                    # Проверяем окружение модификатора
                     if mod_pos > 0 and full_text[mod_pos - 1].isalpha() and mod_pos - 1 >= base_match.end():
-                        # Предыдущий символ - буква, значит это часть слова
                         continue
 
                     # Проверяем, есть ли чек-бокс перед модификатором
                     if self._is_checkbox_before(full_text, mod_pos):
                         checked_modifiers.append(modifier)
-                        break  # Нашли отмеченный, переходим к следующему модификатору
+                        break
 
             # Формируем результат
             if checked_modifiers:
-                # Добавляем только отмеченные модификаторы (базовый объект не добавляем)
                 for modifier in checked_modifiers:
                     if 'format' in modifier:
                         item_name = modifier['format'].format(
@@ -443,10 +474,8 @@ class CategoryParser:
                     else:
                         item_name = f"{base_name} {modifier['name']}"
 
-                    # Очищаем имя
                     item_name = re.sub(r'\s+', ' ', item_name).strip()
 
-                    # Определяем категорию
                     if 'category' in pattern:
                         category = pattern['category']
                     else:
@@ -461,8 +490,6 @@ class CategoryParser:
                 return True
 
             elif base_checked:
-                # Только базовый объект (без модификаторов)
-                # Определяем категорию
                 if 'category' in pattern:
                     category = pattern['category']
                 else:
@@ -484,14 +511,10 @@ class CategoryParser:
         text_elements = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
         full_text = ''.join([t.text for t in text_elements if t.text])
 
-        # Если есть ☒
         if '☒' in full_text:
-            # Сначала пробуем обработать как составную позицию
             if self._process_compound_cell(full_text, data):
                 return
 
-            # Если не составная, обрабатываем как обычную
-            # Разбиваем по чек-боксам
             parts = re.split(r'([☐☒])', full_text)
 
             i = 0
@@ -500,7 +523,6 @@ class CategoryParser:
                     if i + 1 < len(parts):
                         next_text = parts[i + 1]
 
-                        # Ищем следующий чек-бокс
                         next_checkbox_pos = -1
                         for j, char in enumerate(next_text):
                             if char in ['☐', '☒']:
@@ -512,15 +534,11 @@ class CategoryParser:
                         else:
                             item_text = next_text.strip()
 
-                        # Очищаем
                         item_text = re.sub(r'[^\w\s\-\(\)]', '', item_text)
                         item_text = re.sub(r'\s+', ' ', item_text).strip()
-
-                        # Убираем одиночные буквы в конце
                         item_text = re.sub(r'\s+[А-Я]$', '', item_text)
 
                         if item_text and len(item_text) > 1:
-                            # Определяем категорию по ключевым словам
                             category = self._get_category_by_keywords(item_text)
 
                             print(f"  [{category.value}] ✅ {item_text}")

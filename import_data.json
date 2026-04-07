@@ -486,8 +486,8 @@
     },
     {
       "name": "вытяжные зонты",
-      "base_name": "вытяжные",
-      "modifier": "зонты",
+      "base_name": "вытяжные зонты",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -582,8 +582,8 @@
     },
     {
       "name": "вентиляционные трубы",
-      "base_name": "вентиляционные",
-      "modifier": "трубы",
+      "base_name": "вентиляционные трубы",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -846,8 +846,8 @@
     },
     {
       "name": "инсектицидные лампы",
-      "base_name": "инсектицидные",
-      "modifier": "лампы",
+      "base_name": "инсектицидные лампы",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -866,7 +866,7 @@
     },
     {
       "name": "стены (выше 2 м)",
-      "base_name": "стены",
+      "base_name": "стены (выше 2 м)",
       "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
@@ -917,7 +917,7 @@
     },
     {
       "name": "стены (до 2 м)",
-      "base_name": "стены",
+      "base_name": "стены (до 2 м)",
       "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
@@ -994,8 +994,8 @@
     },
     {
       "name": "бактерицидные лампы",
-      "base_name": "бактерицидные",
-      "modifier": "лампы",
+      "base_name": "бактерицидные лампы",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1101,8 +1101,8 @@
     },
     {
       "name": "водопроводные трубы",
-      "base_name": "водопроводные",
-      "modifier": "трубы",
+      "base_name": "водопроводные трубы",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1322,8 +1322,8 @@
     },
     {
       "name": "дверные ручки",
-      "base_name": "дверные",
-      "modifier": "ручки",
+      "base_name": "дверные ручки",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1434,8 +1434,8 @@
     },
     {
       "name": "окна внешние",
-      "base_name": "окна",
-      "modifier": "внешние",
+      "base_name": "окна внешние",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1453,8 +1453,8 @@
     },
     {
       "name": "окна внутрицеховые",
-      "base_name": "окна",
-      "modifier": "внутрицеховые",
+      "base_name": "окна внутрицеховые",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1492,8 +1492,8 @@
     },
     {
       "name": "пожарный щит",
-      "base_name": "пожарный",
-      "modifier": "щит",
+      "base_name": "пожарный щит",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1513,8 +1513,8 @@
     },
     {
       "name": "отопительные приборы",
-      "base_name": "отопительные",
-      "modifier": "приборы",
+      "base_name": "отопительные приборы",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1740,8 +1740,8 @@
     },
     {
       "name": "завесы ПВХ",
-      "base_name": "завесы",
-      "modifier": "ПВХ",
+      "base_name": "завесы ПВХ",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1830,8 +1830,8 @@
     },
     {
       "name": "завесы тепловые",
-      "base_name": "завесы",
-      "modifier": "тепловые",
+      "base_name": "завесы тепловые",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -1862,7 +1862,7 @@
     },
     {
       "name": "демосистема (контактная поверхность)",
-      "base_name": "демосистема",
+      "base_name": "демосистема (контактная поверхность)",
       "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
@@ -1970,8 +1970,8 @@
     },
     {
       "name": "мусорные корзины",
-      "base_name": "мусорные",
-      "modifier": "корзины",
+      "base_name": "мусорные корзины",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2013,8 +2013,8 @@
     },
     {
       "name": "контейнеры для отходов",
-      "base_name": "контейнеры для",
-      "modifier": "отходов",
+      "base_name": "контейнеры для отходов",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2105,8 +2105,8 @@
     },
     {
       "name": "резиновые коврики",
-      "base_name": "резиновые",
-      "modifier": "коврики",
+      "base_name": "резиновые коврики",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2115,8 +2115,8 @@
     },
     {
       "name": "гидравлические тележки",
-      "base_name": "гидравлические",
-      "modifier": "тележки",
+      "base_name": "гидравлические тележки",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2145,8 +2145,8 @@
     },
     {
       "name": "пластиковые паллеты",
-      "base_name": "пластиковые",
-      "modifier": "паллеты",
+      "base_name": "пластиковые паллеты",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2223,8 +2223,8 @@
     },
     {
       "name": "пластиковые подкаты",
-      "base_name": "пластиковые",
-      "modifier": "подкаты",
+      "base_name": "пластиковые подкаты",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2255,8 +2255,8 @@
     },
     {
       "name": "держатели для ножей",
-      "base_name": "держатели для",
-      "modifier": "ножей",
+      "base_name": "держатели для ножей",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2287,8 +2287,8 @@
     },
     {
       "name": "держатели для досок",
-      "base_name": "держатели для",
-      "modifier": "досок",
+      "base_name": "держатели для досок",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": []
@@ -2315,8 +2315,8 @@
     },
     {
       "name": "держатели для инвентаря",
-      "base_name": "держатели для",
-      "modifier": "инвентаря",
+      "base_name": "держатели для инвентаря",
+      "modifier": null,
       "category": "Поверхности",
       "sort_priority": 0,
       "instructions": [
@@ -2480,8 +2480,8 @@
     },
     {
       "name": "душевая кабина",
-      "base_name": "душевая",
-      "modifier": "кабина",
+      "base_name": "душевая кабина",
+      "modifier": null,
       "category": "Сантехническое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -2524,8 +2524,8 @@
     },
     {
       "name": "душевые секции",
-      "base_name": "душевые",
-      "modifier": "секции",
+      "base_name": "душевые секции",
+      "modifier": null,
       "category": "Сантехническое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -2565,8 +2565,8 @@
     },
     {
       "name": "технологическая мойка",
-      "base_name": "технологическая",
-      "modifier": "мойка",
+      "base_name": "технологическая мойка",
+      "modifier": null,
       "category": "Сантехническое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -2630,8 +2630,8 @@
     },
     {
       "name": "санитарный пост",
-      "base_name": "санитарный",
-      "modifier": "пост",
+      "base_name": "санитарный пост",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2662,8 +2662,8 @@
     },
     {
       "name": "корзины/диспенсеры для СИЗ",
-      "base_name": "корзины/диспенсеры для",
-      "modifier": "СИЗ",
+      "base_name": "корзины/диспенсеры для СИЗ",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2672,8 +2672,8 @@
     },
     {
       "name": "диспенсер для полотенец",
-      "base_name": "диспенсер для",
-      "modifier": "полотенец",
+      "base_name": "диспенсер для полотенец",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2802,8 +2802,8 @@
     },
     {
       "name": "сушилка для рук",
-      "base_name": "сушилка для",
-      "modifier": "рук",
+      "base_name": "сушилка для рук",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2812,8 +2812,8 @@
     },
     {
       "name": "модульный санпропускник",
-      "base_name": "модульный",
-      "modifier": "санпропускник",
+      "base_name": "модульный санпропускник",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2822,8 +2822,8 @@
     },
     {
       "name": "дезинфицирующие маты",
-      "base_name": "дезинфицирующие",
-      "modifier": "маты",
+      "base_name": "дезинфицирующие маты",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -2832,8 +2832,8 @@
     },
     {
       "name": "бак для грязной одежды",
-      "base_name": "бак для грязной",
-      "modifier": "одежды",
+      "base_name": "бак для грязной одежды",
+      "modifier": null,
       "category": "Санитарный пост",
       "sort_priority": 0,
       "instructions": [
@@ -3242,8 +3242,8 @@
     },
     {
       "name": "сушилка для обуви",
-      "base_name": "сушилка для",
-      "modifier": "обуви",
+      "base_name": "сушилка для обуви",
+      "modifier": null,
       "category": "Мебель",
       "sort_priority": 0,
       "instructions": [
@@ -3456,8 +3456,8 @@
     },
     {
       "name": "стиральные машины",
-      "base_name": "стиральные",
-      "modifier": "машины",
+      "base_name": "стиральные машины",
+      "modifier": null,
       "category": "Бытовая техника",
       "sort_priority": 0,
       "instructions": [
@@ -3488,8 +3488,8 @@
     },
     {
       "name": "сушильные машины",
-      "base_name": "сушильные",
-      "modifier": "машины",
+      "base_name": "сушильные машины",
+      "modifier": null,
       "category": "Бытовая техника",
       "sort_priority": 0,
       "instructions": []
@@ -3870,8 +3870,8 @@
     },
     {
       "name": "формы для выпечки",
-      "base_name": "формы для",
-      "modifier": "выпечки",
+      "base_name": "формы для выпечки",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -3910,8 +3910,8 @@
     },
     {
       "name": "листы для выпечки",
-      "base_name": "листы для",
-      "modifier": "выпечки",
+      "base_name": "листы для выпечки",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -3984,8 +3984,8 @@
     },
     {
       "name": "съёмные детали оборудования",
-      "base_name": "съёмные детали",
-      "modifier": "оборудования",
+      "base_name": "съёмные детали оборудования",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4069,8 +4069,8 @@
     },
     {
       "name": "силапеновые коврики",
-      "base_name": "силапеновые",
-      "modifier": "коврики",
+      "base_name": "силапеновые коврики",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4079,7 +4079,7 @@
     },
     {
       "name": "внутрицеховая тара (вёдра, ящики)",
-      "base_name": "внутрицеховая тара",
+      "base_name": "внутрицеховая тара (вёдра, ящики)",
       "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
@@ -4177,8 +4177,8 @@
     },
     {
       "name": "ёмкости для перетаривания",
-      "base_name": "ёмкости для",
-      "modifier": "перетаривания",
+      "base_name": "ёмкости для перетаривания",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4187,8 +4187,8 @@
     },
     {
       "name": "корзины для расстойки теста",
-      "base_name": "корзины для расстойки",
-      "modifier": "теста",
+      "base_name": "корзины для расстойки теста",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4197,8 +4197,8 @@
     },
     {
       "name": "ёмкости для сыпучих продуктов",
-      "base_name": "ёмкости для сыпучих",
-      "modifier": "продуктов",
+      "base_name": "ёмкости для сыпучих продуктов",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4272,8 +4272,8 @@
     },
     {
       "name": "листы от шпилек",
-      "base_name": "листы от",
-      "modifier": "шпилек",
+      "base_name": "листы от шпилек",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4304,8 +4304,8 @@
     },
     {
       "name": "тележки подкатные",
-      "base_name": "тележки",
-      "modifier": "подкатные",
+      "base_name": "тележки подкатные",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4337,8 +4337,8 @@
     },
     {
       "name": "оборотная тара",
-      "base_name": "оборотная",
-      "modifier": "тара",
+      "base_name": "оборотная тара",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4347,7 +4347,7 @@
     },
     {
       "name": "изотермические контейнеры (bigbox)",
-      "base_name": "изотермические контейнеры",
+      "base_name": "изотермические контейнеры (bigbox)",
       "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
@@ -4357,8 +4357,8 @@
     },
     {
       "name": "расстоечные термочехлы",
-      "base_name": "расстоечные",
-      "modifier": "термочехлы",
+      "base_name": "расстоечные термочехлы",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4367,8 +4367,8 @@
     },
     {
       "name": "отсадочные мешки",
-      "base_name": "отсадочные",
-      "modifier": "мешки",
+      "base_name": "отсадочные мешки",
+      "modifier": null,
       "category": "Инвентарь, посуда и т.д.",
       "sort_priority": 0,
       "instructions": [
@@ -4601,8 +4601,8 @@
     },
     {
       "name": "поломоечная машина",
-      "base_name": "поломоечная",
-      "modifier": "машина",
+      "base_name": "поломоечная машина",
+      "modifier": null,
       "category": "Моечный, уборочный инвентарь и оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4663,8 +4663,8 @@
     },
     {
       "name": "таромоечная машина",
-      "base_name": "таромоечная",
-      "modifier": "машина",
+      "base_name": "таромоечная машина",
+      "modifier": null,
       "category": "Посудомоечное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4769,16 +4769,16 @@
     },
     {
       "name": "камеры шок. замор.",
-      "base_name": "камеры шок.",
-      "modifier": "замор.",
+      "base_name": "камеры",
+      "modifier": "шок. замор.",
       "category": "Холодильное оборудование",
       "sort_priority": 0,
       "instructions": []
     },
     {
       "name": "морозильный ларь",
-      "base_name": "морозильный",
-      "modifier": "ларь",
+      "base_name": "морозильный ларь",
+      "modifier": null,
       "category": "Холодильное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4809,8 +4809,8 @@
     },
     {
       "name": "холод. столы",
-      "base_name": "холод.",
-      "modifier": "столы",
+      "base_name": "холод. столы",
+      "modifier": null,
       "category": "Холодильное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4841,8 +4841,8 @@
     },
     {
       "name": "холод. шкафы",
-      "base_name": "холод.",
-      "modifier": "шкафы",
+      "base_name": "холод. шкафы",
+      "modifier": null,
       "category": "Холодильное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4946,8 +4946,8 @@
     },
     {
       "name": "варочные котлы",
-      "base_name": "варочные",
-      "modifier": "котлы",
+      "base_name": "варочные котлы",
+      "modifier": null,
       "category": "Тепловое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -4996,8 +4996,8 @@
     },
     {
       "name": "печи подовые",
-      "base_name": "печи",
-      "modifier": "подовые",
+      "base_name": "печи подовые",
+      "modifier": null,
       "category": "Тепловое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5006,8 +5006,8 @@
     },
     {
       "name": "печи ротационные",
-      "base_name": "печи",
-      "modifier": "ротационные",
+      "base_name": "печи ротационные",
+      "modifier": null,
       "category": "Тепловое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5016,8 +5016,8 @@
     },
     {
       "name": "расстоечные шкафы",
-      "base_name": "расстоечные",
-      "modifier": "шкафы",
+      "base_name": "расстоечные шкафы",
+      "modifier": null,
       "category": "Тепловое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5036,8 +5036,8 @@
     },
     {
       "name": "производственные столы",
-      "base_name": "производственные",
-      "modifier": "столы",
+      "base_name": "производственные столы",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5204,8 +5204,8 @@
     },
     {
       "name": "весы напольные",
-      "base_name": "весы",
-      "modifier": "напольные",
+      "base_name": "весы напольные",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5236,8 +5236,8 @@
     },
     {
       "name": "весы настольные",
-      "base_name": "весы",
-      "modifier": "настольные",
+      "base_name": "весы настольные",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5290,8 +5290,8 @@
     },
     {
       "name": "миксеры планетарные",
-      "base_name": "миксеры",
-      "modifier": "планетарные",
+      "base_name": "миксеры планетарные",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": []
@@ -5348,8 +5348,8 @@
     },
     {
       "name": "прессы для теста",
-      "base_name": "прессы для",
-      "modifier": "теста",
+      "base_name": "прессы для теста",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": []
@@ -5366,8 +5366,8 @@
     },
     {
       "name": "пневматические распылители",
-      "base_name": "пневматические",
-      "modifier": "распылители",
+      "base_name": "пневматические распылители",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5396,8 +5396,8 @@
     },
     {
       "name": "машина для резки конд. изделий",
-      "base_name": "машина для резки конд.",
-      "modifier": "изделий",
+      "base_name": "машина для резки конд. изделий",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5406,8 +5406,8 @@
     },
     {
       "name": "ультразвуковые нарезки",
-      "base_name": "ультразвуковые",
-      "modifier": "нарезки",
+      "base_name": "ультразвуковые нарезки",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5416,8 +5416,8 @@
     },
     {
       "name": "водяные бани",
-      "base_name": "водяные",
-      "modifier": "бани",
+      "base_name": "водяные бани",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5426,7 +5426,7 @@
     },
     {
       "name": "минифилы (дозаторы крема)",
-      "base_name": "минифилы",
+      "base_name": "минифилы (дозаторы крема)",
       "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
@@ -5436,8 +5436,8 @@
     },
     {
       "name": "дозаторы для жидкостей",
-      "base_name": "дозаторы для",
-      "modifier": "жидкостей",
+      "base_name": "дозаторы для жидкостей",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5446,8 +5446,8 @@
     },
     {
       "name": "распылители для желе и сиропов",
-      "base_name": "распылители для желе и",
-      "modifier": "сиропов",
+      "base_name": "распылители для желе и сиропов",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5506,8 +5506,8 @@
     },
     {
       "name": "рентгеновские системы контроля",
-      "base_name": "рентгеновские системы",
-      "modifier": "контроля",
+      "base_name": "рентгеновские системы контроля",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5516,8 +5516,8 @@
     },
     {
       "name": "вакуумные роторные шприцы",
-      "base_name": "вакуумные роторные",
-      "modifier": "шприцы",
+      "base_name": "вакуумные роторные шприцы",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5566,8 +5566,8 @@
     },
     {
       "name": "протирочные машины",
-      "base_name": "протирочные",
-      "modifier": "машины",
+      "base_name": "протирочные машины",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5586,8 +5586,8 @@
     },
     {
       "name": "депозитор волюметрический",
-      "base_name": "депозитор",
-      "modifier": "волюметрический",
+      "base_name": "депозитор волюметрический",
+      "modifier": null,
       "category": "Технологическое оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5606,8 +5606,8 @@
     },
     {
       "name": "вакуумные упаковщики",
-      "base_name": "вакуумные",
-      "modifier": "упаковщики",
+      "base_name": "вакуумные упаковщики",
+      "modifier": null,
       "category": "Упаковочное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5658,8 +5658,8 @@
     },
     {
       "name": "принтера для этикеток",
-      "base_name": "принтера для",
-      "modifier": "этикеток",
+      "base_name": "принтера для этикеток",
+      "modifier": null,
       "category": "Упаковочное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5668,8 +5668,8 @@
     },
     {
       "name": "термоусадочные туннели",
-      "base_name": "термоусадочные",
-      "modifier": "туннели",
+      "base_name": "термоусадочные туннели",
+      "modifier": null,
       "category": "Упаковочное оборудование",
       "sort_priority": 0,
       "instructions": [
@@ -5678,8 +5678,8 @@
     },
     {
       "name": "автоматический клипсаторы",
-      "base_name": "автоматический",
-      "modifier": "клипсаторы",
+      "base_name": "автоматический клипсаторы",
+      "modifier": null,
       "category": "Упаковочное оборудование",
       "sort_priority": 0,
       "instructions": [
