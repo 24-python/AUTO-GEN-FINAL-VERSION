@@ -74,11 +74,14 @@ class TechCardGenerator:
             priority = category_priority.get(cat_name, 999)
             category_order[cat_name] = priority
 
+            # Используем display_name для вывода в техкарту
+            display_name = obj.display_name if obj else item.name
+
             if instructions:
                 for instr in instructions:
-                    category_items[cat_name].append((item.name, instr, item.category))
+                    category_items[cat_name].append((display_name, instr, item.category))
             else:
-                category_items[cat_name].append((item.name, None, item.category))
+                category_items[cat_name].append((display_name, None, item.category))
 
         session.close()
 
