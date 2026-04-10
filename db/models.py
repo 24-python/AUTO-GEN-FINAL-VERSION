@@ -15,10 +15,9 @@ class Category(Base):
     __tablename__ = 'categories'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, unique=True)  # Название категории
-    sort_order = Column(Integer, default=0)                   # Порядок вывода
+    name = Column(String(100), nullable=False, unique=True)
+    sort_order = Column(Integer, default=0)
 
-    # Связи
     objects = relationship("Object", back_populates="category", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -26,17 +25,18 @@ class Category(Base):
 
 
 class Object(Base):
-    """Объекты обработки из чек-листа (196+ позиций)"""
+    """Объекты обработки из чек-листа"""
     __tablename__ = 'objects'
 
     id = Column(Integer, primary_key=True)
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False)
 
     # Основные поля
-    name = Column(String(250), nullable=False, unique=True)    # Полное название из текстового файла
-    base_name = Column(String(200), nullable=False)            # Базовая часть (без модификатора)
-    modifier = Column(String(50), nullable=True)               # Модификатор (П, ОК, Н, А, С, и т.д.)
-    sort_priority = Column(Integer, default=0)                 # Приоритет внутри категории
+    normalized_name = Column(String(250), nullable=False, unique=True)  # для поиска (из чек-листа)
+    display_name = Column(String(250), nullable=False)                  # для вывода в техкарту
+    base_name = Column(String(200), nullable=False)                    # базовая часть
+    modifier = Column(String(50), nullable=True)                       # модификатор
+    sort_priority = Column(Integer, default=0)                         # приоритет сортировки
 
     # Служебные поля
     created_at = Column(DateTime, default=datetime.now)
@@ -47,11 +47,11 @@ class Object(Base):
     instructions = relationship("Instruction", back_populates="object", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Object(id={self.id}, name='{self.name}')>"
+        return f"<Object(id={self.id}, normalized_name='{self.normalized_name}', display_name='{self.display_name}')>"
 
 
 class Instruction(Base):
-    """Инструкции по обработке объектов (из Excel)"""
+    """Инструкции по обработке объектов"""
     __tablename__ = 'instructions'
 
     id = Column(Integer, primary_key=True)
@@ -70,7 +70,6 @@ class Instruction(Base):
     executor = Column(String(200), nullable=True)              # исполнитель
     control_method = Column(String(200), nullable=True)        # метод контроля
 
-    # Служебные поля
     created_at = Column(DateTime, default=datetime.now)
 
     # Связи
@@ -90,6 +89,6 @@ class Instruction(Base):
 
 
 # Индексы для ускорения поиска
-Index('idx_object_name', Object.name)
+Index('idx_object_normalized_name', Object.normalized_name)
 Index('idx_object_category', Object.category_id)
 Index('idx_instruction_object', Instruction.object_id)

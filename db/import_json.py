@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
 """
 Импорт данных из JSON в базу данных
-JSON структура: {categories: [...], objects: [{name, base_name, modifier, category, sort_priority, instructions: [...]}]}
+JSON структура: {
+    "categories": [...],
+    "objects": [
+        {
+            "normalized_name": "...",
+            "display_name": "...",
+            "base_name": "...",
+            "modifier": "...",
+            "category": "...",
+            "sort_priority": 0,
+            "instructions": [...]
+        }
+    ]
+}
 """
 
 import json
@@ -15,30 +28,7 @@ from db.models import Category, Object, Instruction
 
 
 def import_from_json(json_path: str):
-    """
-    Импортирует данные из JSON в БД
-
-    Ожидаемая структура JSON:
-    {
-        "categories": [{"name": "...", "sort_order": N}],
-        "objects": [
-            {
-                "name": "...",
-                "base_name": "...",
-                "modifier": "...",
-                "category": "...",
-                "sort_priority": 0,
-                "instructions": [
-                    {
-                        "cleaning_method": "...",
-                        "instruction_number": "...",
-                        ...
-                    }
-                ]
-            }
-        ]
-    }
-    """
+    """Импортирует данные из JSON в БД"""
 
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -65,37 +55,39 @@ def import_from_json(json_path: str):
             stats["errors"] += 1
             continue
 
-        # Проверяем, существует ли объект
-        existing = session.query(Object).filter_by(name=obj_data["name"]).first()
+        # Проверяем, существует ли объект по normalized_name
+        existing = session.query(Object).filter_by(normalized_name=obj_data["normalized_name"]).first()
 
         if existing:
             # Обновляем
-            existing.category_id = category_id
+            existing.display_name = obj_data["display_name"]
             existing.base_name = obj_data["base_name"]
             existing.modifier = obj_data.get("modifier")
+            existing.category_id = category_id
             existing.sort_priority = obj_data.get("sort_priority", 0)
             stats["objects_updated"] += 1
-            print(f"  🔄 Обновлен: {obj_data['name']}")
+            print(f"  🔄 Обновлен: {obj_data['normalized_name']} → {obj_data['display_name']}")
             obj_id = existing.id
         else:
             # Создаем
             obj = Object(
-                name=obj_data["name"],
+                normalized_name=obj_data["normalized_name"],
+                display_name=obj_data["display_name"],
                 base_name=obj_data["base_name"],
                 modifier=obj_data.get("modifier"),
                 category_id=category_id,
                 sort_priority=obj_data.get("sort_priority", 0)
             )
             session.add(obj)
-            session.flush()  # Чтобы получить id
+            session.flush()
             stats["objects_created"] += 1
-            print(f"  ➕ Создан: {obj_data['name']}")
+            print(f"  ➕ Создан: {obj_data['normalized_name']} → {obj_data['display_name']}")
             obj_id = obj.id
 
         # Импорт инструкций для этого объекта
         instructions = obj_data.get("instructions", [])
         for instr_data in instructions:
-            # Проверяем, есть ли уже такая инструкция (по cleaning_method + product_name)
+            # Проверяем, есть ли уже такая инструкция
             existing_instr = session.query(Instruction).filter(
                 Instruction.object_id == obj_id,
                 Instruction.cleaning_method == instr_data.get("cleaning_method", ""),
@@ -114,7 +106,6 @@ def import_from_json(json_path: str):
                 existing_instr.control_method = instr_data.get("control_method", "")
                 existing_instr.instruction_number = instr_data.get("instruction_number", "")
             else:
-                # Создаем новую
                 instruction = Instruction(
                     object_id=obj_id,
                     cleaning_method=instr_data.get("cleaning_method", ""),

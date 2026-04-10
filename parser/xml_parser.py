@@ -1,5 +1,6 @@
 """
-Парсер с определением категорий по базе данных
+Парсер с определением категорий из базы данных
+Единая функция нормализации: удаляет точки, слеши, запятые и другие знаки препинания
 """
 
 import zipfile
@@ -17,6 +18,22 @@ from db.database import SessionLocal
 from db.models import Object as DBObject
 
 
+def normalize_name(name: str) -> str:
+    """
+    Единая функция нормализации для парсера и БД.
+    Удаляет всё, кроме букв, цифр, пробелов, дефисов, скобок.
+    """
+    if not name:
+        return ""
+    # Удаляем все знаки препинания (точки, слеши, запятые и т.д.)
+    normalized = re.sub(r'[^\w\s\-\(\)]', '', name)
+    # Приводим к нижнему регистру
+    normalized = normalized.lower()
+    # Заменяем множественные пробелы на один
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
+
+
 class CategoryParser:
     """Парсер с определением категорий из базы данных"""
 
@@ -25,73 +42,73 @@ class CategoryParser:
         'w14': 'http://schemas.microsoft.com/office/word/2010/wordml'
     }
 
-    # Составные позиции, требующие специальной обработки (без скобок, соответствует БД)
+    # Составные позиции, требующие специальной обработки
     COMPOUND_PATTERNS = [
         {
             'base': r'потолок\s*\([^)]+\)',
             'modifiers': [
-                {'marker': 'П', 'name': 'П', 'format': '{base} {mod}'},
-                {'marker': 'ОК', 'name': 'ОК', 'format': '{base} {mod}'}
+                {'marker': 'П', 'name': 'п', 'format': '{base} {mod}'},
+                {'marker': 'ОК', 'name': 'ок', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'вытяжные\s+зонты',
             'modifiers': [
-                {'marker': 'Н', 'name': 'Н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'А', 'format': '{base} {mod}'}
+                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
+                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'формы\s+для\s+выпечки',
             'modifiers': [
-                {'marker': 'С', 'name': 'С', 'format': '{base} {mod}'},
-                {'marker': 'Н', 'name': 'Н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'А', 'format': '{base} {mod}'}
+                {'marker': 'С', 'name': 'с', 'format': '{base} {mod}'},
+                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
+                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'листы\s+для\s+выпечки',
             'modifiers': [
-                {'marker': 'Н', 'name': 'Н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'А', 'format': '{base} {mod}'}
+                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
+                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'съёмные\s+детали\s+оборудования',
             'modifiers': [
-                {'marker': 'Н', 'name': 'Н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'А', 'format': '{base} {mod}'}
+                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
+                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
             ]
         },
         {
-            'base': r'ПММ',
+            'base': r'ПММ',  # оставить как есть для поиска
             'category': Category.DISHWASHING_EQUIPMENT,
             'modifiers': [
-                {'marker': 'купольная', 'name': 'купольная', 'format': '{base} {mod}'},
-                {'marker': 'туннельная', 'name': 'туннельная', 'format': '{base} {mod}'}
+                {'marker': 'купольная', 'name': 'купольная', 'format': 'пмм {mod}'},  # ← явно 'пмм'
+                {'marker': 'туннельная', 'name': 'туннельная', 'format': 'пмм {mod}'}  # ← явно 'пмм'
             ]
         },
         {
             'base': r'камеры',
             'modifiers': [
-                {'marker': r'холд\.?', 'name': 'холд.', 'format': '{base} {mod}'},
-                {'marker': r'мороз\.?', 'name': 'мороз.', 'format': '{base} {mod}'},
-                {'marker': r'шок\.?\s+замор\.?', 'name': 'шок. замор.', 'format': '{base} {mod}'}
+                {'marker': r'холд\.?', 'name': 'холд', 'format': '{base} {mod}'},
+                {'marker': r'мороз\.?', 'name': 'мороз', 'format': '{base} {mod}'},
+                {'marker': r'шок\.?\s+замор\.?', 'name': 'шок замор', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'плиты',
             'modifiers': [
-                {'marker': r'индук\.?', 'name': 'индук.', 'format': '{base} {mod}'},
-                {'marker': r'элек\.?', 'name': 'элек.', 'format': '{base} {mod}'},
-                {'marker': r'газ\.?', 'name': 'газ.', 'format': '{base} {mod}'}
+                {'marker': r'индук\.?', 'name': 'индук', 'format': '{base} {mod}'},
+                {'marker': r'элек\.?', 'name': 'элек', 'format': '{base} {mod}'},
+                {'marker': r'газ\.?', 'name': 'газ', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'производственные\s+столы',
             'modifiers': [
-                {'marker': 'Н', 'name': 'Н', 'format': '{base} {mod}'},
-                {'marker': 'Д', 'name': 'Д', 'format': '{base} {mod}'}
+                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
+                {'marker': 'Д', 'name': 'д', 'format': '{base} {mod}'}
             ]
         },
         {
@@ -131,18 +148,17 @@ class CategoryParser:
 
     def __init__(self):
         self.current_category = Category.OTHER
-        self._category_cache = {}  # Кэш для ускорения {имя_объекта: категория}
+        self._category_cache = {}
 
     def _get_category_from_db(self, item_name: str) -> Category:
-        """Получает категорию из БД по точному имени объекта"""
+        """Получает категорию из БД по нормализованному имени объекта"""
 
-        # Проверяем кэш
         if item_name in self._category_cache:
             return self._category_cache[item_name]
 
         session = SessionLocal()
         try:
-            obj = session.query(DBObject).filter(DBObject.name == item_name).first()
+            obj = session.query(DBObject).filter(DBObject.normalized_name == item_name).first()
             if obj and obj.category:
                 category_enum = self.DB_CATEGORY_TO_ENUM.get(obj.category.name, Category.OTHER)
                 self._category_cache[item_name] = category_enum
@@ -249,7 +265,6 @@ class CategoryParser:
 
                     item_name = re.sub(r'\s+', ' ', item_name).strip()
 
-                    # Получаем категорию из БД
                     if 'category' in pattern:
                         category = pattern['category']
                     else:
@@ -308,9 +323,8 @@ class CategoryParser:
                         else:
                             item_text = next_text.strip()
 
-                        item_text = re.sub(r'[^\w\s\-\(\)/]', '', item_text)  # слеш разрешен
-                        item_text = re.sub(r'\s+', ' ', item_text).strip()
-                        item_text = re.sub(r'\s+[А-Я]$', '', item_text)
+                        # Нормализуем имя (удаляем знаки препинания)
+                        item_text = normalize_name(item_text)
 
                         if item_text and len(item_text) > 1:
                             category = self._get_category_from_db(item_text)
