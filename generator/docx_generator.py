@@ -1,5 +1,7 @@
 from docx import Document
 from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from pathlib import Path
 from parser.models import ChecklistData
 from db.models import Instruction, Category as DBCategory
@@ -12,6 +14,17 @@ class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
 
+    # Словарь цветов для средств (4 колонка)
+    PRODUCT_COLORS = {
+        "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
+        "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
+        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ПЕНАКТИВ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-CIP": "99CCFF",
+        "ХИМИТЕК ПОЛИКОР®": "FFCCCC",
+        "ХИМИТЕК ЧАРОЙТ®-СПРЕЙ": "99FF99",
+        "ХИМИТЕК СВЕЖЕСТЬ-АНТИСЕПТИК": "FFFFCC",
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
@@ -23,6 +36,14 @@ class TechCardGenerator:
                 run.font.name = font_name
                 run.font.size = Pt(size_pt)
                 run.font.bold = bold
+
+    def _set_cell_background(self, cell, hex_color: str):
+        """Устанавливает цвет фона ячейки"""
+        shading = OxmlElement('w:shd')
+        shading.set(qn('w:val'), 'clear')
+        shading.set(qn('w:color'), 'auto')
+        shading.set(qn('w:fill'), hex_color)
+        cell._tc.get_or_add_tcPr().append(shading)
 
     def _apply_font_to_row(self, row, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
         """Применяет шрифт ко всем ячейкам строки"""
@@ -131,6 +152,10 @@ class TechCardGenerator:
                     row.cells[9].text = instr.frequency or ""
                     row.cells[10].text = instr.executor or ""
                     row.cells[11].text = instr.control_method or ""
+
+                    # Цветовое кодирование 4 колонки (индекс 3) - Наименование средства
+                    if instr.product_name and instr.product_name in self.PRODUCT_COLORS:
+                        self._set_cell_background(row.cells[3], self.PRODUCT_COLORS[instr.product_name])
                 else:
                     for col in range(1, 12):
                         row.cells[col].text = ""
