@@ -8,6 +8,7 @@ from db.models import Instruction, Category as DBCategory
 from db.database import SessionLocal
 from generator.mapper import find_object_and_instructions
 from collections import defaultdict
+import re
 
 
 class TechCardGenerator:
@@ -27,6 +28,29 @@ class TechCardGenerator:
 
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
+
+    def _normalize_product_name(self, name: str) -> str:
+        """Нормализует название средства для сравнения (удаляет лишние пробелы, знаки)"""
+        if not name:
+            return ""
+        # Удаляем все символы, кроме букв, цифр, пробелов, дефисов
+        normalized = re.sub(r'[^\w\s\-]', '', name)
+        # Приводим к нижнему регистру
+        normalized = normalized.lower()
+        # Заменяем множественные пробелы на один
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized.strip()
+
+    def _get_color_for_product(self, product_name: str) -> str:
+        """Возвращает цвет для средства по нормализованному сравнению"""
+        if not product_name:
+            return None
+        normalized_input = self._normalize_product_name(product_name)
+        for key, color in self.PRODUCT_COLORS.items():
+            normalized_key = self._normalize_product_name(key)
+            if normalized_input == normalized_key:
+                return color
+        return None
 
     def _set_cell_font(self, cell, text: str, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
         """Устанавливает текст и шрифт в ячейке"""
@@ -154,8 +178,10 @@ class TechCardGenerator:
                     row.cells[11].text = instr.control_method or ""
 
                     # Цветовое кодирование 4 колонки (индекс 3) - Наименование средства
-                    if instr.product_name and instr.product_name in self.PRODUCT_COLORS:
-                        self._set_cell_background(row.cells[3], self.PRODUCT_COLORS[instr.product_name])
+                    if instr.product_name:
+                        color = self._get_color_for_product(instr.product_name)
+                        if color:
+                            self._set_cell_background(row.cells[3], color)
                 else:
                     for col in range(1, 12):
                         row.cells[col].text = ""
