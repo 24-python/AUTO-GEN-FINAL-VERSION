@@ -34,6 +34,23 @@ def normalize_name(name: str) -> str:
     return normalized.strip()
 
 
+def normalize_potolok_name(name: str) -> str:
+    """
+    Специальная нормализация для потолка: очищает содержимое скобок.
+    """
+    if not name:
+        return ""
+    # Очищаем содержимое скобок (оставляем только пустые скобки)
+    normalized = re.sub(r'\([^)]*\)', '()', name)
+    # Удаляем все знаки препинания (точки, слеши, запятые и т.д.)
+    normalized = re.sub(r'[^\w\s\-\(\)]', '', normalized)
+    # Приводим к нижнему регистру
+    normalized = normalized.lower()
+    # Заменяем множественные пробелы на один
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
+
+
 class CategoryParser:
     """Парсер с определением категорий из базы данных"""
 
@@ -45,7 +62,7 @@ class CategoryParser:
     # Составные позиции, требующие специальной обработки
     COMPOUND_PATTERNS = [
         {
-            'base': r'потолок\s*\([^)]*\)',  # было r'потолок\s*\([^)]+\)'
+            'base': r'потолок\s*\([^)]*\)',
             'modifiers': [
                 {'marker': 'П', 'name': 'п', 'format': '{base} {mod}'},
                 {'marker': 'ОК', 'name': 'ок', 'format': '{base} {mod}'}
@@ -81,17 +98,17 @@ class CategoryParser:
             ]
         },
         {
-            'base': r'ПММ',  # оставить как есть для поиска
+            'base': r'ПММ',
             'category': Category.DISHWASHING_EQUIPMENT,
             'modifiers': [
-                {'marker': 'купольная', 'name': 'купольная', 'format': 'пмм {mod}'},  # ← явно 'пмм'
-                {'marker': 'туннельная', 'name': 'туннельная', 'format': 'пмм {mod}'}  # ← явно 'пмм'
+                {'marker': 'купольная', 'name': 'купольная', 'format': '{base} {mod}'},
+                {'marker': 'туннельная', 'name': 'туннельная', 'format': '{base} {mod}'}
             ]
         },
         {
             'base': r'камеры',
             'modifiers': [
-                {'marker': r'холод?\.?', 'name': 'холод', 'format': '{base} {mod}'},  # ищет холод, холд, холод., холд.
+                {'marker': r'холод?\.?', 'name': 'холод', 'format': '{base} {mod}'},
                 {'marker': r'мороз\.?', 'name': 'мороз', 'format': '{base} {mod}'},
                 {'marker': r'шок\.?\s+замор\.?', 'name': 'шок замор', 'format': '{base} {mod}'}
             ]
@@ -264,6 +281,7 @@ class CategoryParser:
                         item_name = f"{base_name} {modifier['name']}"
 
                     item_name = re.sub(r'\s+', ' ', item_name).strip()
+
                     # Только для потолка удаляем содержимое скобок
                     if 'потолок' in item_name.lower():
                         item_name = re.sub(r'\([^)]*\)', '()', item_name)
@@ -287,6 +305,10 @@ class CategoryParser:
                 else:
                     category = self._get_category_from_db(base_name)
 
+                # Только для потолка удаляем содержимое скобок
+                if 'потолок' in base_name.lower():
+                    base_name = re.sub(r'\([^)]*\)', '()', base_name)
+
                 print(f"  [{category.value}] ✅ {base_name}")
                 data.items.append(ChecklistItem(
                     name=base_name,
@@ -304,9 +326,10 @@ class CategoryParser:
         full_text = ''.join([t.text for t in text_elements if t.text])
 
         if '☒' in full_text:
-            if self._process_compound_cell(full_text, data):
-                return
+            # 1. СНАЧАЛА обрабатываем составные позиции (модификаторы)
+            self._process_compound_cell(full_text, data)
 
+            # 2. ЗАТЕМ разбираем простые объекты (светильники, базовые объекты)
             parts = re.split(r'([☐☒])', full_text)
 
             i = 0
@@ -315,6 +338,7 @@ class CategoryParser:
                     if i + 1 < len(parts):
                         next_text = parts[i + 1]
 
+                        # Ищем следующий чек-бокс
                         next_checkbox_pos = -1
                         for j, char in enumerate(next_text):
                             if char in ['☐', '☒']:
@@ -326,17 +350,35 @@ class CategoryParser:
                         else:
                             item_text = next_text.strip()
 
-                        # Нормализуем имя (удаляем знаки препинания)
-                        item_text = normalize_name(item_text)
+                        # Нормализуем имя (для потолка — специальная очистка)
+                        if 'потолок' in item_text.lower():
+                            item_text = normalize_potolok_name(item_text)
+                        else:
+                            item_text = normalize_name(item_text)
 
+                        # Пропускаем пустые и слишком короткие
                         if item_text and len(item_text) > 1:
-                            category = self._get_category_from_db(item_text)
-                            print(f"  [{category.value}] ✅ {item_text}")
-                            data.items.append(ChecklistItem(
-                                name=item_text,
-                                category=category,
-                                checked=True
-                            ))
+                            # Проверяем, не является ли этот объект частью уже добавленного составного
+                            already_added = False
+                            for existing_item in data.items:
+                                # Если уже есть объект, содержащий этот текст (например, "камеры холод" содержит "холод")
+                                if existing_item.name == item_text:
+                                    already_added = True
+                                    break
+                                # Если текущий объект уже является частью более длинного (например, "холод" в "камеры холод")
+                                if item_text in existing_item.name and len(item_text) < len(existing_item.name):
+                                    already_added = True
+                                    print(f"     ⏭️ Пропуск '{item_text}' (уже есть '{existing_item.name}')")
+                                    break
+
+                            if not already_added:
+                                category = self._get_category_from_db(item_text)
+                                print(f"  [{category.value}] ✅ {item_text}")
+                                data.items.append(ChecklistItem(
+                                    name=item_text,
+                                    category=category,
+                                    checked=True
+                                ))
                 i += 1
 
     def _print_statistics(self, data: ChecklistData):
