@@ -45,7 +45,7 @@ class CategoryParser:
     # Составные позиции, требующие специальной обработки
     COMPOUND_PATTERNS = [
         {
-            'base': r'потолок\s*\([^)]+\)',
+            'base': r'потолок\s*\([^)]*\)',  # было r'потолок\s*\([^)]+\)'
             'modifiers': [
                 {'marker': 'П', 'name': 'п', 'format': '{base} {mod}'},
                 {'marker': 'ОК', 'name': 'ок', 'format': '{base} {mod}'}
@@ -91,7 +91,7 @@ class CategoryParser:
         {
             'base': r'камеры',
             'modifiers': [
-                {'marker': r'холд\.?', 'name': 'холд', 'format': '{base} {mod}'},
+                {'marker': r'холод?\.?', 'name': 'холод', 'format': '{base} {mod}'},  # ищет холод, холд, холод., холд.
                 {'marker': r'мороз\.?', 'name': 'мороз', 'format': '{base} {mod}'},
                 {'marker': r'шок\.?\s+замор\.?', 'name': 'шок замор', 'format': '{base} {mod}'}
             ]
@@ -264,6 +264,9 @@ class CategoryParser:
                         item_name = f"{base_name} {modifier['name']}"
 
                     item_name = re.sub(r'\s+', ' ', item_name).strip()
+                    # Только для потолка удаляем содержимое скобок
+                    if 'потолок' in item_name.lower():
+                        item_name = re.sub(r'\([^)]*\)', '()', item_name)
 
                     if 'category' in pattern:
                         category = pattern['category']
