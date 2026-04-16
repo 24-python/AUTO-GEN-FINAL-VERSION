@@ -29,19 +29,16 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
     def _normalize_product_name(self, name: str) -> str:
-        """Нормализует название средства для сравнения (удаляет лишние пробелы, знаки)"""
+        """Нормализует название средства для сравнения"""
         if not name:
             return ""
-        # Удаляем все символы, кроме букв, цифр, пробелов, дефисов
         normalized = re.sub(r'[^\w\s\-]', '', name)
-        # Приводим к нижнему регистру
         normalized = normalized.lower()
-        # Заменяем множественные пробелы на один
         normalized = re.sub(r'\s+', ' ', normalized)
         return normalized.strip()
 
     def _get_color_for_product(self, product_name: str) -> str:
-        """Возвращает цвет для средства по нормализованному сравнению"""
+        """Возвращает цвет для средства"""
         if not product_name:
             return None
         normalized_input = self._normalize_product_name(product_name)

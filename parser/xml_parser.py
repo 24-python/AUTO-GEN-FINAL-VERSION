@@ -3,8 +3,11 @@
 Логика:
 - 1 чек-бокс в ячейке → одиночный объект → в свою категорию
 - 2+ чек-боксов → объект с модификаторами
-  - Есть отмеченные модификаторы → каждый в свою категорию
-  - Нет отмеченных модификаторов → базовый в категорию "Прочее"
+  - Первый чек-бокс = базовый объект
+  - Все остальные чек-боксы = модификаторы (сколько угодно)
+  - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
+  - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
+  - Базовый ⬜ → ничего не добавляем
 """
 
 import zipfile
@@ -170,6 +173,7 @@ class SDTChecklistParser:
                                 'modifiers': []
                             }
                         else:
+                            # ВАЖНО: добавляем ВСЕ модификаторы, сколько бы их ни было
                             current_obj['modifiers'].append({
                                 'name': full_text,
                                 'checked': current_state
@@ -189,7 +193,7 @@ class SDTChecklistParser:
                     'modifiers': []
                 }
 
-        if current_obj and current_obj['checked']:
+        if current_obj:
             self._add_object_to_data(current_obj, checkbox_count, data)
 
     def _parse_unicode_cell(self, cell, data: ChecklistData):
@@ -221,12 +225,13 @@ class SDTChecklistParser:
                             'modifiers': []
                         }
                     else:
+                        # ВАЖНО: добавляем ВСЕ модификаторы, сколько бы их ни было
                         current_obj['modifiers'].append({
                             'name': text,
                             'checked': checked
                         })
 
-        if current_obj and current_obj['checked']:
+        if current_obj:
             self._add_object_to_data(current_obj, checkbox_count, data)
 
     def _add_object_to_data(self, obj: dict, checkbox_count: int, data: ChecklistData):
@@ -234,13 +239,20 @@ class SDTChecklistParser:
         Добавляет объект в ChecklistData с правильной логикой.
 
         Логика:
-        - checkbox_count == 1 → одиночный объект → в свою категорию
+        - checkbox_count == 1 → одиночный объект → в свою категорию (если отмечен)
         - checkbox_count >= 2 → объект с модификаторами
-          - Есть отмеченные модификаторы → каждый в свою категорию
-          - Нет отмеченных модификаторов → базовый в Category.OTHER
+          - Первый чек-бокс = базовый объект, остальные = модификаторы
+          - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
+          - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
+          - Базовый ⬜ → ничего не добавляем (даже если модификаторы ✅)
         """
         base_name = obj['name']
+        base_checked = obj['checked']
         modifiers = obj['modifiers']
+
+        # Если базовый объект НЕ отмечен → ничего не добавляем
+        if not base_checked:
+            return
 
         # Нормализуем базовое имя
         normalized_base = smart_normalize(base_name)
@@ -269,7 +281,6 @@ class SDTChecklistParser:
                 # Пытаемся получить категорию для полного имени
                 mod_category = self._get_category_from_db(normalized_full)
                 if mod_category == Category.OTHER:
-                    # Если для модификатора нет категории, берём от базового
                     mod_category = self._get_category_from_db(normalized_base)
 
                 print(f"  [{mod_category.value}] ✅ {full_name}")
@@ -319,12 +330,10 @@ class SDTChecklistParser:
                 print(f"📊 Найдено ячеек: {len(cells)}")
 
                 for cell in cells:
-                    # Сначала пробуем SDT
                     sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
                     if sdt_elements:
                         self._parse_sdt_cell(cell, data)
                     else:
-                        # Если нет SDT, пробуем Unicode
                         self._parse_unicode_cell(cell, data)
 
         self._print_statistics(data)
