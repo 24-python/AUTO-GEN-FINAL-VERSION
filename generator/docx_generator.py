@@ -4,9 +4,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pathlib import Path
 from parser.models import ChecklistData
-from db.models import Instruction, Category as DBCategory
+from db.models import Instruction, Category as DBCategory, Object as DBObject
 from db.database import SessionLocal
-from generator.mapper import find_object_and_instructions
 from collections import defaultdict
 import re
 
@@ -104,17 +103,35 @@ class TechCardGenerator:
             new_text = f"Помещение: {checklist_data.room_name or '______________'}"
             self._set_cell_font(room_cell, new_text, bold=True)
 
-        # === ПОЛУЧАЕМ ПРИОРИТЕТЫ КАТЕГОРИЙ ИЗ БД ===
+        # === ОПТИМИЗАЦИЯ: ЗАГРУЖАЕМ ВСЕ ДАННЫЕ ИЗ БД ЗА ОДИН РАЗ ===
         session = SessionLocal()
+
+        # Приоритеты категорий
         category_priority = self._get_category_priority(session)
+
+        # Собираем все normalized_name из чек-листа
+        checked_items = checklist_data.get_checked_items()
+        all_names = [item.name for item in checked_items]
+
+        # Загружаем все объекты одним запросом
+        db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
+        objects_dict = {obj.normalized_name: obj for obj in db_objects}
+
+        # Загружаем все инструкции одним запросом
+        object_ids = [obj.id for obj in db_objects]
+        db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
+
+        # Группируем инструкции по object_id
+        instructions_dict = defaultdict(list)
+        for instr in db_instructions:
+            instructions_dict[instr.object_id].append(instr)
 
         # Группируем объекты по категориям
         category_items = defaultdict(list)
         category_order = {}
 
-        for item in checklist_data.get_checked_items():
-            obj, instructions = find_object_and_instructions(session, item.name, item.category)
-
+        for item in checked_items:
+            obj = objects_dict.get(item.name)
             cat_name = item.category.value
             priority = category_priority.get(cat_name, 999)
             category_order[cat_name] = priority
@@ -122,8 +139,8 @@ class TechCardGenerator:
             # Используем display_name для вывода в техкарту
             display_name = obj.display_name if obj else item.name
 
-            if instructions:
-                for instr in instructions:
+            if obj and obj.id in instructions_dict:
+                for instr in instructions_dict[obj.id]:
                     category_items[cat_name].append((display_name, instr, item.category))
             else:
                 category_items[cat_name].append((display_name, None, item.category))

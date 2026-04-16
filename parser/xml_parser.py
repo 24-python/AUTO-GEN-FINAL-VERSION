@@ -1,6 +1,10 @@
 """
-Парсер с определением категорий из базы данных
-Единая функция нормализации: удаляет точки, слеши, запятые и другие знаки препинания
+Парсер чек-листов с поддержкой SDT и Unicode чек-боксов.
+Логика:
+- 1 чек-бокс в ячейке → одиночный объект → в свою категорию
+- 2+ чек-боксов → объект с модификаторами
+  - Есть отмеченные модификаторы → каждый в свою категорию
+  - Нет отмеченных модификаторов → базовый в категорию "Прочее"
 """
 
 import zipfile
@@ -11,140 +15,54 @@ import sys
 
 from parser.models import ChecklistData, ChecklistItem, Category
 
-# Добавляем корень проекта в путь для импорта БД
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import SessionLocal
 from db.models import Object as DBObject
 
 
+# ============================================================
+# НОРМАЛИЗАЦИЯ
+# ============================================================
 def normalize_name(name: str) -> str:
-    """
-    Единая функция нормализации для парсера и БД.
-    Удаляет всё, кроме букв, цифр, пробелов, дефисов, скобок.
-    """
+    """Нормализует имя для поиска в БД"""
     if not name:
         return ""
-    # Удаляем все знаки препинания (точки, слеши, запятые и т.д.)
     normalized = re.sub(r'[^\w\s\-\(\)]', '', name)
-    # Приводим к нижнему регистру
     normalized = normalized.lower()
-    # Заменяем множественные пробелы на один
     normalized = re.sub(r'\s+', ' ', normalized)
     return normalized.strip()
 
 
 def normalize_potolok_name(name: str) -> str:
-    """
-    Специальная нормализация для потолка: очищает содержимое скобок.
-    """
+    """Специальная нормализация для потолка"""
     if not name:
         return ""
-    # Очищаем содержимое скобок (оставляем только пустые скобки)
     normalized = re.sub(r'\([^)]*\)', '()', name)
-    # Удаляем все знаки препинания (точки, слеши, запятые и т.д.)
     normalized = re.sub(r'[^\w\s\-\(\)]', '', normalized)
-    # Приводим к нижнему регистру
     normalized = normalized.lower()
-    # Заменяем множественные пробелы на один
     normalized = re.sub(r'\s+', ' ', normalized)
     return normalized.strip()
 
 
-class CategoryParser:
-    """Парсер с определением категорий из базы данных"""
+def smart_normalize(name: str) -> str:
+    """Умная нормализация"""
+    if 'потолок' in name.lower():
+        return normalize_potolok_name(name)
+    return normalize_name(name)
+
+
+# ============================================================
+# SDT ПАРСЕР
+# ============================================================
+class SDTChecklistParser:
+    """Парсер для чек-листов с SDT и Unicode чек-боксами"""
 
     NAMESPACES = {
         'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
         'w14': 'http://schemas.microsoft.com/office/word/2010/wordml'
     }
 
-    # Составные позиции, требующие специальной обработки
-    COMPOUND_PATTERNS = [
-        {
-            'base': r'потолок\s*\([^)]*\)',
-            'modifiers': [
-                {'marker': 'П', 'name': 'п', 'format': '{base} {mod}'},
-                {'marker': 'ОК', 'name': 'ок', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'вытяжные\s+зонты',
-            'modifiers': [
-                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'формы\s+для\s+выпечки',
-            'modifiers': [
-                {'marker': 'С', 'name': 'с', 'format': '{base} {mod}'},
-                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'листы\s+для\s+выпечки',
-            'modifiers': [
-                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'съёмные\s+детали\s+оборудования',
-            'modifiers': [
-                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
-                {'marker': 'А', 'name': 'а', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'ПММ',
-            'category': Category.DISHWASHING_EQUIPMENT,
-            'modifiers': [
-                {'marker': 'купольная', 'name': 'купольная', 'format': '{base} {mod}'},
-                {'marker': 'туннельная', 'name': 'туннельная', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'камеры',
-            'modifiers': [
-                {'marker': r'холод?\.?', 'name': 'холод', 'format': '{base} {mod}'},
-                {'marker': r'мороз\.?', 'name': 'мороз', 'format': '{base} {mod}'},
-                {'marker': r'шок\.?\s+замор\.?', 'name': 'шок замор', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'плиты',
-            'modifiers': [
-                {'marker': r'индук\.?', 'name': 'индук', 'format': '{base} {mod}'},
-                {'marker': r'элек\.?', 'name': 'элек', 'format': '{base} {mod}'},
-                {'marker': r'газ\.?', 'name': 'газ', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'производственные\s+столы',
-            'modifiers': [
-                {'marker': 'Н', 'name': 'н', 'format': '{base} {mod}'},
-                {'marker': 'Д', 'name': 'д', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'весы',
-            'modifiers': [
-                {'marker': r'напольные', 'name': 'напольные', 'format': '{base} {mod}'},
-                {'marker': r'настольные', 'name': 'настольные', 'format': '{base} {mod}'}
-            ]
-        },
-        {
-            'base': r'просеиватели',
-            'modifiers': [
-                {'marker': 'мука', 'name': 'мука', 'format': '{base} {mod}'},
-                {'marker': 'сахар', 'name': 'сахар', 'format': '{base} {mod}'}
-            ]
-        }
-    ]
-
-    # Маппинг названий категорий из БД в Enum Category
     DB_CATEGORY_TO_ENUM = {
         "Поверхности": Category.SURFACE,
         "Сантехническое оборудование": Category.PLUMBING,
@@ -164,33 +82,229 @@ class CategoryParser:
     }
 
     def __init__(self):
-        self.current_category = Category.OTHER
         self._category_cache = {}
 
-    def _get_category_from_db(self, item_name: str) -> Category:
-        """Получает категорию из БД по нормализованному имени объекта"""
+    def _get_checkbox_state(self, sdt_element) -> bool:
+        """Определяет состояние чек-бокса по символу внутри SDT"""
+        texts = sdt_element.xpath('.//w:t', namespaces=self.NAMESPACES)
+        for t in texts:
+            if t.text:
+                if '☒' in t.text:
+                    return True
+                if '☐' in t.text:
+                    return False
+        return False
 
-        if item_name in self._category_cache:
-            return self._category_cache[item_name]
+    def _clean_text(self, text: str) -> str:
+        """Очищает текст от лишних пробелов"""
+        if not text:
+            return ""
+        return ' '.join(text.split()).strip()
+
+    def _get_category_from_db(self, normalized_name: str) -> Category:
+        """Получает категорию из БД по normalized_name"""
+        if normalized_name in self._category_cache:
+            return self._category_cache[normalized_name]
 
         session = SessionLocal()
         try:
-            obj = session.query(DBObject).filter(DBObject.normalized_name == item_name).first()
+            obj = session.query(DBObject).filter(DBObject.normalized_name == normalized_name).first()
             if obj and obj.category:
                 category_enum = self.DB_CATEGORY_TO_ENUM.get(obj.category.name, Category.OTHER)
-                self._category_cache[item_name] = category_enum
+                self._category_cache[normalized_name] = category_enum
                 return category_enum
-        except Exception as e:
-            print(f"⚠️ Ошибка при запросе к БД: {e}")
+        except Exception:
+            pass
         finally:
             session.close()
 
         return Category.OTHER
 
+    def _parse_sdt_cell(self, cell, data: ChecklistData):
+        """Парсит ячейку с SDT чек-боксами"""
+        sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+        if not sdt_elements:
+            return
+
+        elements = []
+        checkbox_count = 0
+
+        for para in cell.xpath('.//w:p', namespaces=self.NAMESPACES):
+            for child in para.getchildren():
+                tag = child.tag.split('}')[-1]
+
+                if tag == 'sdt':
+                    checkbox_count += 1
+                    elements.append({
+                        'type': 'checkbox',
+                        'checked': self._get_checkbox_state(child)
+                    })
+                elif tag == 'r':
+                    texts = child.xpath('.//w:t', namespaces=self.NAMESPACES)
+                    for t in texts:
+                        if t.text:
+                            text = t.text.strip()
+                            if text and text not in ['☒', '☐']:
+                                elements.append({
+                                    'type': 'text',
+                                    'value': text
+                                })
+
+        if not elements:
+            return
+
+        # Собираем объект
+        current_obj = None
+        current_state = False
+        text_parts = []
+
+        for elem in elements:
+            if elem['type'] == 'checkbox':
+                if text_parts:
+                    full_text = self._clean_text(''.join(text_parts))
+                    if full_text:
+                        if current_obj is None:
+                            current_obj = {
+                                'name': full_text,
+                                'checked': current_state,
+                                'modifiers': []
+                            }
+                        else:
+                            current_obj['modifiers'].append({
+                                'name': full_text,
+                                'checked': current_state
+                            })
+                    text_parts = []
+                current_state = elem['checked']
+            elif elem['type'] == 'text':
+                text_parts.append(elem['value'])
+
+        # Последний текст (если базовый объект не был добавлен)
+        if text_parts and current_obj is None:
+            full_text = self._clean_text(''.join(text_parts))
+            if full_text:
+                current_obj = {
+                    'name': full_text,
+                    'checked': current_state,
+                    'modifiers': []
+                }
+
+        if current_obj and current_obj['checked']:
+            self._add_object_to_data(current_obj, checkbox_count, data)
+
+    def _parse_unicode_cell(self, cell, data: ChecklistData):
+        """Парсит ячейку с Unicode-символами ☒/☐ (без SDT)"""
+        texts = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
+        full_text = ''.join([t.text for t in texts if t.text])
+
+        if not full_text or ('☒' not in full_text and '☐' not in full_text):
+            return
+
+        # Считаем количество чек-боксов
+        checkbox_count = full_text.count('☒') + full_text.count('☐')
+
+        parts = re.split(r'([☐☒])', full_text)
+        current_obj = None
+
+        for i in range(1, len(parts), 2):
+            if i < len(parts):
+                checkbox = parts[i]
+                text = parts[i + 1] if i + 1 < len(parts) else ""
+                text = self._clean_text(text)
+
+                if text:
+                    checked = (checkbox == '☒')
+                    if current_obj is None:
+                        current_obj = {
+                            'name': text,
+                            'checked': checked,
+                            'modifiers': []
+                        }
+                    else:
+                        current_obj['modifiers'].append({
+                            'name': text,
+                            'checked': checked
+                        })
+
+        if current_obj and current_obj['checked']:
+            self._add_object_to_data(current_obj, checkbox_count, data)
+
+    def _add_object_to_data(self, obj: dict, checkbox_count: int, data: ChecklistData):
+        """
+        Добавляет объект в ChecklistData с правильной логикой.
+
+        Логика:
+        - checkbox_count == 1 → одиночный объект → в свою категорию
+        - checkbox_count >= 2 → объект с модификаторами
+          - Есть отмеченные модификаторы → каждый в свою категорию
+          - Нет отмеченных модификаторов → базовый в Category.OTHER
+        """
+        base_name = obj['name']
+        modifiers = obj['modifiers']
+
+        # Нормализуем базовое имя
+        normalized_base = smart_normalize(base_name)
+
+        if checkbox_count == 1:
+            # ОДИНОЧНЫЙ ОБЪЕКТ → в свою категорию
+            category = self._get_category_from_db(normalized_base)
+            print(f"  [{category.value}] ✅ {base_name}")
+            data.items.append(ChecklistItem(
+                name=normalized_base,
+                category=category,
+                checked=True,
+                markers=[]
+            ))
+            return
+
+        # ОБЪЕКТ С МОДИФИКАТОРАМИ (checkbox_count >= 2)
+        checked_modifiers = [m for m in modifiers if m['checked']]
+
+        if checked_modifiers:
+            # Есть отмеченные модификаторы → добавляем каждый
+            for mod in checked_modifiers:
+                full_name = f"{base_name} {mod['name']}"
+                normalized_full = smart_normalize(full_name)
+
+                # Пытаемся получить категорию для полного имени
+                mod_category = self._get_category_from_db(normalized_full)
+                if mod_category == Category.OTHER:
+                    # Если для модификатора нет категории, берём от базового
+                    mod_category = self._get_category_from_db(normalized_base)
+
+                print(f"  [{mod_category.value}] ✅ {full_name}")
+                data.items.append(ChecklistItem(
+                    name=normalized_full,
+                    category=mod_category,
+                    checked=True,
+                    markers=[mod['name']]
+                ))
+        else:
+            # Нет отмеченных модификаторов → базовый в "Прочее"
+            print(f"  [Прочее] ⚠️ {base_name} (модификаторы не отмечены)")
+            data.items.append(ChecklistItem(
+                name=normalized_base,
+                category=Category.OTHER,
+                checked=True,
+                markers=[]
+            ))
+
+    def _parse_header(self, root, data: ChecklistData):
+        """Парсит предприятие и участок"""
+        first_row = root.xpath('.//w:tr[1]', namespaces=self.NAMESPACES)
+        if first_row:
+            cells = first_row[0].xpath('.//w:tc', namespaces=self.NAMESPACES)
+            if len(cells) >= 2:
+                texts = cells[0].xpath('.//w:t', namespaces=self.NAMESPACES)
+                if texts:
+                    data.enterprise = ' '.join([t.text for t in texts if t.text]).strip()
+                texts = cells[1].xpath('.//w:t', namespaces=self.NAMESPACES)
+                if texts:
+                    data.room_name = ' '.join([t.text for t in texts if t.text]).strip()
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
-        self.current_category = Category.OTHER
 
         print(f"\n🔍 Открываем архив: {file_path}")
 
@@ -199,201 +313,50 @@ class CategoryParser:
                 xml_content = xml_file.read()
                 root = etree.fromstring(xml_content)
 
-                self._parse_header_from_first_row(root, data)
+                self._parse_header(root, data)
 
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
 
                 for cell in cells:
-                    self._process_cell(cell, data)
+                    # Сначала пробуем SDT
+                    sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+                    if sdt_elements:
+                        self._parse_sdt_cell(cell, data)
+                    else:
+                        # Если нет SDT, пробуем Unicode
+                        self._parse_unicode_cell(cell, data)
 
         self._print_statistics(data)
         print(f"\n✅ Найдено элементов: {len(data.items)}")
 
         return data
 
-    def _parse_header_from_first_row(self, root, data: ChecklistData):
-        """Парсит предприятие и участок из первой строки"""
-        first_row = root.xpath('.//w:tr[1]', namespaces=self.NAMESPACES)
-
-        if first_row:
-            cells = first_row[0].xpath('.//w:tc', namespaces=self.NAMESPACES)
-
-            if len(cells) >= 2:
-                enterprise_text = self._get_cell_text(cells[0])
-                if enterprise_text and not data.enterprise:
-                    data.enterprise = enterprise_text.strip()
-                    print(f"🏭 Найдено предприятие: {data.enterprise}")
-
-                room_text = self._get_cell_text(cells[1])
-                if room_text and not data.room_name:
-                    data.room_name = room_text.strip()
-                    print(f"🏢 Найден участок: {data.room_name}")
-
-    def _get_cell_text(self, cell) -> str:
-        """Извлекает текст из ячейки"""
-        texts = []
-        for text_elem in cell.xpath('.//w:t', namespaces=self.NAMESPACES):
-            if text_elem.text:
-                texts.append(text_elem.text)
-        return ' '.join(texts)
-
-    def _is_checkbox_before(self, text: str, position: int) -> bool:
-        """Проверяет, есть ли символ чек-бокса перед указанной позицией"""
-        pos = position - 1
-        while pos >= 0 and text[pos] in [' ', '\t', ':', ';', ',', '.', '-', '—', '–']:
-            pos -= 1
-        return pos >= 0 and text[pos] == '☒'
-
-    def _process_compound_cell(self, full_text: str, data: ChecklistData) -> bool:
-        """Специальная обработка составных ячеек"""
-
-        for pattern in self.COMPOUND_PATTERNS:
-            base_match = re.search(pattern['base'], full_text, re.IGNORECASE)
-            if not base_match:
-                continue
-
-            base_name = base_match.group(0)
-            base_start = base_match.start()
-            base_checked = self._is_checkbox_before(full_text, base_start)
-
-            checked_modifiers = []
-
-            for modifier in pattern['modifiers']:
-                for mod_match in re.finditer(modifier['marker'], full_text, re.IGNORECASE):
-                    mod_pos = mod_match.start()
-                    if mod_pos < base_match.end():
-                        continue
-                    if mod_pos > 0 and full_text[mod_pos - 1].isalpha() and mod_pos - 1 >= base_match.end():
-                        continue
-                    if self._is_checkbox_before(full_text, mod_pos):
-                        checked_modifiers.append(modifier)
-                        break
-
-            if checked_modifiers:
-                for modifier in checked_modifiers:
-                    if 'format' in modifier:
-                        item_name = modifier['format'].format(
-                            base=base_name,
-                            mod=modifier['name']
-                        )
-                    else:
-                        item_name = f"{base_name} {modifier['name']}"
-
-                    item_name = re.sub(r'\s+', ' ', item_name).strip()
-
-                    # Только для потолка удаляем содержимое скобок
-                    if 'потолок' in item_name.lower():
-                        item_name = re.sub(r'\([^)]*\)', '()', item_name)
-
-                    if 'category' in pattern:
-                        category = pattern['category']
-                    else:
-                        category = self._get_category_from_db(item_name)
-
-                    print(f"  [{category.value}] ✅ {item_name}")
-                    data.items.append(ChecklistItem(
-                        name=item_name,
-                        category=category,
-                        checked=True
-                    ))
-                return True
-
-            elif base_checked:
-                if 'category' in pattern:
-                    category = pattern['category']
-                else:
-                    category = self._get_category_from_db(base_name)
-
-                # Только для потолка удаляем содержимое скобок
-                if 'потолок' in base_name.lower():
-                    base_name = re.sub(r'\([^)]*\)', '()', base_name)
-
-                print(f"  [{category.value}] ✅ {base_name}")
-                data.items.append(ChecklistItem(
-                    name=base_name,
-                    category=category,
-                    checked=True
-                ))
-                return True
-
-        return False
-
-    def _process_cell(self, cell, data: ChecklistData):
-        """Обрабатывает одну ячейку"""
-
-        text_elements = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
-        full_text = ''.join([t.text for t in text_elements if t.text])
-
-        if '☒' in full_text:
-            # 1. СНАЧАЛА обрабатываем составные позиции (модификаторы)
-            self._process_compound_cell(full_text, data)
-
-            # 2. ЗАТЕМ разбираем простые объекты (светильники, базовые объекты)
-            parts = re.split(r'([☐☒])', full_text)
-
-            i = 0
-            while i < len(parts):
-                if parts[i] == '☒':
-                    if i + 1 < len(parts):
-                        next_text = parts[i + 1]
-
-                        # Ищем следующий чек-бокс
-                        next_checkbox_pos = -1
-                        for j, char in enumerate(next_text):
-                            if char in ['☐', '☒']:
-                                next_checkbox_pos = j
-                                break
-
-                        if next_checkbox_pos != -1:
-                            item_text = next_text[:next_checkbox_pos].strip()
-                        else:
-                            item_text = next_text.strip()
-
-                        # Нормализуем имя (для потолка — специальная очистка)
-                        if 'потолок' in item_text.lower():
-                            item_text = normalize_potolok_name(item_text)
-                        else:
-                            item_text = normalize_name(item_text)
-
-                        # Пропускаем пустые и слишком короткие
-                        if item_text and len(item_text) > 1:
-                            # Проверяем, не является ли этот объект частью уже добавленного составного
-                            already_added = False
-                            for existing_item in data.items:
-                                # Если уже есть объект, содержащий этот текст (например, "камеры холод" содержит "холод")
-                                if existing_item.name == item_text:
-                                    already_added = True
-                                    break
-                                # Если текущий объект уже является частью более длинного (например, "холод" в "камеры холод")
-                                if item_text in existing_item.name and len(item_text) < len(existing_item.name):
-                                    already_added = True
-                                    print(f"     ⏭️ Пропуск '{item_text}' (уже есть '{existing_item.name}')")
-                                    break
-
-                            if not already_added:
-                                category = self._get_category_from_db(item_text)
-                                print(f"  [{category.value}] ✅ {item_text}")
-                                data.items.append(ChecklistItem(
-                                    name=item_text,
-                                    category=category,
-                                    checked=True
-                                ))
-                i += 1
-
     def _print_statistics(self, data: ChecklistData):
-        """Выводит статистику по категориям"""
+        """Выводит статистику"""
         print("\n📊 Статистика по категориям:")
-
         grouped = data.group_checked_by_category()
+
+        main_total = 0
+        other_total = 0
+
         for category, items in grouped.items():
+            if category == Category.OTHER:
+                other_total = len(items)
+            else:
+                main_total += len(items)
             print(f"  {category.value}: {len(items)} элементов")
             for item in items[:3]:
-                print(f"    • {item.name}")
+                marker_info = f" [модификатор: {item.markers[0]}]" if item.markers else ""
+                print(f"    • {item.name}{marker_info}")
             if len(items) > 3:
                 print(f"    ... и ещё {len(items) - 3}")
 
+        print(f"\n📋 ИТОГО:")
+        print(f"   В основных категориях: {main_total}")
+        print(f"   В Прочее: {other_total}")
+
 
 def parse_checklist(file_path: str) -> ChecklistData:
-    parser = CategoryParser()
+    parser = SDTChecklistParser()
     return parser.parse(file_path)
