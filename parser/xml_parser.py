@@ -99,9 +99,11 @@ class SDTChecklistParser:
         return False
 
     def _clean_text(self, text: str) -> str:
-        """Очищает текст от лишних пробелов"""
+        """Очищает текст от лишних пробелов и символов"""
         if not text:
             return ""
+        # Удаляем символы чек-боксов, если они попали в текст
+        text = text.replace('☒', '').replace('☐', '')
         return ' '.join(text.split()).strip()
 
     def _get_category_from_db(self, normalized_name: str) -> Category:
@@ -163,6 +165,7 @@ class SDTChecklistParser:
 
         for elem in elements:
             if elem['type'] == 'checkbox':
+                # Сохраняем накопленный текст перед новым чек-боксом
                 if text_parts:
                     full_text = self._clean_text(''.join(text_parts))
                     if full_text:
@@ -173,7 +176,7 @@ class SDTChecklistParser:
                                 'modifiers': []
                             }
                         else:
-                            # ВАЖНО: добавляем ВСЕ модификаторы, сколько бы их ни было
+                            # Добавляем модификатор
                             current_obj['modifiers'].append({
                                 'name': full_text,
                                 'checked': current_state
@@ -183,15 +186,22 @@ class SDTChecklistParser:
             elif elem['type'] == 'text':
                 text_parts.append(elem['value'])
 
-        # Последний текст (если базовый объект не был добавлен)
-        if text_parts and current_obj is None:
+        # ВАЖНО: Сохраняем последний накопленный текст (последний модификатор)
+        if text_parts:
             full_text = self._clean_text(''.join(text_parts))
             if full_text:
-                current_obj = {
-                    'name': full_text,
-                    'checked': current_state,
-                    'modifiers': []
-                }
+                if current_obj is None:
+                    current_obj = {
+                        'name': full_text,
+                        'checked': current_state,
+                        'modifiers': []
+                    }
+                else:
+                    # Добавляем последний модификатор
+                    current_obj['modifiers'].append({
+                        'name': full_text,
+                        'checked': current_state
+                    })
 
         if current_obj:
             self._add_object_to_data(current_obj, checkbox_count, data)
@@ -209,27 +219,46 @@ class SDTChecklistParser:
 
         parts = re.split(r'([☐☒])', full_text)
         current_obj = None
+        text_parts = []
+        current_state = False
 
-        for i in range(1, len(parts), 2):
-            if i < len(parts):
-                checkbox = parts[i]
-                text = parts[i + 1] if i + 1 < len(parts) else ""
-                text = self._clean_text(text)
+        for i in range(1, len(parts)):
+            if parts[i] in ['☒', '☐']:
+                # Сохраняем накопленный текст
+                if text_parts:
+                    full_text = self._clean_text(''.join(text_parts))
+                    if full_text:
+                        if current_obj is None:
+                            current_obj = {
+                                'name': full_text,
+                                'checked': current_state,
+                                'modifiers': []
+                            }
+                        else:
+                            current_obj['modifiers'].append({
+                                'name': full_text,
+                                'checked': current_state
+                            })
+                    text_parts = []
+                current_state = (parts[i] == '☒')
+            else:
+                text_parts.append(parts[i])
 
-                if text:
-                    checked = (checkbox == '☒')
-                    if current_obj is None:
-                        current_obj = {
-                            'name': text,
-                            'checked': checked,
-                            'modifiers': []
-                        }
-                    else:
-                        # ВАЖНО: добавляем ВСЕ модификаторы, сколько бы их ни было
-                        current_obj['modifiers'].append({
-                            'name': text,
-                            'checked': checked
-                        })
+        # Сохраняем последний текст
+        if text_parts:
+            full_text = self._clean_text(''.join(text_parts))
+            if full_text:
+                if current_obj is None:
+                    current_obj = {
+                        'name': full_text,
+                        'checked': current_state,
+                        'modifiers': []
+                    }
+                else:
+                    current_obj['modifiers'].append({
+                        'name': full_text,
+                        'checked': current_state
+                    })
 
         if current_obj:
             self._add_object_to_data(current_obj, checkbox_count, data)
@@ -241,10 +270,9 @@ class SDTChecklistParser:
         Логика:
         - checkbox_count == 1 → одиночный объект → в свою категорию (если отмечен)
         - checkbox_count >= 2 → объект с модификаторами
-          - Первый чек-бокс = базовый объект, остальные = модификаторы
           - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
           - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
-          - Базовый ⬜ → ничего не добавляем (даже если модификаторы ✅)
+          - Базовый ⬜ → ничего не добавляем
         """
         base_name = obj['name']
         base_checked = obj['checked']
