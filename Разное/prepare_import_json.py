@@ -2,234 +2,107 @@
 """
 prepare_import_json.py
 
-Скрипт для подготовки JSON-файла импорта в базу данных.
-Читает:
-- текстовый файл с объектами (полный перечень всех поверхностей из чек-листа.txt)
-- Excel-файл с инструкциями (Объекты для базы данных.xlsx)
+Подготавливает JSON для импорта в БД на основе:
+1. CSV-файла с соответствиями (normalized_name → display_name → category)
+2. Excel-файла с инструкциями (Объекты для базы данных.xlsx)
 
-Создает:
-- import_data.json (для импорта в БД)
+Создаёт import_data.json со структурой:
+{
+    "categories": [...],
+    "objects": [
+        {
+            "normalized_name": "холод столы",
+            "display_name": "холодильные столы",
+            "base_name": "холодильные столы",
+            "modifier": null,
+            "category": "Холодильное оборудование",
+            "sort_priority": 0,
+            "instructions": [...]
+        }
+    ]
+}
 """
 
+import csv
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field, asdict
 from collections import defaultdict
+from typing import Dict, List, Optional
 
-try:
-    import openpyxl
-except ImportError:
-    print("Установите openpyxl: pip install openpyxl")
-    exit(1)
-
-# ============================================================
-# СПИСОК ОБЪЕКТОВ С МОДИФИКАТОРАМИ
-# ============================================================
-
-MODIFIER_OBJECTS = {
-    # Базовый объект: (base_name, {модификатор: полное_имя})
-    "потолок (высота _____м)": {
-        "base_name": "потолок",
-        "modifiers": {
-            "П": "потолок (высота _____м) П",
-            "ОК": "потолок (высота _____м) ОК"
-        }
-    },
-    "вытяжные зонты": {
-        "base_name": "вытяжные зонты",
-        "modifiers": {
-            "Н": "вытяжные зонты Н",
-            "А": "вытяжные зонты А"
-        }
-    },
-    "формы для выпечки": {
-        "base_name": "формы для выпечки",
-        "modifiers": {
-            "С": "формы для выпечки С",
-            "Н": "формы для выпечки Н",
-            "А": "формы для выпечки А"
-        }
-    },
-    "листы для выпечки": {
-        "base_name": "листы для выпечки",
-        "modifiers": {
-            "Н": "листы для выпечки Н",
-            "А": "листы для выпечки А"
-        }
-    },
-    "съёмные детали оборудования": {
-        "base_name": "съёмные детали оборудования",
-        "modifiers": {
-            "Н": "съёмные детали оборудования Н",
-            "А": "съёмные детали оборудования А"
-        }
-    },
-    "ПММ": {
-        "base_name": "ПММ",
-        "modifiers": {
-            "купольная": "ПММ купольная",
-            "туннельная": "ПММ туннельная"
-        }
-    },
-    "камеры": {
-        "base_name": "камеры",
-        "modifiers": {
-            "холд.": "камеры холд.",
-            "мороз.": "камеры мороз.",
-            "шок. замор.": "камеры шок. замор."
-        }
-    },
-    "плиты": {
-        "base_name": "плиты",
-        "modifiers": {
-            "индук.": "плиты индук.",
-            "элек.": "плиты элек.",
-            "газ.": "плиты газ."
-        }
-    },
-    "производственные столы": {
-        "base_name": "производственные столы",
-        "modifiers": {
-            "Н": "производственные столы Н",
-            "Д": "производственные столы Д"
-        }
-    },
-    "просеиватели": {
-        "base_name": "просеиватели",
-        "modifiers": {
-            "мука": "просеиватели мука",
-            "сахар": "просеиватели сахар"
-        }
-    },
-}
+import openpyxl
 
 
 # ============================================================
-# МОДЕЛИ ДАННЫХ
+# ФУНКЦИЯ НОРМАЛИЗАЦИИ (ДОЛЖНА СОВПАДАТЬ С ПАРСЕРОМ)
 # ============================================================
 
-@dataclass
-class Instruction:
-    cleaning_method: str = ""
-    instruction_number: str = ""
-    product_name: str = ""
-    cleaning_technique: str = ""
-    concentration: str = ""
-    temperature: str = ""
-    exposure_time: str = ""
-    inventory: str = ""
-    frequency: str = ""
-    executor: str = ""
-    control_method: str = ""
-
-    def to_dict(self) -> dict:
-        result = {}
-        for key, value in asdict(self).items():
-            if value and value.strip():
-                result[key] = value
-        return result
-
-
-@dataclass
-class ImportObject:
-    name: str
-    base_name: str
-    modifier: Optional[str]
-    category: str
-    sort_priority: int = 0
-    instructions: List[Instruction] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "base_name": self.base_name,
-            "modifier": self.modifier,
-            "category": self.category,
-            "sort_priority": self.sort_priority,
-            "instructions": [instr.to_dict() for instr in self.instructions]
-        }
-
-
-# ============================================================
-# ПАРСЕР ТЕКСТОВОГО ФАЙЛА
-# ============================================================
-
-def parse_objects_from_txt(txt_path: str) -> List[ImportObject]:
+def normalize_name(name: str) -> str:
     """
-    Парсит текстовый файл с объектами.
-    Использует MODIFIER_OBJECTS для определения base_name и modifier.
+    Нормализует имя объекта так же, как это делает парсер.
+    Удаляет знаки препинания, оставляет буквы, цифры, пробелы, дефисы, скобки.
     """
-    objects = []
-    current_category = None
-
-    with open(txt_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # Заголовок категории
-        if line.endswith(':'):
-            current_category = line.rstrip(':')
-            continue
-
-        if current_category is None:
-            continue
-
-        # Обработка строки объекта
-        obj = parse_object_line(line, current_category)
-        if obj:
-            objects.append(obj)
-
-    return objects
-
-
-def parse_object_line(line: str, category: str) -> Optional[ImportObject]:
-    """Парсит строку объекта с учетом MODIFIER_OBJECTS"""
-    name = line.strip()
-
-    # Поиск в MODIFIER_OBJECTS
-    for base_full_name, info in MODIFIER_OBJECTS.items():
-        base_name = info["base_name"]
-
-        # Проверка: это базовый объект?
-        if name == base_full_name:
-            return ImportObject(
-                name=name,
-                base_name=base_name,
-                modifier=None,
-                category=category
-            )
-
-        # Проверка: это модификатор?
-        for modifier, full_name in info["modifiers"].items():
-            if name == full_name:
-                return ImportObject(
-                    name=name,
-                    base_name=base_name,
-                    modifier=modifier,
-                    category=category
-                )
-
-    # Цельный объект (не из списка модификаторов)
-    return ImportObject(
-        name=name,
-        base_name=name,
-        modifier=None,
-        category=category
-    )
+    if not name:
+        return ""
+    # Удаляем всё, кроме букв, цифр, пробелов, дефисов, скобок
+    normalized = re.sub(r'[^\w\s\-\(\)]', '', name)
+    # Приводим к нижнему регистру
+    normalized = normalized.lower()
+    # Заменяем множественные пробелы на один
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
 
 
 # ============================================================
-# ПАРСЕР EXCEL-ФАЙЛА
+# ЗАГРУЗКА СООТВЕТСТВИЙ ИЗ CSV
 # ============================================================
 
-def parse_instructions_from_excel(xlsx_path: str) -> Dict[str, List[Instruction]]:
-    """Парсит Excel и возвращает словарь {название_объекта: [инструкции]}"""
+def load_normalization_map(csv_path: str) -> Dict[str, dict]:
+    """
+    Загружает CSV с колонками: normalized_name;display_name;category
+    Возвращает словарь: {normalized_name: {"display_name": ..., "category": ...}}
+    """
+    mapping = {}
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f, delimiter=';')
+        for row in reader:
+            if len(row) < 3:
+                continue
+            normalized = row[0].strip()
+            display_name = row[1].strip()
+            category = row[2].strip()
+            if normalized and display_name and category:
+                mapping[normalized] = {
+                    "display_name": display_name,
+                    "category": category
+                }
+    return mapping
+
+
+# ============================================================
+# ЗАГРУЗКА КАТЕГОРИЙ ИЗ CSV
+# ============================================================
+
+def load_categories_from_csv(csv_path: str) -> List[str]:
+    """Извлекает уникальные категории из CSV."""
+    categories = set()
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f, delimiter=';')
+        for row in reader:
+            if len(row) >= 3:
+                categories.add(row[2].strip())
+    return sorted(categories)
+
+
+# ============================================================
+# ПАРСЕР ИНСТРУКЦИЙ ИЗ EXCEL
+# ============================================================
+
+def parse_instructions_from_excel(xlsx_path: str) -> Dict[str, List[dict]]:
+    """
+    Парсит Excel с инструкциями.
+    Возвращает словарь: {normalized_name: [список_инструкций]}
+    """
     instructions_map = defaultdict(list)
 
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
@@ -248,24 +121,28 @@ def parse_instructions_from_excel(xlsx_path: str) -> Dict[str, List[Instruction]
 
         object_name = str(object_name).strip()
 
+        # Пропускаем строки-заголовки категорий
         if object_name.endswith(':'):
             continue
 
-        instruction = Instruction(
-            cleaning_method=str(ws.cell(row=row, column=col_indices['method'] + 1).value or ""),
-            instruction_number=str(ws.cell(row=row, column=col_indices['instruction_no'] + 1).value or ""),
-            product_name=str(ws.cell(row=row, column=col_indices['product'] + 1).value or ""),
-            cleaning_technique=str(ws.cell(row=row, column=col_indices['technique'] + 1).value or ""),
-            concentration=str(ws.cell(row=row, column=col_indices['concentration'] + 1).value or ""),
-            temperature=str(ws.cell(row=row, column=col_indices['temperature'] + 1).value or ""),
-            exposure_time=str(ws.cell(row=row, column=col_indices['exposure'] + 1).value or ""),
-            inventory=str(ws.cell(row=row, column=col_indices['inventory'] + 1).value or ""),
-            frequency=str(ws.cell(row=row, column=col_indices['frequency'] + 1).value or ""),
-            executor=str(ws.cell(row=row, column=col_indices['executor'] + 1).value or ""),
-            control_method=str(ws.cell(row=row, column=col_indices['control'] + 1).value or "")
-        )
+        # В Excel теперь уже нормализованные имена, используем их как есть
+        normalized = object_name
 
-        instructions_map[object_name].append(instruction)
+        instruction = {
+            "cleaning_method": str(ws.cell(row=row, column=col_indices['method'] + 1).value or ""),
+            "instruction_number": str(ws.cell(row=row, column=col_indices['instruction_no'] + 1).value or ""),
+            "product_name": str(ws.cell(row=row, column=col_indices['product'] + 1).value or ""),
+            "cleaning_technique": str(ws.cell(row=row, column=col_indices['technique'] + 1).value or ""),
+            "concentration": str(ws.cell(row=row, column=col_indices['concentration'] + 1).value or ""),
+            "temperature": str(ws.cell(row=row, column=col_indices['temperature'] + 1).value or ""),
+            "exposure_time": str(ws.cell(row=row, column=col_indices['exposure'] + 1).value or ""),
+            "inventory": str(ws.cell(row=row, column=col_indices['inventory'] + 1).value or ""),
+            "frequency": str(ws.cell(row=row, column=col_indices['frequency'] + 1).value or ""),
+            "executor": str(ws.cell(row=row, column=col_indices['executor'] + 1).value or ""),
+            "control_method": str(ws.cell(row=row, column=col_indices['control'] + 1).value or ""),
+        }
+
+        instructions_map[normalized].append(instruction)
 
     return instructions_map
 
@@ -274,63 +151,80 @@ def parse_instructions_from_excel(xlsx_path: str) -> Dict[str, List[Instruction]
 # ГЕНЕРАЦИЯ JSON
 # ============================================================
 
-def generate_import_json(
-        txt_path: str,
-        xlsx_path: str,
-        output_path: str,
-        category_sort_order: Dict[str, int] = None
-):
+def generate_import_json(csv_path: str, xlsx_path: str, output_path: str):
+    """Генерирует JSON для импорта в БД."""
+
     print("🔧 ПОДГОТОВКА JSON ДЛЯ ИМПОРТА")
     print("=" * 50)
 
-    # 1. Парсим объекты
-    print(f"\n📄 Чтение объектов из: {txt_path}")
-    objects = parse_objects_from_txt(txt_path)
-    print(f"   Найдено объектов: {len(objects)}")
+    # 1. Загружаем соответствия из CSV
+    print(f"\n📄 Чтение соответствий из: {csv_path}")
+    mapping = load_normalization_map(csv_path)
+    print(f"   Загружено соответствий: {len(mapping)}")
 
-    # 2. Парсим инструкции
+    # 2. Загружаем категории
+    categories_list = load_categories_from_csv(csv_path)
+    categories = [
+        {"name": name, "sort_order": idx + 1}
+        for idx, name in enumerate(categories_list)
+    ]
+    print(f"   Категорий: {len(categories)}")
+
+    # 3. Парсим инструкции из Excel
     print(f"\n📊 Чтение инструкций из: {xlsx_path}")
     instructions_map = parse_instructions_from_excel(xlsx_path)
     total_instructions = sum(len(instrs) for instrs in instructions_map.values())
-    print(f"   Найдено объектов с инструкциями: {len(instructions_map)}")
+    print(f"   Уникальных объектов с инструкциями: {len(instructions_map)}")
     print(f"   Всего инструкций: {total_instructions}")
 
-    # 3. Связываем инструкции с объектами
-    print("\n🔗 Связывание инструкций с объектами...")
+    # 4. Формируем объекты для JSON
+    print("\n🔗 Формирование объектов...")
+    objects = []
     matched = 0
     not_matched = []
 
-    for obj in objects:
-        if obj.name in instructions_map:
-            obj.instructions = instructions_map[obj.name]
+    for normalized, data in mapping.items():
+        display_name = data["display_name"]
+        category = data["category"]
+
+        # Получаем инструкции для этого normalized_name
+        instructions = instructions_map.get(normalized, [])
+        if instructions:
             matched += 1
         else:
-            not_matched.append(obj.name)
+            not_matched.append(normalized)
 
-    print(f"   Совпало: {matched}")
-    print(f"   Не совпало (будут без инструкций): {len(not_matched)}")
+        # Определяем base_name и modifier (упрощённо)
+        base_name = display_name
+        modifier = None
 
-    # 4. Категории
-    if category_sort_order is None:
-        categories_order = [
-            "Поверхности", "Сантехническое оборудование", "Санитарный пост",
-            "Мебель", "Офисная техника", "Многоразовые резиновые СИЗ",
-            "Бытовая техника", "Инвентарь, посуда и т.д.",
-            "Моечный, уборочный инвентарь и оборудование",
-            "Посудомоечное оборудование", "Холодильное оборудование",
-            "Дозирующее оборудование", "Тепловое оборудование",
-            "Технологическое оборудование", "Упаковочное оборудование"
-        ]
-        category_sort_order = {name: idx for idx, name in enumerate(categories_order, 1)}
+        # Пытаемся извлечь модификатор для отображения
+        if "П" in normalized or "ОК" in normalized or "Н" in normalized or "А" in normalized or "С" in normalized:
+            parts = normalized.split()
+            if len(parts) > 1 and len(parts[-1]) <= 3:
+                modifier = parts[-1]
+                base_name = " ".join(parts[:-1])
 
-    categories = [{"name": name, "sort_order": order} for name, order in category_sort_order.items()]
+        obj = {
+            "normalized_name": normalized,
+            "display_name": display_name,
+            "base_name": base_name,
+            "modifier": modifier,
+            "category": category,
+            "sort_priority": 0,
+            "instructions": instructions
+        }
+        objects.append(obj)
+
+    print(f"   Объектов с инструкциями: {matched}")
+    print(f"   Объектов без инструкций: {len(not_matched)}")
 
     # 5. Сохраняем JSON
     output_data = {
         "version": "1.0",
-        "created_at": "2026-04-02",
+        "created_at": "2026-04-09",
         "categories": categories,
-        "objects": [obj.to_dict() for obj in objects]
+        "objects": objects
     }
 
     with open(output_path, 'w', encoding='utf-8') as f:
@@ -340,31 +234,39 @@ def generate_import_json(
     print(f"   Размер: {Path(output_path).stat().st_size / 1024:.1f} KB")
 
     if not_matched:
-        print(f"\n⚠️ ВНИМАНИЕ: Для {len(not_matched)} объектов нет инструкций:")
+        print(f"\n⚠️ ВНИМАНИЕ: Для {len(not_matched)} объектов нет инструкций в Excel:")
         for name in not_matched[:20]:
             print(f"   - {name}")
         if len(not_matched) > 20:
-            print(f"   ... и еще {len(not_matched) - 20} объектов")
+            print(f"   ... и ещё {len(not_matched) - 20}")
+    else:
+        print("\n✅ Все объекты имеют инструкции!")
 
-    return output_data
 
+# ============================================================
+# ТОЧКА ВХОДА
+# ============================================================
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--txt", default="полный перечень всех поверхностей из чек-листа.txt")
-    parser.add_argument("--xlsx", default="Объекты для базы данных.xlsx")
-    parser.add_argument("--output", "-o", default="import_data.json")
+
+    parser = argparse.ArgumentParser(description="Подготовка JSON для импорта в БД")
+    parser.add_argument("--csv", default="сопостовление объектов для БД.csv",
+                        help="Путь к CSV с соответствиями normalized_name;display_name;category")
+    parser.add_argument("--xlsx", default="Объекты для базы данных.xlsx",
+                        help="Путь к Excel-файлу с инструкциями")
+    parser.add_argument("--output", "-o", default="import_data.json",
+                        help="Выходной JSON файл")
     args = parser.parse_args()
 
-    if not Path(args.txt).exists():
-        print(f"❌ Файл не найден: {args.txt}")
+    if not Path(args.csv).exists():
+        print(f"❌ CSV файл не найден: {args.csv}")
         return
     if not Path(args.xlsx).exists():
-        print(f"❌ Файл не найден: {args.xlsx}")
+        print(f"❌ Excel файл не найден: {args.xlsx}")
         return
 
-    generate_import_json(args.txt, args.xlsx, args.output)
+    generate_import_json(args.csv, args.xlsx, args.output)
 
 
 if __name__ == "__main__":
