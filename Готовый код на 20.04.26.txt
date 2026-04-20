@@ -1,0 +1,1938 @@
+================================================================================
+ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
+Дата экспорта: 2026-04-20 18:26:38
+================================================================================
+
+📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
+--------------------------------------------------------------------------------
+   app.py
+   db\__init__.py
+   db\crud.py
+   db\database.py
+   db\export_json.py
+   db\import_json.py
+   db\init_db.py
+   db\models.py
+   generator\__init__.py
+   generator\docx_generator.py
+   generator\mapper.py
+   parser\__init__.py
+   parser\models.py
+   parser\utils.py
+   parser\xml_parser.py
+   test_generator.py
+
+
+📁 СТРУКТУРА ПРОЕКТА (✅ - выбранные файлы)
+--------------------------------------------------------------------------------
+AUTO-GEN-FINAL-VERSION/
+├── ✅ app.py (6.2 KB)
+├──    checklists/
+
+├──    Context.py (15.8 KB)
+├──    converted/
+
+├── ✅ db/
+│   ├── ✅ __init__.py (0.2 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ crud.py (4.3 KB)
+│   ├── ✅ database.py (1.0 KB)
+│   ├── ✅ export_json.py (3.1 KB)
+│   ├── ✅ import_json.py (6.1 KB)
+│   ├── ✅ init_db.py (2.3 KB)
+│   └── ✅ models.py (4.4 KB)
+├── ✅ generator/
+│   ├── ✅ __init__.py (0.3 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ docx_generator.py (9.6 KB)
+│   └── ✅ mapper.py (2.9 KB)
+├── ✅ parser/
+│   ├── ✅ __init__.py (0.2 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ models.py (2.4 KB)
+│   ├── ✅ utils.py (0.7 KB)
+│   └── ✅ xml_parser.py (16.9 KB)
+├──    README.md (13.1 KB)
+├──    requirements.txt (0.5 KB)
+├──    tech_card_templates/
+
+├──    tech_cards/
+
+├──    templates/
+│   └──    index.html (16.2 KB)
+├── ✅ test_generator.py (7.8 KB)
+├──    Готовый код на 20.04.26.txt (0.0 KB)
+└──    Разное/
+    ├──    1.py (4.1 KB)
+    ├──    add_missing_objects.py (1.6 KB)
+    ├──    check_cameras_now.py (1.3 KB)
+    ├──    check_compound_objects.py (1.7 KB)
+    ├──    check_export.json (355.9 KB)
+    ├──    check_refrigerator_names.py (0.8 KB)
+    ├──    compare_parser_with_db.py (14.9 KB)
+    ├──    Context.txt (101.0 KB)
+    ├──    count_all_objects.py (9.3 KB)
+    ├──    create_correct_template.py (7.5 KB)
+    ├──    db_comparison.txt (30.6 KB)
+    ├──    debug_cameras_parser.py (0.5 KB)
+    ├──    debug_cameras_parsing.py (0.9 KB)
+    ├──    debug_cell_content.py (1.1 KB)
+    ├──    debug_fetch_instructions.py (5.6 KB)
+    ├──    debug_issues.py (2.0 KB)
+    ├──    debug_parser_cameras.py (0.8 KB)
+    ├──    debug_search.py (0.7 KB)
+    ├──    debug_svetilniki_parser.py (3.5 KB)
+    ├──    debug_telezki.py (3.5 KB)
+    ├──    deep_diagnose.py (2.4 KB)
+    ├──    detailed_analysis.py (7.3 KB)
+    ├──    diagnose_potolok.py (0.5 KB)
+    ├──    diagnose_template.py (1.8 KB)
+    ├──    dump_parsed_objects_with_categories.py (3.7 KB)
+    ├──    export_all_objects.py (15.5 KB)
+    ├──    export_all_objects_txt.py (16.3 KB)
+    ├──    find_duplicate_instructions.py (2.0 KB)
+    ├──    find_similar_in_db.py (0.8 KB)
+    ├──    find_svetilniki_in_xml.py (1.3 KB)
+    ├──    fix_cameras.py (0.4 KB)
+    ├──    fix_potolok_normalized.py (1.5 KB)
+    ├──    fix_siz_case.py (1.2 KB)
+    ├──    import_data.json (319.2 KB)
+    ├──    normalize_all_db.py (0.6 KB)
+    ├──    normalize_all_to_lowercase.py (0.5 KB)
+    ├──    objects_export.txt (39.3 KB)
+    ├──    parsed_objects_with_categories.txt (6.2 KB)
+    ├──    prepare_import_json.py (11.1 KB)
+    ├──    test_sdt_parser.py (7.4 KB)
+    ├──    test_sdt_parser_debug.py (4.6 KB)
+    ├──    update_db_normalized_names.py (9.0 KB)
+    ├──    update_normalized_from_parser.py (1.8 KB)
+    ├──    полный перечень всех поверхностей из чек-листа.txt (6.5 KB)
+    ├──    сопостовление объектов для БД.csv (19.0 KB)
+
+📄 СОДЕРЖИМОЕ ВЫБРАННЫХ ФАЙЛОВ
+--------------------------------------------------------------------------------
+
+================================================================================
+ФАЙЛ: app.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Веб-приложение для парсинга чек-листов с категориями
+"""
+
+import os
+import uuid
+from pathlib import Path
+from datetime import datetime
+
+from flask import Flask, request, render_template, jsonify
+
+# Импортируем парсер с категориями
+from parser.xml_parser import parse_checklist
+from parser.models import Category
+
+app = Flask(__name__)
+
+# Конфигурация
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+app.config['ALLOWED_EXTENSIONS'] = {'docx'}
+
+# Создаём папки
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+
+def allowed_file(filename):
+    """Проверяет разрешённый тип файла"""
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+
+def format_result(data):
+    """Форматирует результат для веб-интерфейса с категориями"""
+    result = {
+        'file_name': Path(data.file_path).name,
+        'room_name': data.room_name or 'Не указан',
+        'enterprise': data.enterprise or 'Не указано',
+        'total_items': len(data.items),
+        'checked_items': len(data.get_checked_items()),
+        'categories': []
+    }
+
+    # Отладка в консоль
+    print(f"\n📊 Всего элементов: {len(data.items)}")
+    print(f"✅ Отмечено: {len(data.get_checked_items())}")
+
+    # Информация об участке и предприятии
+    if data.room_name:
+        print(f"🏢 Участок: {data.room_name}")
+    if data.enterprise:
+        print(f"🏭 Предприятие: {data.enterprise}")
+
+    # Покажем первые несколько элементов для проверки
+    print(f"\n📋 Первые 10 позиций:")
+    for i, item in enumerate(data.get_checked_items()[:10]):
+        print(f"  {i + 1}. [{item.category.value}] {item.name}")
+
+    grouped = data.group_checked_by_category()
+
+    # Сортируем категории в логическом порядке (сверху вниз)
+    category_order = [
+        Category.SURFACE,  # 1. Поверхности (потолок, стены, пол)
+        Category.PLUMBING,  # 2. Сантехника
+        Category.SANITARY_POST,  # 3. Санпост
+        Category.HOUSEHOLD_APPLIANCES,  # 4. Бытовая техника
+        Category.THERMAL_EQUIPMENT,  # 5. Тепловое оборудование
+        Category.REFRIGERATION_EQUIPMENT,  # 6. Холодильное оборудование
+        Category.TECH_EQUIPMENT,  # 7. Технологическое оборудование
+        Category.PACKAGING_EQUIPMENT,  # 8. Упаковочное оборудование
+        Category.DISHWASHING_EQUIPMENT,  # 9. Посудомоечное оборудование
+        Category.CLEANING_EQUIPMENT,  # 10. Моечный инвентарь
+        Category.INVENTORY,  # 11. Инвентарь
+        Category.FURNITURE,  # 12. Мебель
+        Category.OFFICE_EQUIPMENT,  # 13. Офисная техника
+        Category.DOSING_EQUIPMENT,  # 14. Дозирующее оборудование
+        Category.PPE,  # 15. СИЗ
+        Category.OTHER  # 16. Прочее
+    ]
+
+    for category in category_order:
+        if category in grouped:
+            items = grouped[category]
+            category_data = {
+                'name': category.value,
+                'items': [{'name': item.name} for item in items]
+            }
+            result['categories'].append(category_data)
+
+            # Вывод в консоль
+            print(f"\n{category.value}: {len(items)} элементов")
+            for item in items[:5]:  # Покажем первые 5 из каждой категории
+                print(f"  • {item.name}")
+            if len(items) > 5:
+                print(f"  ... и ещё {len(items) - 5}")
+
+    return result
+
+
+@app.route('/')
+def index():
+    """Главная страница"""
+    return render_template('index.html')
+
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Загрузка и парсинг файла"""
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'Нет файла'}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({'error': 'Файл не выбран'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Разрешены только .docx файлы'}), 400
+
+    try:
+        # Сохраняем файл с уникальным именем
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"{timestamp}_{unique_id}_{file.filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        file.save(filepath)
+
+        print(f"\n🔍 Начинаем обработку файла: {filepath}")
+
+        # Парсим через парсер с категориями
+        data = parse_checklist(filepath)
+
+        # Форматируем результат
+        result = format_result(data)
+
+        print(f"\n✅ Обработка завершена. Найдено позиций: {len(data.items)}")
+
+        return jsonify({
+            'success': True,
+            'data': result
+        })
+
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Проверка работоспособности"""
+    return jsonify({'status': 'ok', 'message': 'Сервер работает'})
+
+
+if __name__ == '__main__':
+    print("🚀 Запуск сервера на http://localhost:5000")
+    print("📁 Файлы будут сохраняться в папку:", app.config['UPLOAD_FOLDER'])
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+================================================================================
+ФАЙЛ: db\__init__.py
+================================================================================
+
+"""
+Модуль для работы с базой данных
+"""
+
+from .database import engine, SessionLocal, get_db
+from . import models
+from . import crud
+
+================================================================================
+ФАЙЛ: db\crud.py
+================================================================================
+
+"""
+CRUD операции для ручного управления данными
+"""
+
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from . import models
+
+
+# === КАТЕГОРИИ ===
+def get_categories(db: Session) -> List[models.Category]:
+    return db.query(models.Category).order_by(models.Category.sort_order).all()
+
+
+def get_category(db: Session, category_id: int) -> Optional[models.Category]:
+    return db.query(models.Category).filter(models.Category.id == category_id).first()
+
+
+def get_category_by_name(db: Session, name: str) -> Optional[models.Category]:
+    return db.query(models.Category).filter(models.Category.name == name).first()
+
+
+def create_category(db: Session, name: str, sort_order: int = 0) -> models.Category:
+    category = models.Category(name=name, sort_order=sort_order)
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+def update_category(db: Session, category_id: int, **kwargs) -> Optional[models.Category]:
+    category = get_category(db, category_id)
+    if category:
+        for key, value in kwargs.items():
+            if hasattr(category, key):
+                setattr(category, key, value)
+        db.commit()
+        db.refresh(category)
+    return category
+
+
+def delete_category(db: Session, category_id: int) -> bool:
+    category = get_category(db, category_id)
+    if category:
+        db.delete(category)
+        db.commit()
+        return True
+    return False
+
+
+# === ОБЪЕКТЫ ===
+def get_objects(db: Session, category_id: int = None) -> List[models.Object]:
+    query = db.query(models.Object)
+    if category_id:
+        query = query.filter(models.Object.category_id == category_id)
+    return query.order_by(models.Object.sort_priority).all()
+
+
+def get_object(db: Session, object_id: int) -> Optional[models.Object]:
+    return db.query(models.Object).filter(models.Object.id == object_id).first()
+
+
+def get_object_by_name(db: Session, name: str) -> Optional[models.Object]:
+    return db.query(models.Object).filter(models.Object.name == name).first()
+
+
+def create_object(db: Session, name: str, base_name: str, category_id: int,
+                  modifier: str = None, sort_priority: int = 0) -> models.Object:
+    obj = models.Object(
+        name=name,
+        base_name=base_name,
+        modifier=modifier,
+        category_id=category_id,
+        sort_priority=sort_priority
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def update_object(db: Session, object_id: int, **kwargs) -> Optional[models.Object]:
+    obj = get_object(db, object_id)
+    if obj:
+        for key, value in kwargs.items():
+            if hasattr(obj, key):
+                setattr(obj, key, value)
+        db.commit()
+        db.refresh(obj)
+    return obj
+
+
+def delete_object(db: Session, object_id: int) -> bool:
+    obj = get_object(db, object_id)
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
+
+
+# === ИНСТРУКЦИИ ===
+def get_instructions(db: Session, object_id: int = None) -> List[models.Instruction]:
+    query = db.query(models.Instruction)
+    if object_id:
+        query = query.filter(models.Instruction.object_id == object_id)
+    return query.all()
+
+
+def get_instruction(db: Session, instruction_id: int) -> Optional[models.Instruction]:
+    return db.query(models.Instruction).filter(models.Instruction.id == instruction_id).first()
+
+
+def create_instruction(db: Session, object_id: int, **kwargs) -> models.Instruction:
+    instruction = models.Instruction(object_id=object_id, **kwargs)
+    db.add(instruction)
+    db.commit()
+    db.refresh(instruction)
+    return instruction
+
+
+def update_instruction(db: Session, instruction_id: int, **kwargs) -> Optional[models.Instruction]:
+    instruction = get_instruction(db, instruction_id)
+    if instruction:
+        for key, value in kwargs.items():
+            if hasattr(instruction, key):
+                setattr(instruction, key, value)
+        db.commit()
+        db.refresh(instruction)
+    return instruction
+
+
+def delete_instruction(db: Session, instruction_id: int) -> bool:
+    instruction = get_instruction(db, instruction_id)
+    if instruction:
+        db.delete(instruction)
+        db.commit()
+        return True
+    return False
+
+================================================================================
+ФАЙЛ: db\database.py
+================================================================================
+
+"""
+Подключение к базе данных SQLite
+"""
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from pathlib import Path
+
+# Путь к файлу БД в корне проекта
+DB_PATH = Path(__file__).parent.parent / "tech_cards.db"
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# Создаем движок SQLAlchemy
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    echo=False  # True для отладки SQL
+)
+
+# Фабрика сессий
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+db_session = scoped_session(SessionLocal)
+
+
+def get_db():
+    """Генератор сессий для Flask (dependency injection)"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def init_db():
+    """Создание таблиц (импортируется из init_db.py)"""
+    from .models import Base
+    Base.metadata.create_all(bind=engine)
+
+================================================================================
+ФАЙЛ: db\export_json.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Экспорт данных из базы данных в JSON
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction
+
+
+def export_to_json(output_path: str):
+    """Экспортирует все данные из БД в JSON"""
+    session = SessionLocal()
+
+    # Получаем категории
+    categories = session.query(Category).order_by(Category.sort_order).all()
+
+    # Получаем объекты
+    objects = session.query(Object).order_by(Object.id).all()
+
+    # Получаем инструкции
+    instructions = session.query(Instruction).all()
+
+    # Словарь объектов {id: name}
+    object_names = {obj.id: obj.name for obj in objects}
+
+    # Формируем JSON
+    data = {
+        "categories": [
+            {"name": cat.name, "sort_order": cat.sort_order}
+            for cat in categories
+        ],
+        "objects": [
+            {
+                "name": obj.name,
+                "base_name": obj.base_name,
+                "modifier": obj.modifier,
+                "category": obj.category.name,
+                "sort_priority": obj.sort_priority
+            }
+            for obj in objects
+        ],
+        "instructions": [
+            {
+                "object_name": object_names[instr.object_id],
+                "category": obj.category.name,
+                "cleaning_method": instr.cleaning_method,
+                "instruction_number": instr.instruction_number,
+                "product_name": instr.product_name,
+                "cleaning_technique": instr.cleaning_technique,
+                "concentration": instr.concentration,
+                "temperature": instr.temperature,
+                "exposure_time": instr.exposure_time,
+                "inventory": instr.inventory,
+                "frequency": instr.frequency,
+                "executor": instr.executor,
+                "control_method": instr.control_method
+            }
+            for instr in instructions
+            for obj in objects if obj.id == instr.object_id
+        ]
+    }
+
+    session.close()
+
+    # Сохраняем
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Экспорт завершен: {output_path}")
+    print(f"   Категорий: {len(data['categories'])}")
+    print(f"   Объектов: {len(data['objects'])}")
+    print(f"   Инструкций: {len(data['instructions'])}")
+
+    return data
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Экспорт данных из БД в JSON")
+    parser.add_argument("--output", "-o", default="exported_data.json", help="Выходной JSON файл")
+    args = parser.parse_args()
+
+    print("🔧 ЭКСПОРТ ДАННЫХ ИЗ БАЗЫ ДАННЫХ")
+    print("=" * 50)
+
+    export_to_json(args.output)
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\import_json.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Импорт данных из JSON в базу данных
+JSON структура: {
+    "categories": [...],
+    "objects": [
+        {
+            "normalized_name": "...",
+            "display_name": "...",
+            "base_name": "...",
+            "modifier": "...",
+            "category": "...",
+            "sort_priority": 0,
+            "instructions": [...]
+        }
+    ]
+}
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction
+
+
+def import_from_json(json_path: str):
+    """Импортирует данные из JSON в БД"""
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    session = SessionLocal()
+
+    # Словарь категорий {name: id}
+    categories = {cat.name: cat.id for cat in session.query(Category).all()}
+
+    stats = {
+        "objects_created": 0,
+        "objects_updated": 0,
+        "instructions_created": 0,
+        "errors": 0
+    }
+
+    print("\n📥 ИМПОРТ ОБЪЕКТОВ")
+    print("-" * 40)
+
+    for obj_data in data["objects"]:
+        category_id = categories.get(obj_data["category"])
+        if not category_id:
+            print(f"  ❌ Категория '{obj_data['category']}' не найдена")
+            stats["errors"] += 1
+            continue
+
+        # Проверяем, существует ли объект по normalized_name
+        existing = session.query(Object).filter_by(normalized_name=obj_data["normalized_name"]).first()
+
+        if existing:
+            # Обновляем
+            existing.display_name = obj_data["display_name"]
+            existing.base_name = obj_data["base_name"]
+            existing.modifier = obj_data.get("modifier")
+            existing.category_id = category_id
+            existing.sort_priority = obj_data.get("sort_priority", 0)
+            stats["objects_updated"] += 1
+            print(f"  🔄 Обновлен: {obj_data['normalized_name']} → {obj_data['display_name']}")
+            obj_id = existing.id
+        else:
+            # Создаем
+            obj = Object(
+                normalized_name=obj_data["normalized_name"],
+                display_name=obj_data["display_name"],
+                base_name=obj_data["base_name"],
+                modifier=obj_data.get("modifier"),
+                category_id=category_id,
+                sort_priority=obj_data.get("sort_priority", 0)
+            )
+            session.add(obj)
+            session.flush()
+            stats["objects_created"] += 1
+            print(f"  ➕ Создан: {obj_data['normalized_name']} → {obj_data['display_name']}")
+            obj_id = obj.id
+
+        # Импорт инструкций для этого объекта
+        instructions = obj_data.get("instructions", [])
+        for instr_data in instructions:
+            # Проверяем, есть ли уже такая инструкция
+            existing_instr = session.query(Instruction).filter(
+                Instruction.object_id == obj_id,
+                Instruction.cleaning_method == instr_data.get("cleaning_method", ""),
+                Instruction.product_name == instr_data.get("product_name", "")
+            ).first()
+
+            if existing_instr:
+                # Обновляем существующую
+                existing_instr.cleaning_technique = instr_data.get("cleaning_technique", "")
+                existing_instr.concentration = instr_data.get("concentration", "")
+                existing_instr.temperature = instr_data.get("temperature", "")
+                existing_instr.exposure_time = instr_data.get("exposure_time", "")
+                existing_instr.inventory = instr_data.get("inventory", "")
+                existing_instr.frequency = instr_data.get("frequency", "")
+                existing_instr.executor = instr_data.get("executor", "")
+                existing_instr.control_method = instr_data.get("control_method", "")
+                existing_instr.instruction_number = instr_data.get("instruction_number", "")
+            else:
+                instruction = Instruction(
+                    object_id=obj_id,
+                    cleaning_method=instr_data.get("cleaning_method", ""),
+                    instruction_number=instr_data.get("instruction_number", ""),
+                    product_name=instr_data.get("product_name", ""),
+                    cleaning_technique=instr_data.get("cleaning_technique", ""),
+                    concentration=instr_data.get("concentration", ""),
+                    temperature=instr_data.get("temperature", ""),
+                    exposure_time=instr_data.get("exposure_time", ""),
+                    inventory=instr_data.get("inventory", ""),
+                    frequency=instr_data.get("frequency", ""),
+                    executor=instr_data.get("executor", ""),
+                    control_method=instr_data.get("control_method", "")
+                )
+                session.add(instruction)
+                stats["instructions_created"] += 1
+
+    session.commit()
+    session.close()
+
+    print("\n📊 СТАТИСТИКА ИМПОРТА")
+    print("-" * 40)
+    print(f"  Создано объектов: {stats['objects_created']}")
+    print(f"  Обновлено объектов: {stats['objects_updated']}")
+    print(f"  Создано инструкций: {stats['instructions_created']}")
+    print(f"  Ошибок: {stats['errors']}")
+
+    return stats
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Импорт данных из JSON в БД")
+    parser.add_argument("json_file", help="Путь к JSON файлу")
+    args = parser.parse_args()
+
+    json_path = Path(args.json_file)
+    if not json_path.exists():
+        print(f"❌ Файл не найден: {json_path}")
+        return
+
+    print(f"🔧 ИМПОРТ ИЗ {json_path}")
+    print("=" * 50)
+
+    import_from_json(json_path)
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\init_db.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Инициализация базы данных: создание таблиц и категорий
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import engine, SessionLocal
+from db.models import Base, Category
+
+
+def create_tables():
+    """Создание таблиц (удаляет старые)"""
+    print("🔄 Создание таблиц...")
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    print("✅ Таблицы созданы")
+
+
+def seed_categories():
+    """Заполнение категорий (15 штук с порядком сортировки для умного маппинга)"""
+    print("🔄 Заполнение категорий...")
+
+    categories_data = [
+        ("Поверхности", 1),
+        ("Сантехническое оборудование", 2),
+        ("Санитарный пост", 3),
+        ("Мебель", 4),
+        ("Офисная техника", 5),
+        ("Многоразовые резиновые СИЗ", 6),
+        ("Бытовая техника", 7),
+        ("Инвентарь, посуда и т.д.", 8),
+        ("Моечный, уборочный инвентарь и оборудование", 9),
+        ("Посудомоечное оборудование", 10),
+        ("Холодильное оборудование", 11),
+        ("Дозирующее оборудование", 12),
+        ("Тепловое оборудование", 13),
+        ("Технологическое оборудование", 14),
+        ("Упаковочное оборудование", 15),
+    ]
+
+    session = SessionLocal()
+
+    for name, sort_order in categories_data:
+        category = Category(name=name, sort_order=sort_order)
+        session.add(category)
+        print(f"  ➕ {name}")
+
+    session.commit()
+    session.close()
+
+    print(f"✅ Добавлено {len(categories_data)} категорий")
+
+
+def main():
+    print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
+    print("=" * 50)
+
+    create_tables()
+    seed_categories()
+
+    print(f"\n📁 Файл БД: {engine.url.database}")
+    print("🎉 Готово!")
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\models.py
+================================================================================
+
+"""
+Модели данных для базы данных технологических карт
+"""
+
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+Base = declarative_base()
+
+
+class Category(Base):
+    """Категории объектов (15 штук, порядок сортировки задает умный маппинг)"""
+    __tablename__ = 'categories'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    sort_order = Column(Integer, default=0)
+
+    objects = relationship("Object", back_populates="category", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Category(id={self.id}, name='{self.name}')>"
+
+
+class Object(Base):
+    """Объекты обработки из чек-листа"""
+    __tablename__ = 'objects'
+
+    id = Column(Integer, primary_key=True)
+    category_id = Column(Integer, ForeignKey('categories.id'), nullable=False)
+
+    # Основные поля
+    normalized_name = Column(String(250), nullable=False, unique=True)  # для поиска (из чек-листа)
+    display_name = Column(String(250), nullable=False)                  # для вывода в техкарту
+    base_name = Column(String(200), nullable=False)                    # базовая часть
+    modifier = Column(String(50), nullable=True)                       # модификатор
+    sort_priority = Column(Integer, default=0)                         # приоритет сортировки
+
+    # Служебные поля
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Связи
+    category = relationship("Category", back_populates="objects")
+    instructions = relationship("Instruction", back_populates="object", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Object(id={self.id}, normalized_name='{self.normalized_name}', display_name='{self.display_name}')>"
+
+
+class Instruction(Base):
+    """Инструкции по обработке объектов"""
+    __tablename__ = 'instructions'
+
+    id = Column(Integer, primary_key=True)
+    object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
+
+    # Поля из Excel
+    cleaning_method = Column(String(100), nullable=True)       # мойка/дезинфекция/очистка
+    instruction_number = Column(String(50), nullable=True)     # № инструкции
+    product_name = Column(String(200), nullable=True)          # наименование средства
+    cleaning_technique = Column(String(200), nullable=True)    # метод уборки
+    concentration = Column(String(200), nullable=True)         # концентрация
+    temperature = Column(String(50), nullable=True)            # температура раствора
+    exposure_time = Column(String(50), nullable=True)          # время выдержки
+    inventory = Column(String(100), nullable=True)             # инвентарь
+    frequency = Column(String(100), nullable=True)             # периодичность
+    executor = Column(String(200), nullable=True)              # исполнитель
+    control_method = Column(String(200), nullable=True)        # метод контроля
+
+    created_at = Column(DateTime, default=datetime.now)
+
+    # Связи
+    object = relationship("Object", back_populates="instructions")
+
+    def __repr__(self):
+        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}')>"
+
+    def is_empty(self) -> bool:
+        """Проверяет, пустая ли инструкция (нет данных)"""
+        fields = [
+            self.cleaning_method, self.product_name, self.concentration,
+            self.temperature, self.exposure_time, self.frequency,
+            self.executor, self.control_method
+        ]
+        return not any(field for field in fields if field and field.strip())
+
+
+# Индексы для ускорения поиска
+Index('idx_object_normalized_name', Object.normalized_name)
+Index('idx_object_category', Object.category_id)
+Index('idx_instruction_object', Instruction.object_id)
+
+================================================================================
+ФАЙЛ: generator\__init__.py
+================================================================================
+
+"""
+Модуль для генерации технологических карт
+"""
+
+from generator.docx_generator import TechCardGenerator
+from generator.mapper import (
+    CategoryMapper,
+    find_object_and_instructions,
+    get_instructions_for_object,
+    get_object_by_normalized_name
+)
+
+================================================================================
+ФАЙЛ: generator\docx_generator.py
+================================================================================
+
+from docx import Document
+from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from pathlib import Path
+from parser.models import ChecklistData
+from db.models import Instruction, Category as DBCategory, Object as DBObject
+from db.database import SessionLocal
+from collections import defaultdict
+import re
+
+
+class TechCardGenerator:
+    TEMPLATES_DIR = Path("tech_card_templates")
+    DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
+
+    # Словарь цветов для средств (4 колонка)
+    PRODUCT_COLORS = {
+        "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
+        "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
+        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ПЕНАКТИВ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-CIP": "99CCFF",
+        "ХИМИТЕК ПОЛИКОР®": "FFCCCC",
+        "ХИМИТЕК ЧАРОЙТ®-СПРЕЙ": "99FF99",
+        "ХИМИТЕК СВЕЖЕСТЬ-АНТИСЕПТИК": "FFFFCC",
+    }
+
+    def __init__(self, template_path: str = None):
+        self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
+
+    def _normalize_product_name(self, name: str) -> str:
+        """Нормализует название средства для сравнения"""
+        if not name:
+            return ""
+        normalized = re.sub(r'[^\w\s\-]', '', name)
+        normalized = normalized.lower()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized.strip()
+
+    def _get_color_for_product(self, product_name: str) -> str:
+        """Возвращает цвет для средства"""
+        if not product_name:
+            return None
+        normalized_input = self._normalize_product_name(product_name)
+        for key, color in self.PRODUCT_COLORS.items():
+            normalized_key = self._normalize_product_name(key)
+            if normalized_input == normalized_key:
+                return color
+        return None
+
+    def _set_cell_font(self, cell, text: str, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
+        """Устанавливает текст и шрифт в ячейке"""
+        cell.text = text
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = font_name
+                run.font.size = Pt(size_pt)
+                run.font.bold = bold
+
+    def _set_cell_background(self, cell, hex_color: str):
+        """Устанавливает цвет фона ячейки"""
+        shading = OxmlElement('w:shd')
+        shading.set(qn('w:val'), 'clear')
+        shading.set(qn('w:color'), 'auto')
+        shading.set(qn('w:fill'), hex_color)
+        cell._tc.get_or_add_tcPr().append(shading)
+
+    def _apply_font_to_row(self, row, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
+        """Применяет шрифт ко всем ячейкам строки"""
+        for col in range(len(row.cells)):
+            for paragraph in row.cells[col].paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = font_name
+                    run.font.size = Pt(size_pt)
+                    run.font.bold = bold
+
+    def _merge_cells_horizontal(self, row, start_col: int, end_col: int):
+        """Объединяет ячейки в строке по горизонтали"""
+        if start_col >= end_col:
+            return
+        start_cell = row.cells[start_col]
+        for col in range(start_col + 1, end_col + 1):
+            start_cell.merge(row.cells[col])
+
+    def _get_category_priority(self, session) -> dict:
+        """Загружает приоритеты категорий из БД"""
+        categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
+        return {cat.name: cat.sort_order for cat in categories}
+
+    def generate(self, checklist_data: ChecklistData, output_path: str) -> str:
+        doc = Document(self.template_path)
+
+        # Основная таблица - вторая в документе (индекс 1)
+        main_table = doc.tables[1]
+
+        # Заполняем помещение (строка 1, ячейка 0)
+        room_cell = main_table.cell(1, 0)
+        room_text = room_cell.text
+        if "Помещение:" in room_text:
+            new_text = f"Помещение: {checklist_data.room_name or '______________'}"
+            self._set_cell_font(room_cell, new_text, bold=True)
+
+        # === ОПТИМИЗАЦИЯ: ЗАГРУЖАЕМ ВСЕ ДАННЫЕ ИЗ БД ЗА ОДИН РАЗ ===
+        session = SessionLocal()
+
+        # Приоритеты категорий
+        category_priority = self._get_category_priority(session)
+
+        # Собираем все normalized_name из чек-листа
+        checked_items = checklist_data.get_checked_items()
+        all_names = [item.name for item in checked_items]
+
+        # Загружаем все объекты одним запросом
+        db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
+        objects_dict = {obj.normalized_name: obj for obj in db_objects}
+
+        # Загружаем все инструкции одним запросом
+        object_ids = [obj.id for obj in db_objects]
+        db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
+
+        # Группируем инструкции по object_id
+        instructions_dict = defaultdict(list)
+        for instr in db_instructions:
+            instructions_dict[instr.object_id].append(instr)
+
+        # Группируем объекты по категориям
+        category_items = defaultdict(list)
+        category_order = {}
+
+        for item in checked_items:
+            obj = objects_dict.get(item.name)
+            cat_name = item.category.value
+            priority = category_priority.get(cat_name, 999)
+            category_order[cat_name] = priority
+
+            # Используем display_name для вывода в техкарту
+            display_name = obj.display_name if obj else item.name
+
+            if obj and obj.id in instructions_dict:
+                for instr in instructions_dict[obj.id]:
+                    category_items[cat_name].append((display_name, instr, item.category))
+            else:
+                category_items[cat_name].append((display_name, None, item.category))
+
+        session.close()
+
+        # === СОРТИРУЕМ ===
+        sorted_categories = sorted(category_items.keys(), key=lambda x: category_order.get(x, 999))
+        for cat_name in sorted_categories:
+            category_items[cat_name].sort(key=lambda x: x[0])
+
+        # Заполняем таблицу
+        start_row = 6  # после 5 объединенных строк + заголовки
+
+        # Удаляем старые строки данных
+        while len(main_table.rows) > start_row:
+            tbl = main_table._tbl
+            tbl.remove(main_table.rows[start_row]._tr)
+
+        current_row = start_row
+
+        # === ВЫВОД ===
+        for category_name in sorted_categories:
+            items = category_items[category_name]
+
+            # Строка категории
+            if current_row >= len(main_table.rows):
+                main_table.add_row()
+            category_row = main_table.rows[current_row]
+            self._merge_cells_horizontal(category_row, 0, 11)
+            self._set_cell_font(category_row.cells[0], category_name, bold=True)
+            current_row += 1
+
+            # Строки объектов
+            for obj_name, instr, _ in items:
+                if current_row >= len(main_table.rows):
+                    main_table.add_row()
+                row = main_table.rows[current_row]
+
+                row.cells[0].text = obj_name
+                if instr:
+                    row.cells[1].text = instr.cleaning_method or ""
+                    row.cells[2].text = instr.instruction_number or ""
+                    row.cells[3].text = instr.product_name or ""
+                    row.cells[4].text = instr.cleaning_technique or ""
+                    row.cells[5].text = instr.concentration or ""
+                    row.cells[6].text = instr.temperature or ""
+                    row.cells[7].text = instr.exposure_time or ""
+                    row.cells[8].text = instr.inventory or ""
+                    row.cells[9].text = instr.frequency or ""
+                    row.cells[10].text = instr.executor or ""
+                    row.cells[11].text = instr.control_method or ""
+
+                    # Цветовое кодирование 4 колонки (индекс 3) - Наименование средства
+                    if instr.product_name:
+                        color = self._get_color_for_product(instr.product_name)
+                        if color:
+                            self._set_cell_background(row.cells[3], color)
+                else:
+                    for col in range(1, 12):
+                        row.cells[col].text = ""
+
+                self._apply_font_to_row(row, font_name='Arial', size_pt=8, bold=False)
+                current_row += 1
+
+        # Сохраняем
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        if output_file.exists():
+            output_file.unlink()
+
+        doc.save(str(output_file))
+        return str(output_file)
+
+================================================================================
+ФАЙЛ: generator\mapper.py
+================================================================================
+
+"""
+Маппинг между парсером (Enum Category) и базой данных
+"""
+
+from parser.models import Category as ParserCategory
+from db.models import Category as DBCategory, Object, Instruction
+from db.database import SessionLocal
+
+
+class CategoryMapper:
+    """Маппинг категорий из парсера в БД"""
+
+    ENUM_TO_DB = {
+        ParserCategory.SURFACE: "Поверхности",
+        ParserCategory.HOUSEHOLD_APPLIANCES: "Бытовая техника",
+        ParserCategory.THERMAL_EQUIPMENT: "Тепловое оборудование",
+        ParserCategory.PACKAGING_EQUIPMENT: "Упаковочное оборудование",
+        ParserCategory.TECH_EQUIPMENT: "Технологическое оборудование",
+        ParserCategory.INVENTORY: "Инвентарь, посуда и т.д.",
+        ParserCategory.CLEANING_EQUIPMENT: "Моечный, уборочный инвентарь и оборудование",
+        ParserCategory.DISHWASHING_EQUIPMENT: "Посудомоечное оборудование",
+        ParserCategory.REFRIGERATION_EQUIPMENT: "Холодильное оборудование",
+        ParserCategory.DOSING_EQUIPMENT: "Дозирующее оборудование",
+        ParserCategory.PLUMBING: "Сантехническое оборудование",
+        ParserCategory.FURNITURE: "Мебель",
+        ParserCategory.OFFICE_EQUIPMENT: "Офисная техника",
+        ParserCategory.SANITARY_POST: "Санитарный пост",
+        ParserCategory.PPE: "Многоразовые резиновые СИЗ",
+        ParserCategory.OTHER: "Прочее",
+    }
+
+    @classmethod
+    def get_db_category_name(cls, parser_category: ParserCategory) -> str:
+        return cls.ENUM_TO_DB.get(parser_category, "Прочее")
+
+
+def get_object_by_normalized_name(session, normalized_name: str):
+    """Ищет объект в БД по нормализованному имени"""
+    return session.query(Object).filter(Object.normalized_name == normalized_name).first()
+
+
+# Алиас для обратной совместимости
+get_object_by_name = get_object_by_normalized_name
+
+
+def get_instructions_for_object(session, object_id: int):
+    """Возвращает все инструкции для объекта"""
+    return session.query(Instruction).filter(Instruction.object_id == object_id).all()
+
+
+def find_object_and_instructions(session, item_name: str, parser_category: ParserCategory):
+    """
+    Ищет объект в БД по нормализованному имени и возвращает его с инструкциями.
+    """
+    obj = get_object_by_normalized_name(session, item_name)
+
+    if not obj:
+        return None, []
+
+    instructions = get_instructions_for_object(session, obj.id)
+    return obj, instructions
+
+================================================================================
+ФАЙЛ: parser\__init__.py
+================================================================================
+
+"""
+Пакет для парсинга чек-листов
+"""
+
+from .xml_parser import parse_checklist
+from .models import ChecklistData, ChecklistItem, Category
+
+================================================================================
+ФАЙЛ: parser\models.py
+================================================================================
+
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
+from enum import Enum
+
+
+class Category(Enum):
+    """Категории из исходного чек-листа"""
+    SURFACE = "Поверхности"
+    HOUSEHOLD_APPLIANCES = "Бытовая техника"
+    THERMAL_EQUIPMENT = "Тепловое оборудование"
+    PACKAGING_EQUIPMENT = "Упаковочное оборудование"
+    TECH_EQUIPMENT = "Технологическое оборудование"
+    INVENTORY = "Инвентарь, посуда и т.д."
+    CLEANING_EQUIPMENT = "Моечный, уборочный инвентарь и оборудование"
+    DISHWASHING_EQUIPMENT = "Посудомоечное оборудование"
+    REFRIGERATION_EQUIPMENT = "Холодильное оборудование"
+    DOSING_EQUIPMENT = "Дозирующее оборудование"
+    PLUMBING = "Сантехническое оборудование"
+    FURNITURE = "Мебель"
+    OFFICE_EQUIPMENT = "Офисная техника"
+    SANITARY_POST = "Санитарный пост"
+    PPE = "Многоразовые резиновые СИЗ"
+    OTHER = "Прочее"
+
+    @classmethod
+    def _missing_(cls, value):
+        return cls.OTHER
+
+
+@dataclass
+class ChecklistItem:
+    """Элемент чек-листа"""
+    name: str
+    category: Category = Category.OTHER
+    subcategory: Optional[str] = None
+    checked: bool = False
+    markers: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ChecklistData:
+    """Данные чек-листа"""
+    file_path: str
+    room_name: Optional[str] = None
+    enterprise: Optional[str] = None
+    items: List[ChecklistItem] = field(default_factory=list)
+
+    def get_checked_items(self) -> List[ChecklistItem]:
+        """Возвращает только отмеченные элементы"""
+        return [item for item in self.items if item.checked]
+
+    def group_checked_by_category(self) -> Dict[Category, List[ChecklistItem]]:
+        """Группирует отмеченные элементы по категориям"""
+        result = {}
+        for item in self.get_checked_items():
+            if item.category not in result:
+                result[item.category] = []
+            result[item.category].append(item)
+        return result
+
+================================================================================
+ФАЙЛ: parser\utils.py
+================================================================================
+
+"""
+Вспомогательные функции
+"""
+
+import re
+from typing import List, Optional, Tuple
+
+
+def extract_text_from_cell(cell) -> str:
+    """Извлекает текст из ячейки таблицы"""
+    texts = []
+    for paragraph in cell.paragraphs:
+        if paragraph.text.strip():
+            texts.append(paragraph.text.strip())
+    return ' '.join(texts)
+
+
+def merge_adjacent_cells(row) -> List[str]:
+    """Объединяет текст из ячеек строки"""
+    result = []
+    for cell in row.cells:
+        text = extract_text_from_cell(cell)
+        if text:
+            result.append(text)
+    return result
+
+================================================================================
+ФАЙЛ: parser\xml_parser.py
+================================================================================
+
+"""
+Парсер чек-листов с поддержкой SDT и Unicode чек-боксов.
+Логика:
+- 1 чек-бокс в ячейке → одиночный объект → в свою категорию
+- 2+ чек-боксов → объект с модификаторами
+  - Первый чек-бокс = базовый объект
+  - Все остальные чек-боксы = модификаторы (сколько угодно)
+  - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
+  - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
+  - Базовый ⬜ → ничего не добавляем
+"""
+
+import zipfile
+from pathlib import Path
+from lxml import etree
+import re
+import sys
+
+from parser.models import ChecklistData, ChecklistItem, Category
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import SessionLocal
+from db.models import Object as DBObject
+
+
+# ============================================================
+# НОРМАЛИЗАЦИЯ
+# ============================================================
+def normalize_name(name: str) -> str:
+    """Нормализует имя для поиска в БД"""
+    if not name:
+        return ""
+    normalized = re.sub(r'[^\w\s\-\(\)]', '', name)
+    normalized = normalized.lower()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
+
+
+def normalize_potolok_name(name: str) -> str:
+    """Специальная нормализация для потолка"""
+    if not name:
+        return ""
+    normalized = re.sub(r'\([^)]*\)', '()', name)
+    normalized = re.sub(r'[^\w\s\-\(\)]', '', normalized)
+    normalized = normalized.lower()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
+
+
+def smart_normalize(name: str) -> str:
+    """Умная нормализация"""
+    if 'потолок' in name.lower():
+        return normalize_potolok_name(name)
+    return normalize_name(name)
+
+
+# ============================================================
+# SDT ПАРСЕР
+# ============================================================
+class SDTChecklistParser:
+    """Парсер для чек-листов с SDT и Unicode чек-боксами"""
+
+    NAMESPACES = {
+        'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+        'w14': 'http://schemas.microsoft.com/office/word/2010/wordml'
+    }
+
+    DB_CATEGORY_TO_ENUM = {
+        "Поверхности": Category.SURFACE,
+        "Сантехническое оборудование": Category.PLUMBING,
+        "Санитарный пост": Category.SANITARY_POST,
+        "Мебель": Category.FURNITURE,
+        "Офисная техника": Category.OFFICE_EQUIPMENT,
+        "Многоразовые резиновые СИЗ": Category.PPE,
+        "Бытовая техника": Category.HOUSEHOLD_APPLIANCES,
+        "Инвентарь, посуда и т.д.": Category.INVENTORY,
+        "Моечный, уборочный инвентарь и оборудование": Category.CLEANING_EQUIPMENT,
+        "Посудомоечное оборудование": Category.DISHWASHING_EQUIPMENT,
+        "Холодильное оборудование": Category.REFRIGERATION_EQUIPMENT,
+        "Дозирующее оборудование": Category.DOSING_EQUIPMENT,
+        "Тепловое оборудование": Category.THERMAL_EQUIPMENT,
+        "Технологическое оборудование": Category.TECH_EQUIPMENT,
+        "Упаковочное оборудование": Category.PACKAGING_EQUIPMENT,
+    }
+
+    def __init__(self):
+        self._category_cache = {}
+
+    def _get_checkbox_state(self, sdt_element) -> bool:
+        """Определяет состояние чек-бокса по символу внутри SDT"""
+        texts = sdt_element.xpath('.//w:t', namespaces=self.NAMESPACES)
+        for t in texts:
+            if t.text:
+                if '☒' in t.text:
+                    return True
+                if '☐' in t.text:
+                    return False
+        return False
+
+    def _clean_text(self, text: str) -> str:
+        """Очищает текст от лишних пробелов и символов"""
+        if not text:
+            return ""
+        # Удаляем символы чек-боксов, если они попали в текст
+        text = text.replace('☒', '').replace('☐', '')
+        return ' '.join(text.split()).strip()
+
+    def _get_category_from_db(self, normalized_name: str) -> Category:
+        """Получает категорию из БД по normalized_name"""
+        if normalized_name in self._category_cache:
+            return self._category_cache[normalized_name]
+
+        session = SessionLocal()
+        try:
+            obj = session.query(DBObject).filter(DBObject.normalized_name == normalized_name).first()
+            if obj and obj.category:
+                category_enum = self.DB_CATEGORY_TO_ENUM.get(obj.category.name, Category.OTHER)
+                self._category_cache[normalized_name] = category_enum
+                return category_enum
+        except Exception:
+            pass
+        finally:
+            session.close()
+
+        return Category.OTHER
+
+    def _parse_sdt_cell(self, cell, data: ChecklistData):
+        """Парсит ячейку с SDT чек-боксами"""
+        sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+        if not sdt_elements:
+            return
+
+        elements = []
+        checkbox_count = 0
+
+        for para in cell.xpath('.//w:p', namespaces=self.NAMESPACES):
+            for child in para.getchildren():
+                tag = child.tag.split('}')[-1]
+
+                if tag == 'sdt':
+                    checkbox_count += 1
+                    elements.append({
+                        'type': 'checkbox',
+                        'checked': self._get_checkbox_state(child)
+                    })
+                elif tag == 'r':
+                    texts = child.xpath('.//w:t', namespaces=self.NAMESPACES)
+                    for t in texts:
+                        if t.text:
+                            text = t.text.strip()
+                            if text and text not in ['☒', '☐']:
+                                elements.append({
+                                    'type': 'text',
+                                    'value': text
+                                })
+
+        if not elements:
+            return
+
+        # Собираем объект
+        current_obj = None
+        current_state = False
+        text_parts = []
+
+        for elem in elements:
+            if elem['type'] == 'checkbox':
+                # Сохраняем накопленный текст перед новым чек-боксом
+                if text_parts:
+                    full_text = self._clean_text(''.join(text_parts))
+                    if full_text:
+                        if current_obj is None:
+                            current_obj = {
+                                'name': full_text,
+                                'checked': current_state,
+                                'modifiers': []
+                            }
+                        else:
+                            # Добавляем модификатор
+                            current_obj['modifiers'].append({
+                                'name': full_text,
+                                'checked': current_state
+                            })
+                    text_parts = []
+                current_state = elem['checked']
+            elif elem['type'] == 'text':
+                text_parts.append(elem['value'])
+
+        # ВАЖНО: Сохраняем последний накопленный текст (последний модификатор)
+        if text_parts:
+            full_text = self._clean_text(''.join(text_parts))
+            if full_text:
+                if current_obj is None:
+                    current_obj = {
+                        'name': full_text,
+                        'checked': current_state,
+                        'modifiers': []
+                    }
+                else:
+                    # Добавляем последний модификатор
+                    current_obj['modifiers'].append({
+                        'name': full_text,
+                        'checked': current_state
+                    })
+
+        if current_obj:
+            self._add_object_to_data(current_obj, checkbox_count, data)
+
+    def _parse_unicode_cell(self, cell, data: ChecklistData):
+        """Парсит ячейку с Unicode-символами ☒/☐ (без SDT)"""
+        texts = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
+        full_text = ''.join([t.text for t in texts if t.text])
+
+        if not full_text or ('☒' not in full_text and '☐' not in full_text):
+            return
+
+        # Считаем количество чек-боксов
+        checkbox_count = full_text.count('☒') + full_text.count('☐')
+
+        parts = re.split(r'([☐☒])', full_text)
+        current_obj = None
+        text_parts = []
+        current_state = False
+
+        for i in range(1, len(parts)):
+            if parts[i] in ['☒', '☐']:
+                # Сохраняем накопленный текст
+                if text_parts:
+                    full_text = self._clean_text(''.join(text_parts))
+                    if full_text:
+                        if current_obj is None:
+                            current_obj = {
+                                'name': full_text,
+                                'checked': current_state,
+                                'modifiers': []
+                            }
+                        else:
+                            current_obj['modifiers'].append({
+                                'name': full_text,
+                                'checked': current_state
+                            })
+                    text_parts = []
+                current_state = (parts[i] == '☒')
+            else:
+                text_parts.append(parts[i])
+
+        # Сохраняем последний текст
+        if text_parts:
+            full_text = self._clean_text(''.join(text_parts))
+            if full_text:
+                if current_obj is None:
+                    current_obj = {
+                        'name': full_text,
+                        'checked': current_state,
+                        'modifiers': []
+                    }
+                else:
+                    current_obj['modifiers'].append({
+                        'name': full_text,
+                        'checked': current_state
+                    })
+
+        if current_obj:
+            self._add_object_to_data(current_obj, checkbox_count, data)
+
+    def _add_object_to_data(self, obj: dict, checkbox_count: int, data: ChecklistData):
+        """
+        Добавляет объект в ChecklistData с правильной логикой.
+
+        Логика:
+        - checkbox_count == 1 → одиночный объект → в свою категорию (если отмечен)
+        - checkbox_count >= 2 → объект с модификаторами
+          - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
+          - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
+          - Базовый ⬜ → ничего не добавляем
+        """
+        base_name = obj['name']
+        base_checked = obj['checked']
+        modifiers = obj['modifiers']
+
+        # Если базовый объект НЕ отмечен → ничего не добавляем
+        if not base_checked:
+            return
+
+        # Нормализуем базовое имя
+        normalized_base = smart_normalize(base_name)
+
+        if checkbox_count == 1:
+            # ОДИНОЧНЫЙ ОБЪЕКТ → в свою категорию
+            category = self._get_category_from_db(normalized_base)
+            print(f"  [{category.value}] ✅ {base_name}")
+            data.items.append(ChecklistItem(
+                name=normalized_base,
+                category=category,
+                checked=True,
+                markers=[]
+            ))
+            return
+
+        # ОБЪЕКТ С МОДИФИКАТОРАМИ (checkbox_count >= 2)
+        checked_modifiers = [m for m in modifiers if m['checked']]
+
+        if checked_modifiers:
+            # Есть отмеченные модификаторы → добавляем каждый
+            for mod in checked_modifiers:
+                full_name = f"{base_name} {mod['name']}"
+                normalized_full = smart_normalize(full_name)
+
+                # Пытаемся получить категорию для полного имени
+                mod_category = self._get_category_from_db(normalized_full)
+                if mod_category == Category.OTHER:
+                    mod_category = self._get_category_from_db(normalized_base)
+
+                print(f"  [{mod_category.value}] ✅ {full_name}")
+                data.items.append(ChecklistItem(
+                    name=normalized_full,
+                    category=mod_category,
+                    checked=True,
+                    markers=[mod['name']]
+                ))
+        else:
+            # Нет отмеченных модификаторов → базовый в "Прочее"
+            print(f"  [Прочее] ⚠️ {base_name} (модификаторы не отмечены)")
+            data.items.append(ChecklistItem(
+                name=normalized_base,
+                category=Category.OTHER,
+                checked=True,
+                markers=[]
+            ))
+
+    def _parse_header(self, root, data: ChecklistData):
+        """Парсит предприятие и участок"""
+        first_row = root.xpath('.//w:tr[1]', namespaces=self.NAMESPACES)
+        if first_row:
+            cells = first_row[0].xpath('.//w:tc', namespaces=self.NAMESPACES)
+            if len(cells) >= 2:
+                texts = cells[0].xpath('.//w:t', namespaces=self.NAMESPACES)
+                if texts:
+                    data.enterprise = ' '.join([t.text for t in texts if t.text]).strip()
+                texts = cells[1].xpath('.//w:t', namespaces=self.NAMESPACES)
+                if texts:
+                    data.room_name = ' '.join([t.text for t in texts if t.text]).strip()
+
+    def parse(self, file_path: str) -> ChecklistData:
+        file_path = Path(file_path)
+        data = ChecklistData(file_path=str(file_path))
+
+        print(f"\n🔍 Открываем архив: {file_path}")
+
+        with zipfile.ZipFile(file_path, 'r') as docx_zip:
+            with docx_zip.open('word/document.xml') as xml_file:
+                xml_content = xml_file.read()
+                root = etree.fromstring(xml_content)
+
+                self._parse_header(root, data)
+
+                cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
+                print(f"📊 Найдено ячеек: {len(cells)}")
+
+                for cell in cells:
+                    sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+                    if sdt_elements:
+                        self._parse_sdt_cell(cell, data)
+                    else:
+                        self._parse_unicode_cell(cell, data)
+
+        self._print_statistics(data)
+        print(f"\n✅ Найдено элементов: {len(data.items)}")
+
+        return data
+
+    def _print_statistics(self, data: ChecklistData):
+        """Выводит статистику"""
+        print("\n📊 Статистика по категориям:")
+        grouped = data.group_checked_by_category()
+
+        main_total = 0
+        other_total = 0
+
+        for category, items in grouped.items():
+            if category == Category.OTHER:
+                other_total = len(items)
+            else:
+                main_total += len(items)
+            print(f"  {category.value}: {len(items)} элементов")
+            for item in items[:3]:
+                marker_info = f" [модификатор: {item.markers[0]}]" if item.markers else ""
+                print(f"    • {item.name}{marker_info}")
+            if len(items) > 3:
+                print(f"    ... и ещё {len(items) - 3}")
+
+        print(f"\n📋 ИТОГО:")
+        print(f"   В основных категориях: {main_total}")
+        print(f"   В Прочее: {other_total}")
+
+
+def parse_checklist(file_path: str) -> ChecklistData:
+    parser = SDTChecklistParser()
+    return parser.parse(file_path)
+
+================================================================================
+ФАЙЛ: test_generator.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+test_generator.py - Пакетная генерация технологических карт
+Поддерживает .docx и .zip
+"""
+
+import sys
+import zipfile
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from parser.xml_parser import parse_checklist
+from generator.docx_generator import TechCardGenerator
+
+
+def extract_zip(archive_path: Path, extract_to: Path) -> list:
+    """Распаковывает ZIP и возвращает список .docx файлов"""
+    docx_files = []
+    try:
+        with zipfile.ZipFile(archive_path, 'r') as zf:
+            zf.extractall(extract_to)
+        for docx in extract_to.glob("**/*.docx"):
+            if not docx.name.startswith("~"):
+                docx_files.append(docx)
+    except Exception as e:
+        print(f"   ❌ Ошибка распаковки {archive_path.name}: {e}")
+    return docx_files
+
+
+def find_files(input_dir: Path) -> list:
+    """Находит все .docx и .zip файлы в папке"""
+    files = []
+    for f in input_dir.iterdir():
+        if f.is_file() and f.suffix.lower() in {'.docx', '.zip'}:
+            if not f.name.startswith("~") and "tech_card" not in f.name.lower():
+                files.append(f)
+    return files
+
+
+def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path) -> dict:
+    """Обрабатывает один .docx файл"""
+    result = {"file": file_path.name, "status": "error", "output": None, "error": None}
+    try:
+        print(f"   🔍 Парсинг чек-листа...")
+        checklist_data = parse_checklist(str(file_path))
+
+        checked_count = len(checklist_data.get_checked_items())
+        print(f"   ✅ Найдено отмеченных объектов: {checked_count}")
+
+        # Статистика по объектам для "Прочее"
+        other_count = sum(1 for item in checklist_data.get_checked_items()
+                          if not getattr(item, 'markers', None) or len(item.markers) == 0)
+        if other_count > 0:
+            print(f"   ⚠️ Из них в раздел 'Прочее': {other_count}")
+
+        room_name = checklist_data.room_name or file_path.stem
+        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        output_path = output_dir / f"{safe_name}_tech_card.docx"
+
+        print(f"   📝 Генерация техкарты...")
+        generator.generate(checklist_data, str(output_path))
+
+        result["status"] = "success"
+        result["output"] = str(output_path)
+        result["objects"] = checked_count
+        result["other"] = other_count
+    except Exception as e:
+        result["error"] = str(e)
+        import traceback
+        traceback.print_exc()
+    return result
+
+
+def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path) -> list:
+    """Обрабатывает ZIP архив"""
+    results = []
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_path = Path(tmpdir)
+        docx_files = extract_zip(zip_path, temp_path)
+        if not docx_files:
+            results.append({
+                "file": zip_path.name,
+                "status": "error",
+                "error": "В архиве не найдено .docx файлов"
+            })
+            return results
+        for docx_file in docx_files:
+            results.append(process_docx(docx_file, generator, output_dir))
+    return results
+
+
+def print_report(results: list):
+    """Выводит отчёт о генерации"""
+    success = sum(1 for r in results if r["status"] == "success")
+    error = len(results) - success
+
+    total_objects = sum(r.get("objects", 0) for r in results if r["status"] == "success")
+    total_other = sum(r.get("other", 0) for r in results if r["status"] == "success")
+
+    print("\n" + "=" * 70)
+    print("📊 ОТЧЁТ О ГЕНЕРАЦИИ")
+    print("=" * 70)
+
+    for r in results:
+        if r["status"] == "success":
+            obj_info = f" ({r.get('objects', 0)} об."
+            if r.get('other', 0) > 0:
+                obj_info += f", {r.get('other')} в Прочее"
+            obj_info += ")"
+            print(f"✅ {r['file']}{obj_info}")
+            print(f"   → {r['output']}")
+        else:
+            print(f"❌ {r['file']} → {r.get('error', 'Ошибка')}")
+
+    print("-" * 70)
+    print(f"✅ Успешно обработано файлов: {success}")
+    print(f"❌ Ошибок: {error}")
+    print(f"📋 Всего объектов в техкартах: {total_objects}")
+    if total_other > 0:
+        print(f"⚠️ Из них в разделе 'Прочее': {total_other}")
+    print("=" * 70)
+
+
+def process_single_file(file_path: str, output_dir: str = "tech_cards"):
+    """Обрабатывает один файл (для тестирования)"""
+    input_path = Path(file_path)
+    if not input_path.exists():
+        print(f"❌ Файл не найден: {file_path}")
+        return None
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    generator = TechCardGenerator()
+
+    if input_path.suffix.lower() == '.docx':
+        return process_docx(input_path, generator, output_path)
+    elif input_path.suffix.lower() == '.zip':
+        results = process_zip(input_path, generator, output_path)
+        return results[0] if results else None
+    else:
+        print(f"❌ Неподдерживаемый формат: {input_path.suffix}")
+        return None
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Пакетная генерация технологических карт")
+    parser.add_argument("--input", "-i", default="checklists", help="Папка с чек-листами")
+    parser.add_argument("--output", "-o", default="tech_cards", help="Папка для сохранения")
+    parser.add_argument("--single", "-s", help="Обработать один файл (для тестирования)")
+    args = parser.parse_args()
+
+    # Режим обработки одного файла
+    if args.single:
+        print("🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (ОДИН ФАЙЛ)")
+        print("=" * 60)
+        result = process_single_file(args.single, args.output)
+        if result:
+            print_report([result])
+        return
+
+    # Режим пакетной обработки
+    input_dir = Path(args.input)
+    if not input_dir.exists():
+        print(f"❌ Папка не найдена: {input_dir}")
+        return
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print("🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ")
+    print("=" * 60)
+    print(f"📂 Входная папка: {input_dir}")
+    print(f"📂 Выходная папка: {output_dir}")
+
+    files = find_files(input_dir)
+    if not files:
+        print("\n❌ Не найдено файлов (.docx, .zip)")
+        return
+
+    print(f"\n📋 Найдено файлов: {len(files)}")
+    for f in files:
+        size = f.stat().st_size / 1024
+        print(f"   - {f.name} ({size:.1f} KB)")
+
+    generator = TechCardGenerator()
+    all_results = []
+
+    for file_path in files:
+        if file_path.suffix.lower() == '.docx':
+            print(f"\n📄 Обработка: {file_path.name}")
+            all_results.append(process_docx(file_path, generator, output_dir))
+        elif file_path.suffix.lower() == '.zip':
+            print(f"\n📦 Обработка ZIP: {file_path.name}")
+            all_results.extend(process_zip(file_path, generator, output_dir))
+
+    print_report(all_results)
+
+
+if __name__ == "__main__":
+    main()

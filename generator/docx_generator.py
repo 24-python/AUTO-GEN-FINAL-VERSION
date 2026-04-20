@@ -1,5 +1,4 @@
 from docx import Document
-from docx.shared import Pt
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pathlib import Path
@@ -14,7 +13,6 @@ class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
 
-    # Словарь цветов для средств (4 колонка)
     PRODUCT_COLORS = {
         "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
         "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
@@ -29,7 +27,6 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
     def _normalize_product_name(self, name: str) -> str:
-        """Нормализует название средства для сравнения"""
         if not name:
             return ""
         normalized = re.sub(r'[^\w\s\-]', '', name)
@@ -38,44 +35,22 @@ class TechCardGenerator:
         return normalized.strip()
 
     def _get_color_for_product(self, product_name: str) -> str:
-        """Возвращает цвет для средства"""
         if not product_name:
             return None
         normalized_input = self._normalize_product_name(product_name)
         for key, color in self.PRODUCT_COLORS.items():
-            normalized_key = self._normalize_product_name(key)
-            if normalized_input == normalized_key:
+            if self._normalize_product_name(key) == normalized_input:
                 return color
         return None
 
-    def _set_cell_font(self, cell, text: str, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
-        """Устанавливает текст и шрифт в ячейке"""
-        cell.text = text
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.font.name = font_name
-                run.font.size = Pt(size_pt)
-                run.font.bold = bold
-
     def _set_cell_background(self, cell, hex_color: str):
-        """Устанавливает цвет фона ячейки"""
         shading = OxmlElement('w:shd')
         shading.set(qn('w:val'), 'clear')
         shading.set(qn('w:color'), 'auto')
         shading.set(qn('w:fill'), hex_color)
         cell._tc.get_or_add_tcPr().append(shading)
 
-    def _apply_font_to_row(self, row, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
-        """Применяет шрифт ко всем ячейкам строки"""
-        for col in range(len(row.cells)):
-            for paragraph in row.cells[col].paragraphs:
-                for run in paragraph.runs:
-                    run.font.name = font_name
-                    run.font.size = Pt(size_pt)
-                    run.font.bold = bold
-
     def _merge_cells_horizontal(self, row, start_col: int, end_col: int):
-        """Объединяет ячейки в строке по горизонтали"""
         if start_col >= end_col:
             return
         start_cell = row.cells[start_col]
@@ -83,47 +58,37 @@ class TechCardGenerator:
             start_cell.merge(row.cells[col])
 
     def _get_category_priority(self, session) -> dict:
-        """Загружает приоритеты категорий из БД"""
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
 
     def generate(self, checklist_data: ChecklistData, output_path: str) -> str:
         doc = Document(self.template_path)
-
-        # Основная таблица - вторая в документе (индекс 1)
         main_table = doc.tables[1]
 
-        # Заполняем помещение (строка 1, ячейка 0)
+        # Заполняем помещение
         room_cell = main_table.cell(1, 0)
-        room_text = room_cell.text
-        if "Помещение:" in room_text:
-            new_text = f"Помещение: {checklist_data.room_name or '______________'}"
-            self._set_cell_font(room_cell, new_text, bold=True)
+        if "Помещение:" in room_cell.text:
+            room_cell.text = f"Помещение: {checklist_data.room_name or '______________'}"
+            if room_cell.paragraphs and room_cell.paragraphs[0].runs:
+                room_cell.paragraphs[0].runs[0].font.bold = True
 
-        # === ОПТИМИЗАЦИЯ: ЗАГРУЖАЕМ ВСЕ ДАННЫЕ ИЗ БД ЗА ОДИН РАЗ ===
+        # === ЗАГРУЗКА ДАННЫХ ===
         session = SessionLocal()
-
-        # Приоритеты категорий
         category_priority = self._get_category_priority(session)
 
-        # Собираем все normalized_name из чек-листа
         checked_items = checklist_data.get_checked_items()
         all_names = [item.name for item in checked_items]
 
-        # Загружаем все объекты одним запросом
         db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
         objects_dict = {obj.normalized_name: obj for obj in db_objects}
 
-        # Загружаем все инструкции одним запросом
         object_ids = [obj.id for obj in db_objects]
         db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
 
-        # Группируем инструкции по object_id
         instructions_dict = defaultdict(list)
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
-        # Группируем объекты по категориям
         category_items = defaultdict(list)
         category_order = {}
 
@@ -133,51 +98,59 @@ class TechCardGenerator:
             priority = category_priority.get(cat_name, 999)
             category_order[cat_name] = priority
 
-            # Используем display_name для вывода в техкарту
             display_name = obj.display_name if obj else item.name
 
             if obj and obj.id in instructions_dict:
                 for instr in instructions_dict[obj.id]:
-                    category_items[cat_name].append((display_name, instr, item.category))
+                    category_items[cat_name].append((display_name, instr))
             else:
-                category_items[cat_name].append((display_name, None, item.category))
+                category_items[cat_name].append((display_name, None))
 
         session.close()
 
-        # === СОРТИРУЕМ ===
+        # === СОРТИРОВКА ===
         sorted_categories = sorted(category_items.keys(), key=lambda x: category_order.get(x, 999))
         for cat_name in sorted_categories:
             category_items[cat_name].sort(key=lambda x: x[0])
 
-        # Заполняем таблицу
-        start_row = 6  # после 5 объединенных строк + заголовки
-
-        # Удаляем старые строки данных
-        while len(main_table.rows) > start_row:
-            tbl = main_table._tbl
-            tbl.remove(main_table.rows[start_row]._tr)
-
-        current_row = start_row
-
-        # === ВЫВОД ===
+        # === ПОДГОТОВКА ДАННЫХ ===
+        rows_data = []
         for category_name in sorted_categories:
             items = category_items[category_name]
+            if not items:
+                continue
+            rows_data.append(('category', category_name, None))
+            for obj_name, instr in items:
+                rows_data.append(('object', obj_name, instr))
 
-            # Строка категории
-            if current_row >= len(main_table.rows):
-                main_table.add_row()
-            category_row = main_table.rows[current_row]
-            self._merge_cells_horizontal(category_row, 0, 11)
-            self._set_cell_font(category_row.cells[0], category_name, bold=True)
-            current_row += 1
+        # === БЫСТРАЯ ОЧИСТКА ТАБЛИЦЫ ===
+        start_row = 6
+        tbl = main_table._tbl
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+        while len(tr_elements) > start_row:
+            tbl.remove(tr_elements[-1])
+            tr_elements = tbl.findall('.//w:tr', namespaces=ns)
 
-            # Строки объектов
-            for obj_name, instr, _ in items:
-                if current_row >= len(main_table.rows):
-                    main_table.add_row()
-                row = main_table.rows[current_row]
+        # === МАССОВОЕ ДОБАВЛЕНИЕ СТРОК ===
+        for _ in range(len(rows_data)):
+            main_table.add_row()
 
+        # === БЫСТРОЕ ЗАПОЛНЕНИЕ (без _apply_font_to_row) ===
+        current_row = start_row
+        for row_info in rows_data:
+            row = main_table.rows[current_row]
+
+            if row_info[0] == 'category':
+                self._merge_cells_horizontal(row, 0, 11)
+                row.cells[0].text = row_info[1]
+                if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
+                    row.cells[0].paragraphs[0].runs[0].font.bold = True
+
+            elif row_info[0] == 'object':
+                obj_name, instr = row_info[1], row_info[2]
                 row.cells[0].text = obj_name
+
                 if instr:
                     row.cells[1].text = instr.cleaning_method or ""
                     row.cells[2].text = instr.instruction_number or ""
@@ -191,7 +164,6 @@ class TechCardGenerator:
                     row.cells[10].text = instr.executor or ""
                     row.cells[11].text = instr.control_method or ""
 
-                    # Цветовое кодирование 4 колонки (индекс 3) - Наименование средства
                     if instr.product_name:
                         color = self._get_color_for_product(instr.product_name)
                         if color:
@@ -200,10 +172,8 @@ class TechCardGenerator:
                     for col in range(1, 12):
                         row.cells[col].text = ""
 
-                self._apply_font_to_row(row, font_name='Arial', size_pt=8, bold=False)
-                current_row += 1
+            current_row += 1
 
-        # Сохраняем
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if output_file.exists():
