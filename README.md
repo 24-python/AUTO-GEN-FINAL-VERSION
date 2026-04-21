@@ -88,17 +88,17 @@ python prepare_import_json.py --csv "сопостовление объектов
 ### Генерация одной техкарты
 
 ```bash
-python test_generator.py --single "checklists/мой_чеклист.docx"
+python test_generator-РАБОЧАЯ ДОЛГАЯ ВЕРСИЯ.py --single "checklists/мой_чеклист.docx"
 ```
 
 ### Пакетная генерация
 
 ```bash
 # Обработать все .docx и .zip в папке checklists
-python test_generator.py
+python test_generator-РАБОЧАЯ ДОЛГАЯ ВЕРСИЯ.py
 
 # Указать свои папки
-python test_generator.py --input "мои_чеклисты" --output "готовые_техкарты"
+python test_generator-РАБОЧАЯ ДОЛГАЯ ВЕРСИЯ.py --input "мои_чеклисты" --output "готовые_техкарты"
 ```
 
 ### Запуск веб-интерфейса

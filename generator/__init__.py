@@ -2,7 +2,6 @@
 Модуль для генерации технологических карт
 """
 
-from generator.docx_generator import TechCardGenerator
 from generator.mapper import (
     CategoryMapper,
     find_object_and_instructions,

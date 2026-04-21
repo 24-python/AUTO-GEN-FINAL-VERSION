@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_generator.py - Пакетная генерация технологических карт (БЫСТРАЯ ВЕРСИЯ)
+test_generator.py - Пакетная генерация технологических карт (ПРОСТАЯ ВЕРСИЯ)
 Поддерживает .docx и .zip
 """
 
@@ -13,7 +13,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from parser.xml_parser import parse_checklist
-from Разное.docx_generator import TechCardGenerator
+
+# === ИМПОРТ ПРОСТОГО ГЕНЕРАТОРА ===
+from Разное.docx_generator_simple import SimpleFastGenerator
 
 
 def extract_zip(archive_path: Path, extract_to: Path) -> list:
@@ -40,7 +42,7 @@ def find_files(input_dir: Path) -> list:
     return files
 
 
-def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path) -> dict:
+def process_docx(file_path: Path, generator: SimpleFastGenerator, output_dir: Path) -> dict:
     """Обрабатывает один .docx файл"""
     result = {"file": file_path.name, "status": "error", "output": None, "error": None}
     try:
@@ -52,17 +54,11 @@ def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path
         checked_count = len(checklist_data.get_checked_items())
         print(f"   ✅ Найдено отмеченных объектов: {checked_count} (за {parse_time:.2f} сек)")
 
-        # Статистика по объектам для "Прочее"
-        other_count = sum(1 for item in checklist_data.get_checked_items()
-                          if not getattr(item, 'markers', None) or len(item.markers) == 0)
-        if other_count > 0:
-            print(f"   ⚠️ Из них в раздел 'Прочее': {other_count}")
-
         room_name = checklist_data.room_name or file_path.stem
         safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
         output_path = output_dir / f"{safe_name}_tech_card.docx"
 
-        print(f"   ⚡ Генерация техкарты...")
+        print(f"   📝 Генерация техкарты (ПРОСТАЯ ВЕРСИЯ)...")
         gen_start = time.time()
         generator.generate(checklist_data, str(output_path))
         gen_time = time.time() - gen_start
@@ -70,13 +66,11 @@ def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path
         result["status"] = "success"
         result["output"] = str(output_path)
         result["objects"] = checked_count
-        result["other"] = other_count
         result["parse_time"] = parse_time
         result["gen_time"] = gen_time
         result["total_time"] = parse_time + gen_time
 
-        print(
-            f"   ✅ Готово! (парсинг: {parse_time:.2f}с, генерация: {gen_time:.2f}с, всего: {parse_time + gen_time:.2f}с)")
+        print(f"   ✅ Готово! (парсинг: {parse_time:.2f}с, генерация: {gen_time:.2f}с, всего: {parse_time + gen_time:.2f}с)")
     except Exception as e:
         result["error"] = str(e)
         import traceback
@@ -84,7 +78,7 @@ def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path
     return result
 
 
-def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path) -> list:
+def process_zip(zip_path: Path, generator: SimpleFastGenerator, output_dir: Path) -> list:
     """Обрабатывает ZIP архив"""
     results = []
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -108,32 +102,24 @@ def print_report(results: list):
     error = len(results) - success
 
     total_objects = sum(r.get("objects", 0) for r in results if r["status"] == "success")
-    total_other = sum(r.get("other", 0) for r in results if r["status"] == "success")
     total_time = sum(r.get("total_time", 0) for r in results if r["status"] == "success")
 
     print("\n" + "=" * 70)
-    print("📊 ОТЧЁТ О ГЕНЕРАЦИИ")
+    print("📊 ОТЧЁТ О ГЕНЕРАЦИИ (ПРОСТАЯ ВЕРСИЯ)")
     print("=" * 70)
 
     for r in results:
         if r["status"] == "success":
-            obj_info = f" ({r.get('objects', 0)} об."
-            if r.get('other', 0) > 0:
-                obj_info += f", {r.get('other')} в Прочее"
-            obj_info += ")"
-            print(f"✅ {r['file']}{obj_info}")
+            print(f"✅ {r['file']} ({r.get('objects', 0)} об.)")
             print(f"   → {r['output']}")
-            print(
-                f"   ⏱️ Парсинг: {r.get('parse_time', 0):.2f}с | Генерация: {r.get('gen_time', 0):.2f}с | Всего: {r.get('total_time', 0):.2f}с")
+            print(f"   ⏱️ Парсинг: {r.get('parse_time', 0):.2f}с | Генерация: {r.get('gen_time', 0):.2f}с | Всего: {r.get('total_time', 0):.2f}с")
         else:
             print(f"❌ {r['file']} → {r.get('error', 'Ошибка')}")
 
     print("-" * 70)
     print(f"✅ Успешно обработано файлов: {success}")
     print(f"❌ Ошибок: {error}")
-    print(f"📋 Всего объектов в техкартах: {total_objects}")
-    if total_other > 0:
-        print(f"⚠️ Из них в разделе 'Прочее': {total_other}")
+    print(f"📋 Всего объектов: {total_objects}")
     print(f"⏱️ Общее время: {total_time:.2f} сек")
     print("=" * 70)
 
@@ -148,7 +134,7 @@ def process_single_file(file_path: str, output_dir: str = "tech_cards"):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    generator = TechCardGenerator()
+    generator = SimpleFastGenerator()
 
     if input_path.suffix.lower() == '.docx':
         return process_docx(input_path, generator, output_path)
@@ -162,7 +148,7 @@ def process_single_file(file_path: str, output_dir: str = "tech_cards"):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Пакетная генерация технологических карт (БЫСТРАЯ ВЕРСИЯ)")
+    parser = argparse.ArgumentParser(description="Пакетная генерация технологических карт (ПРОСТАЯ ВЕРСИЯ)")
     parser.add_argument("--input", "-i", default="checklists", help="Папка с чек-листами")
     parser.add_argument("--output", "-o", default="tech_cards", help="Папка для сохранения")
     parser.add_argument("--single", "-s", help="Обработать один файл (для тестирования)")
@@ -170,7 +156,7 @@ def main():
 
     # Режим обработки одного файла
     if args.single:
-        print("🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (ОДИН ФАЙЛ)")
+        print("🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (ОДИН ФАЙЛ, ПРОСТАЯ ВЕРСИЯ)")
         print("=" * 60)
         result = process_single_file(args.single, args.output)
         if result:
@@ -186,7 +172,7 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ (БЫСТРАЯ ВЕРСИЯ)")
+    print("🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ (ПРОСТАЯ ВЕРСИЯ)")
     print("=" * 60)
     print(f"📂 Входная папка: {input_dir}")
     print(f"📂 Выходная папка: {output_dir}")
@@ -201,7 +187,7 @@ def main():
         size = f.stat().st_size / 1024
         print(f"   - {f.name} ({size:.1f} KB)")
 
-    generator = TechCardGenerator()
+    generator = SimpleFastGenerator()
     all_results = []
 
     for file_path in files:
