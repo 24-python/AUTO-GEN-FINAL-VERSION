@@ -59,6 +59,22 @@ class TechCardGenerator:
         for col in range(start_col + 1, end_col + 1):
             start_cell.merge(row.cells[col])
 
+    def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
+        """Объединяет ячейки по вертикали"""
+        if start_row >= end_row:
+            return
+        start_cell = table.cell(start_row, col)
+        for row in range(start_row + 1, end_row + 1):
+            start_cell.merge(table.cell(row, col))
+
+    def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
+        """Проверяет, одинаковые ли значения в ячейках колонки"""
+        first_text = table.cell(start_row, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            if table.cell(row, col).text.strip() != first_text:
+                return False
+        return True
+
     def _get_category_priority(self, session) -> dict:
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
@@ -173,6 +189,7 @@ class TechCardGenerator:
 
         # === ПОДГОТОВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
         rows_data = []
+        merge_info = []  # (start_row, end_row) для вертикального объединения
 
         if mode == 1:
             # Режим 1: по категориям
@@ -194,11 +211,21 @@ class TechCardGenerator:
 
                 # Добавляем строки для каждой группы инструкций
                 for obj_name, instructions in grouped:
+                    group_start_row = len(rows_data)
+
                     if instructions:
-                        for instr in instructions:
-                            rows_data.append(('object', obj_name, instr))
+                        for i, instr in enumerate(instructions):
+                            # Только первая строка содержит имя объекта
+                            display_name = obj_name if i == 0 else ""
+                            rows_data.append(('object', display_name, instr))
                     else:
                         rows_data.append(('object', obj_name, None))
+
+                    group_end_row = len(rows_data) - 1
+
+                    # Если в группе больше одной строки — запоминаем для объединения
+                    if group_end_row > group_start_row:
+                        merge_info.append((group_start_row, group_end_row))
         else:
             # Режим 2: по приоритету (единый список)
             # Сортируем по sort_priority, затем по display_name
@@ -210,11 +237,21 @@ class TechCardGenerator:
 
             # Добавляем строки для каждой группы инструкций
             for obj_name, instructions in grouped:
+                group_start_row = len(rows_data)
+
                 if instructions:
-                    for instr in instructions:
-                        rows_data.append(('object', obj_name, instr))
+                    for i, instr in enumerate(instructions):
+                        # Только первая строка содержит имя объекта
+                        display_name = obj_name if i == 0 else ""
+                        rows_data.append(('object', display_name, instr))
                 else:
                     rows_data.append(('object', obj_name, None))
+
+                group_end_row = len(rows_data) - 1
+
+                # Если в группе больше одной строки — запоминаем для объединения
+                if group_end_row > group_start_row:
+                    merge_info.append((group_start_row, group_end_row))
 
         # === ОЧИСТКА ТАБЛИЦЫ ===
         start_row = 6
@@ -266,6 +303,28 @@ class TechCardGenerator:
                         row.cells[col].text = ""
 
             current_row += 1
+
+        # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
+        # Корректируем индексы с учётом start_row
+        for group_start, group_end in merge_info:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+
+            if actual_end > actual_start:
+                # Очищаем ячейки в первой колонке (кроме первой) ДО объединения
+                for row in range(actual_start + 1, actual_end + 1):
+                    main_table.cell(row, 0).text = ""
+                # Объединяем первую колонку
+                self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+
+                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11) если значения одинаковые
+                for col in [8, 9, 10, 11]:
+                    if self._cells_are_equal(main_table, col, actual_start, actual_end):
+                        # Очищаем ячейки (кроме первой) ДО объединения
+                        for row in range(actual_start + 1, actual_end + 1):
+                            main_table.cell(row, col).text = ""
+                        # Объединяем
+                        self._merge_cells_vertical(main_table, col, actual_start, actual_end)
 
         # Сохраняем
         output_file = Path(output_path)
