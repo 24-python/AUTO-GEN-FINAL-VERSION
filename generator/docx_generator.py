@@ -1,3 +1,5 @@
+# generator/docx_generator.py
+
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -57,11 +59,83 @@ class TechCardGenerator:
         for col in range(start_col + 1, end_col + 1):
             start_cell.merge(row.cells[col])
 
+    def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
+        """Объединяет ячейки по вертикали"""
+        if start_row >= end_row:
+            return
+        start_cell = table.cell(start_row, col)
+        for row in range(start_row + 1, end_row + 1):
+            start_cell.merge(table.cell(row, col))
+
+    def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
+        """Проверяет, одинаковые ли значения в ячейках колонки"""
+        first_text = table.cell(start_row, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            if table.cell(row, col).text.strip() != first_text:
+                return False
+        return True
+
     def _get_category_priority(self, session) -> dict:
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
 
-    def generate(self, checklist_data: ChecklistData, output_path: str) -> str:
+    def _get_instruction_signature(self, instructions: list) -> tuple:
+        """
+        Создаёт сигнатуру для полного набора инструкций объекта.
+        Сигнатура — это кортеж из отсортированных сигнатур каждой инструкции.
+        """
+        if not instructions:
+            return (("empty",),)
+
+        signatures = []
+        for instr in sorted(instructions, key=lambda x: x.cleaning_method or ""):
+            sig = (
+                instr.cleaning_method or "",
+                instr.instruction_number or "",
+                instr.product_name or "",
+                instr.cleaning_technique or "",
+                instr.concentration or "",
+                instr.temperature or "",
+                instr.exposure_time or "",
+                instr.inventory or "",
+                instr.frequency or "",
+                instr.executor or "",
+                instr.control_method or "",
+            )
+            signatures.append(sig)
+
+        return tuple(signatures)
+
+    def _group_by_full_instructions(self, object_instructions: list) -> list:
+        """
+        Группирует объекты с ПОЛНОСТЬЮ ИДЕНТИЧНЫМИ наборами инструкций.
+        object_instructions: список [(obj_name, [instructions]), ...]
+        Возвращает: список [(merged_names, [instructions]), ...]
+        """
+        groups = {}
+
+        for obj_name, instructions in object_instructions:
+            signature = self._get_instruction_signature(instructions)
+
+            if signature not in groups:
+                groups[signature] = {
+                    "names": [],
+                    "instructions": instructions
+                }
+            groups[signature]["names"].append(obj_name)
+
+        result = []
+        for signature, data in groups.items():
+            merged_name = ", ".join(sorted(data["names"]))
+            result.append((merged_name, data["instructions"]))
+
+        return result
+
+    def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1) -> str:
+        """
+        Генерирует техкарту.
+        mode: 1 - по категориям (с заголовками), 2 - по приоритету (единый список)
+        """
         doc = Document(self.template_path)
         main_table = doc.tables[1]
 
@@ -72,7 +146,7 @@ class TechCardGenerator:
             if room_cell.paragraphs and room_cell.paragraphs[0].runs:
                 room_cell.paragraphs[0].runs[0].font.bold = True
 
-        # === ЗАГРУЗКА ДАННЫХ ===
+        # === ЗАГРУЗКА ДАННЫХ ИЗ БД ===
         session = SessionLocal()
         category_priority = self._get_category_priority(session)
 
@@ -89,7 +163,9 @@ class TechCardGenerator:
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
-        category_items = defaultdict(list)
+        # Собираем данные: для каждого объекта — его полный набор инструкций
+        category_object_instructions = defaultdict(list)  # для режима 1
+        all_object_instructions = []  # для режима 2
         category_order = {}
 
         for item in checked_items:
@@ -99,31 +175,85 @@ class TechCardGenerator:
             category_order[cat_name] = priority
 
             display_name = obj.display_name if obj else item.name
+            sort_priority = obj.sort_priority if obj else 999
 
             if obj and obj.id in instructions_dict:
-                for instr in instructions_dict[obj.id]:
-                    category_items[cat_name].append((display_name, instr))
+                instructions = instructions_dict[obj.id]
             else:
-                category_items[cat_name].append((display_name, None))
+                instructions = []
+
+            category_object_instructions[cat_name].append((display_name, instructions))
+            all_object_instructions.append((display_name, instructions, sort_priority))
 
         session.close()
 
-        # === СОРТИРОВКА ===
-        sorted_categories = sorted(category_items.keys(), key=lambda x: category_order.get(x, 999))
-        for cat_name in sorted_categories:
-            category_items[cat_name].sort(key=lambda x: x[0])
-
-        # === ПОДГОТОВКА ДАННЫХ ===
+        # === ПОДГОТОВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
         rows_data = []
-        for category_name in sorted_categories:
-            items = category_items[category_name]
-            if not items:
-                continue
-            rows_data.append(('category', category_name, None))
-            for obj_name, instr in items:
-                rows_data.append(('object', obj_name, instr))
+        merge_info = []  # (start_row, end_row) для вертикального объединения
 
-        # === БЫСТРАЯ ОЧИСТКА ТАБЛИЦЫ ===
+        if mode == 1:
+            # Режим 1: по категориям
+            sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
+
+            for cat_name in sorted_categories:
+                items = category_object_instructions[cat_name]
+                if not items:
+                    continue
+
+                # Сортируем объекты внутри категории по алфавиту
+                items.sort(key=lambda x: x[0])
+
+                # Группируем объекты с полностью идентичными наборами инструкций
+                grouped = self._group_by_full_instructions(items)
+
+                # Добавляем заголовок категории
+                rows_data.append(('category', cat_name, None))
+
+                # Добавляем строки для каждой группы инструкций
+                for obj_name, instructions in grouped:
+                    group_start_row = len(rows_data)
+
+                    if instructions:
+                        for i, instr in enumerate(instructions):
+                            # Только первая строка содержит имя объекта
+                            display_name = obj_name if i == 0 else ""
+                            rows_data.append(('object', display_name, instr))
+                    else:
+                        rows_data.append(('object', obj_name, None))
+
+                    group_end_row = len(rows_data) - 1
+
+                    # Если в группе больше одной строки — запоминаем для объединения
+                    if group_end_row > group_start_row:
+                        merge_info.append((group_start_row, group_end_row))
+        else:
+            # Режим 2: по приоритету (единый список)
+            # Сортируем по sort_priority, затем по display_name
+            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+
+            # Группируем объекты с полностью идентичными наборами инструкций
+            items_for_grouping = [(name, instrs) for name, instrs, _ in all_object_instructions]
+            grouped = self._group_by_full_instructions(items_for_grouping)
+
+            # Добавляем строки для каждой группы инструкций
+            for obj_name, instructions in grouped:
+                group_start_row = len(rows_data)
+
+                if instructions:
+                    for i, instr in enumerate(instructions):
+                        # Только первая строка содержит имя объекта
+                        display_name = obj_name if i == 0 else ""
+                        rows_data.append(('object', display_name, instr))
+                else:
+                    rows_data.append(('object', obj_name, None))
+
+                group_end_row = len(rows_data) - 1
+
+                # Если в группе больше одной строки — запоминаем для объединения
+                if group_end_row > group_start_row:
+                    merge_info.append((group_start_row, group_end_row))
+
+        # === ОЧИСТКА ТАБЛИЦЫ ===
         start_row = 6
         tbl = main_table._tbl
         ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
@@ -132,11 +262,11 @@ class TechCardGenerator:
             tbl.remove(tr_elements[-1])
             tr_elements = tbl.findall('.//w:tr', namespaces=ns)
 
-        # === МАССОВОЕ ДОБАВЛЕНИЕ СТРОК ===
+        # === ДОБАВЛЕНИЕ СТРОК ===
         for _ in range(len(rows_data)):
             main_table.add_row()
 
-        # === БЫСТРОЕ ЗАПОЛНЕНИЕ (без _apply_font_to_row) ===
+        # === ЗАПОЛНЕНИЕ ===
         current_row = start_row
         for row_info in rows_data:
             row = main_table.rows[current_row]
@@ -174,6 +304,29 @@ class TechCardGenerator:
 
             current_row += 1
 
+        # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
+        # Корректируем индексы с учётом start_row
+        for group_start, group_end in merge_info:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+
+            if actual_end > actual_start:
+                # Очищаем ячейки в первой колонке (кроме первой) ДО объединения
+                for row in range(actual_start + 1, actual_end + 1):
+                    main_table.cell(row, 0).text = ""
+                # Объединяем первую колонку
+                self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+
+                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11) если значения одинаковые
+                for col in [8, 9, 10, 11]:
+                    if self._cells_are_equal(main_table, col, actual_start, actual_end):
+                        # Очищаем ячейки (кроме первой) ДО объединения
+                        for row in range(actual_start + 1, actual_end + 1):
+                            main_table.cell(row, col).text = ""
+                        # Объединяем
+                        self._merge_cells_vertical(main_table, col, actual_start, actual_end)
+
+        # Сохраняем
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         if output_file.exists():
