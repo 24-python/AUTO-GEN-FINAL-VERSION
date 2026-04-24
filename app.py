@@ -2,7 +2,7 @@
 """
 Веб-приложение для парсинга чек-листов и генерации техкарт.
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
-Добавлена история генераций с пагинацией и автоочистка загрузок.
+Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
 """
 
 import os
@@ -18,7 +18,7 @@ from flask import Flask, request, render_template, jsonify, send_file
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
-from db.models import Object, Category as DBCategory
+from db.models import Object, Instruction, Category as DBCategory
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -189,6 +189,10 @@ def history():
     return render_template('history.html')
 
 
+# ============================================================
+# API: ГЕНЕРАЦИЯ
+# ============================================================
+
 @app.route('/api/generate', methods=['POST'])
 def api_generate():
     if 'file' not in request.files:
@@ -256,9 +260,12 @@ def download(filename):
     return jsonify({'error': 'Файл не найден'}), 404
 
 
+# ============================================================
+# API: ИСТОРИЯ
+# ============================================================
+
 @app.route('/api/history')
 def api_history():
-    """Возвращает историю генераций с пагинацией"""
     page = int(request.args.get('page', 1))
     per_page = 100
 
@@ -279,7 +286,6 @@ def api_history():
 
 @app.route('/api/history/delete', methods=['POST'])
 def api_delete_history():
-    """Удаляет выбранные техкарты или по дате"""
     data = request.get_json()
     filenames = data.get('filenames', [])
     before_date = data.get('before_date', None)
@@ -308,6 +314,23 @@ def api_delete_history():
     return jsonify({'success': True, 'deleted': deleted})
 
 
+# ============================================================
+# API: КАТЕГОРИИ
+# ============================================================
+
+@app.route('/api/categories')
+def api_categories():
+    session = SessionLocal()
+    cats = session.query(DBCategory).order_by(DBCategory.sort_order).all()
+    result = [{'id': c.id, 'name': c.name, 'sort_order': c.sort_order} for c in cats]
+    session.close()
+    return jsonify({'categories': result})
+
+
+# ============================================================
+# API: ОБЪЕКТЫ
+# ============================================================
+
 @app.route('/api/objects')
 def api_objects():
     session = SessionLocal()
@@ -315,14 +338,53 @@ def api_objects():
     cats = {c.id: c.name for c in session.query(DBCategory).all()}
     result = [{
         'id': o.id,
+        'category_id': o.category_id,
         'category_name': cats.get(o.category_id, ''),
         'display_name': o.display_name,
         'normalized_name': o.normalized_name,
+        'base_name': o.base_name,
+        'modifier': o.modifier or '',
         'sort_priority': o.sort_priority,
         'instruction_count': len(o.instructions)
     } for o in objects]
     session.close()
     return jsonify({'objects': result})
+
+
+@app.route('/api/objects', methods=['POST'])
+def api_create_object():
+    data = request.get_json()
+    session = SessionLocal()
+    obj = Object(
+        display_name=data.get('display_name', ''),
+        normalized_name=data.get('normalized_name', data.get('display_name', '')),
+        base_name=data.get('base_name', data.get('display_name', '')),
+        modifier=data.get('modifier'),
+        sort_priority=data.get('sort_priority', 0),
+        category_id=data.get('category_id', 1)
+    )
+    session.add(obj)
+    session.commit()
+    session.refresh(obj)
+    obj_id = obj.id
+    session.close()
+    return jsonify({'success': True, 'id': obj_id})
+
+
+@app.route('/api/objects/<int:obj_id>', methods=['PUT'])
+def api_update_object(obj_id):
+    data = request.get_json()
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        for key in ['display_name', 'normalized_name', 'base_name', 'modifier', 'sort_priority', 'category_id']:
+            if key in data:
+                setattr(obj, key, data[key])
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найден'}), 404
 
 
 @app.route('/api/objects/<int:obj_id>', methods=['DELETE'])
@@ -335,8 +397,99 @@ def api_delete_object(obj_id):
         session.close()
         return jsonify({'success': True})
     session.close()
-    return jsonify({'success': False, 'error': 'Объект не найден'}), 404
+    return jsonify({'success': False, 'error': 'Не найден'}), 404
 
+
+# ============================================================
+# API: ИНСТРУКЦИИ
+# ============================================================
+
+@app.route('/api/objects/<int:obj_id>/instructions')
+def api_object_instructions(obj_id):
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        result = [{
+            'id': i.id,
+            'cleaning_method': i.cleaning_method or '',
+            'product_name': i.product_name or '',
+            'cleaning_technique': i.cleaning_technique or '',
+            'concentration': i.concentration or '',
+            'temperature': i.temperature or '',
+            'exposure_time': i.exposure_time or '',
+            'inventory': i.inventory or '',
+            'frequency': i.frequency or '',
+            'executor': i.executor or '',
+            'control_method': i.control_method or '',
+            'instruction_number': i.instruction_number or ''
+        } for i in obj.instructions]
+        session.close()
+        return jsonify({'instructions': result})
+    session.close()
+    return jsonify({'instructions': []})
+
+
+@app.route('/api/objects/<int:obj_id>/instructions', methods=['POST'])
+def api_create_instruction(obj_id):
+    data = request.get_json()
+    session = SessionLocal()
+    instr = Instruction(
+        object_id=obj_id,
+        cleaning_method=data.get('cleaning_method', ''),
+        product_name=data.get('product_name', ''),
+        cleaning_technique=data.get('cleaning_technique', ''),
+        concentration=data.get('concentration', ''),
+        temperature=data.get('temperature', ''),
+        exposure_time=data.get('exposure_time', ''),
+        inventory=data.get('inventory', ''),
+        frequency=data.get('frequency', ''),
+        executor=data.get('executor', ''),
+        control_method=data.get('control_method', ''),
+        instruction_number=data.get('instruction_number', '')
+    )
+    session.add(instr)
+    session.commit()
+    session.refresh(instr)
+    instr_id = instr.id
+    session.close()
+    return jsonify({'success': True, 'id': instr_id})
+
+
+@app.route('/api/instructions/<int:instr_id>', methods=['PUT'])
+def api_update_instruction(instr_id):
+    data = request.get_json()
+    session = SessionLocal()
+    instr = session.query(Instruction).get(instr_id)
+    if instr:
+        fields = ['cleaning_method', 'product_name', 'cleaning_technique', 'concentration',
+                   'temperature', 'exposure_time', 'inventory', 'frequency', 'executor',
+                   'control_method', 'instruction_number']
+        for key in fields:
+            if key in data:
+                setattr(instr, key, data[key])
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+@app.route('/api/instructions/<int:instr_id>', methods=['DELETE'])
+def api_delete_instruction(instr_id):
+    session = SessionLocal()
+    instr = session.query(Instruction).get(instr_id)
+    if instr:
+        session.delete(instr)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+# ============================================================
+# API: ЭКСПОРТ CSV
+# ============================================================
 
 @app.route('/api/export_csv')
 def api_export_csv():
@@ -349,14 +502,23 @@ def api_export_csv():
 
     si = StringIO()
     writer = csv.writer(si, delimiter=';')
-    writer.writerow(['object_id', 'category_name', 'normalized_name', 'display_name', 'base_name', 'modifier', 'sort_priority', 'cleaning_method', 'product_name', 'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency', 'executor', 'control_method'])
+    writer.writerow(['object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
+                     'modifier', 'sort_priority', 'cleaning_method', 'product_name', 'concentration',
+                     'temperature', 'exposure_time', 'inventory', 'frequency', 'executor', 'control_method'])
 
     for obj in objects:
         if obj.instructions:
             for instr in obj.instructions:
-                writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name, obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority, instr.cleaning_method or '', instr.product_name or '', instr.concentration or '', instr.temperature or '', instr.exposure_time or '', instr.inventory or '', instr.frequency or '', instr.executor or '', instr.control_method or ''])
+                writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                               obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                               instr.cleaning_method or '', instr.product_name or '',
+                               instr.concentration or '', instr.temperature or '',
+                               instr.exposure_time or '', instr.inventory or '',
+                               instr.frequency or '', instr.executor or '', instr.control_method or ''])
         else:
-            writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name, obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority, '', '', '', '', '', '', '', '', ''])
+            writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                           obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                           '', '', '', '', '', '', '', '', ''])
 
     session.close()
 
