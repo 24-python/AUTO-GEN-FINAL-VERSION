@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление базой данных | Chemitech</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar-ct navbar navbar-expand-lg sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="bi bi-droplet me-2"></i>Chemitech | Техкарты</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navMain">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-house me-1"></i>Главная</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/admin"><i class="bi bi-database me-1"></i>База данных</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5" id="adminApp">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="fw-bold"><i class="bi bi-database me-2"></i>Управление объектами</h3>
+            <div>
+                <button class="btn-ct-outline me-2" @click="loadCSV"><i class="bi bi-download me-2"></i>Экспорт CSV</button>
+                <button class="btn-ct-primary" @click="showImportModal = true"><i class="bi bi-upload me-2"></i>Импорт CSV</button>
+            </div>
+        </div>
+
+        <div class="card-ct mb-4">
+            <div class="card-body p-0">
+                <table class="table table-hover m-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th><th>Категория</th><th>Объект</th><th>Инструкций</th><th>Приоритет</th><th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="obj in objects" :key="obj.id">
+                            <td v-text="obj.id" style="width:50px"></td>
+                            <td v-text="obj.category_name" style="font-size:0.85rem"></td>
+                            <td><strong v-text="obj.display_name"></strong></td>
+                            <td><span class="badge-ct badge-info" v-text="obj.instruction_count || 0"></span></td>
+                            <td v-text="obj.sort_priority" style="width:70px"></td>
+                            <td style="width:100px">
+                                <button class="btn btn-sm btn-outline-primary me-1" @click="editObject(obj)"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-danger" @click="deleteObject(obj)"><i class="bi bi-trash"></i></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="text-muted" v-if="objects.length === 0">
+            <i class="bi bi-info-circle me-2"></i>Нет данных для отображения
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

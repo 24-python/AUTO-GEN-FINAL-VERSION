@@ -1,162 +1,223 @@
 #!/usr/bin/env python3
 """
-Веб-приложение для парсинга чек-листов с категориями
+Веб-приложение для парсинга чек-листов и генерации техкарт.
+Поддерживает одиночные .docx, несколько .docx, .zip архивы.
 """
 
 import os
 import uuid
+import zipfile
+import tempfile
 from pathlib import Path
 from datetime import datetime
 
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, send_file
 
-# Импортируем парсер с категориями
 from parser.xml_parser import parse_checklist
-from parser.models import Category
+from generator.docx_generator import TechCardGenerator
+from db.database import SessionLocal
+from db.models import Object, Category as DBCategory
 
 app = Flask(__name__)
-
-# Конфигурация
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
-app.config['ALLOWED_EXTENSIONS'] = {'docx'}
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
-# Создаём папки
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs('tech_cards', exist_ok=True)
+
+# Совместимость Jinja2 с Vue.js
+app.jinja_env.variable_start_string = '{?'
+app.jinja_env.variable_end_string = '?}'
 
 
 def allowed_file(filename):
-    """Проверяет разрешённый тип файла"""
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['docx', 'zip']
 
 
-def format_result(data):
-    """Форматирует результат для веб-интерфейса с категориями"""
-    result = {
-        'file_name': Path(data.file_path).name,
-        'room_name': data.room_name or 'Не указан',
-        'enterprise': data.enterprise or 'Не указано',
-        'total_items': len(data.items),
-        'checked_items': len(data.get_checked_items()),
-        'categories': []
-    }
-
-    # Отладка в консоль
-    print(f"\n📊 Всего элементов: {len(data.items)}")
-    print(f"✅ Отмечено: {len(data.get_checked_items())}")
-
-    # Информация об участке и предприятии
-    if data.room_name:
-        print(f"🏢 Участок: {data.room_name}")
-    if data.enterprise:
-        print(f"🏭 Предприятие: {data.enterprise}")
-
-    # Покажем первые несколько элементов для проверки
-    print(f"\n📋 Первые 10 позиций:")
-    for i, item in enumerate(data.get_checked_items()[:10]):
-        print(f"  {i + 1}. [{item.category.value}] {item.name}")
-
-    grouped = data.group_checked_by_category()
-
-    # Сортируем категории в логическом порядке (сверху вниз)
-    category_order = [
-        Category.SURFACE,  # 1. Поверхности (потолок, стены, пол)
-        Category.PLUMBING,  # 2. Сантехника
-        Category.SANITARY_POST,  # 3. Санпост
-        Category.HOUSEHOLD_APPLIANCES,  # 4. Бытовая техника
-        Category.THERMAL_EQUIPMENT,  # 5. Тепловое оборудование
-        Category.REFRIGERATION_EQUIPMENT,  # 6. Холодильное оборудование
-        Category.TECH_EQUIPMENT,  # 7. Технологическое оборудование
-        Category.PACKAGING_EQUIPMENT,  # 8. Упаковочное оборудование
-        Category.DISHWASHING_EQUIPMENT,  # 9. Посудомоечное оборудование
-        Category.CLEANING_EQUIPMENT,  # 10. Моечный инвентарь
-        Category.INVENTORY,  # 11. Инвентарь
-        Category.FURNITURE,  # 12. Мебель
-        Category.OFFICE_EQUIPMENT,  # 13. Офисная техника
-        Category.DOSING_EQUIPMENT,  # 14. Дозирующее оборудование
-        Category.PPE,  # 15. СИЗ
-        Category.OTHER  # 16. Прочее
-    ]
-
-    for category in category_order:
-        if category in grouped:
-            items = grouped[category]
-            category_data = {
-                'name': category.value,
-                'items': [{'name': item.name} for item in items]
-            }
-            result['categories'].append(category_data)
-
-            # Вывод в консоль
-            print(f"\n{category.value}: {len(items)} элементов")
-            for item in items[:5]:  # Покажем первые 5 из каждой категории
-                print(f"  • {item.name}")
-            if len(items) > 5:
-                print(f"  ... и ещё {len(items) - 5}")
-
-    return result
-
-
-@app.route('/')
-def index():
-    """Главная страница"""
-    return render_template('index.html')
-
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    """Загрузка и парсинг файла"""
-
-    if 'file' not in request.files:
-        return jsonify({'error': 'Нет файла'}), 400
-
-    file = request.files['file']
-
-    if file.filename == '':
-        return jsonify({'error': 'Файл не выбран'}), 400
-
-    if not allowed_file(file.filename):
-        return jsonify({'error': 'Разрешены только .docx файлы'}), 400
-
+def process_single_file(file, mode, generator):
+    """Обрабатывает один .docx файл"""
     try:
-        # Сохраняем файл с уникальным именем
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         unique_id = str(uuid.uuid4())[:8]
         filename = f"{timestamp}_{unique_id}_{file.filename}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
         file.save(filepath)
 
-        print(f"\n🔍 Начинаем обработку файла: {filepath}")
+        checklist_data = parse_checklist(filepath)
+        room_name = checklist_data.room_name or Path(filepath).stem
+        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        output_path = f"tech_cards/{safe_name}_tech_card.docx"
+        generator.generate(checklist_data, output_path, mode)
 
-        # Парсим через парсер с категориями
-        data = parse_checklist(filepath)
+        return {
+            'filename': file.filename,
+            'objects': len(checklist_data.get_checked_items()),
+            'download_url': f'/download/{safe_name}_tech_card.docx'
+        }
+    except Exception as e:
+        return {'filename': file.filename, 'error': str(e)}
 
-        # Форматируем результат
-        result = format_result(data)
 
-        print(f"\n✅ Обработка завершена. Найдено позиций: {len(data.items)}")
+def process_zip_file(file, mode, generator):
+    """Обрабатывает ZIP архив"""
+    results = []
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = str(uuid.uuid4())[:8]
+    filename = f"{timestamp}_{unique_id}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            zf.extractall(tmpdir)
+
+        docx_files = list(Path(tmpdir).glob("**/*.docx"))
+        for docx_path in docx_files:
+            if docx_path.name.startswith("~"):
+                continue
+            try:
+                checklist_data = parse_checklist(str(docx_path))
+                room_name = checklist_data.room_name or docx_path.stem
+                safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
+                output_path = f"tech_cards/{safe_name}_tech_card.docx"
+                generator.generate(checklist_data, output_path, mode)
+                results.append({
+                    'filename': docx_path.name,
+                    'objects': len(checklist_data.get_checked_items()),
+                    'download_url': f'/download/{safe_name}_tech_card.docx'
+                })
+            except Exception as e:
+                results.append({'filename': docx_path.name, 'error': str(e)})
+
+    return results
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/admin')
+def admin():
+    return render_template('admin.html')
+
+
+@app.route('/api/generate', methods=['POST'])
+def api_generate():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+
+    is_multi = request.form.get('multi') == 'true'
+    mode = int(request.form.get('mode', 1))
+    generator = TechCardGenerator()
+    results = []
+
+    try:
+        if is_multi:
+            files = [request.files['file']]
+            i = 1
+            while f'file_{i}' in request.files:
+                files.append(request.files[f'file_{i}'])
+                i += 1
+
+            for file in files:
+                result = process_single_file(file, mode, generator)
+                results.append(result)
+        else:
+            file = request.files['file']
+            ext = file.filename.rsplit('.', 1)[1].lower()
+
+            if ext == 'zip':
+                results = process_zip_file(file, mode, generator)
+            else:
+                result = process_single_file(file, mode, generator)
+                results.append(result)
+
+        total_objects = sum(r.get('objects', 0) for r in results)
+        errors = [r for r in results if 'error' in r]
 
         return jsonify({
             'success': True,
-            'data': result
+            'total_files': len(results),
+            'total_objects': total_objects,
+            'files': results,
+            'errors': errors
         })
 
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/health', methods=['GET'])
-def health():
-    """Проверка работоспособности"""
-    return jsonify({'status': 'ok', 'message': 'Сервер работает'})
+@app.route('/download/<filename>')
+def download(filename):
+    path = f"tech_cards/{filename}"
+    if os.path.exists(path):
+        return send_file(path, as_attachment=True)
+    return jsonify({'error': 'Файл не найден'}), 404
+
+
+@app.route('/api/objects')
+def api_objects():
+    session = SessionLocal()
+    objects = session.query(Object).order_by(Object.sort_priority, Object.display_name).all()
+    cats = {c.id: c.name for c in session.query(DBCategory).all()}
+    result = [{
+        'id': o.id,
+        'category_name': cats.get(o.category_id, ''),
+        'display_name': o.display_name,
+        'normalized_name': o.normalized_name,
+        'sort_priority': o.sort_priority,
+        'instruction_count': len(o.instructions)
+    } for o in objects]
+    session.close()
+    return jsonify({'objects': result})
+
+
+@app.route('/api/objects/<int:obj_id>', methods=['DELETE'])
+def api_delete_object(obj_id):
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        session.delete(obj)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Объект не найден'}), 404
+
+
+@app.route('/api/export_csv')
+def api_export_csv():
+    import csv
+    from io import StringIO
+
+    session = SessionLocal()
+    objects = session.query(Object).order_by(Object.sort_priority, Object.display_name).all()
+    cats = {c.id: c.name for c in session.query(DBCategory).all()}
+
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['object_id', 'category_name', 'normalized_name', 'display_name', 'base_name', 'modifier', 'sort_priority', 'cleaning_method', 'product_name', 'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency', 'executor', 'control_method'])
+
+    for obj in objects:
+        if obj.instructions:
+            for instr in obj.instructions:
+                writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name, obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority, instr.cleaning_method or '', instr.product_name or '', instr.concentration or '', instr.temperature or '', instr.exposure_time or '', instr.inventory or '', instr.frequency or '', instr.executor or '', instr.control_method or ''])
+        else:
+            writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name, obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority, '', '', '', '', '', '', '', '', ''])
+
+    session.close()
+
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        tmp.write(output)
+        return send_file(tmp.name, as_attachment=True, download_name='db_export.csv')
 
 
 if __name__ == '__main__':
     print("🚀 Запуск сервера на http://localhost:5000")
-    print("📁 Файлы будут сохраняться в папку:", app.config['UPLOAD_FOLDER'])
     app.run(debug=True, host='0.0.0.0', port=5000)

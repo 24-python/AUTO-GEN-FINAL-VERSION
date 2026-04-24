@@ -1,6 +1,6 @@
 ================================================================================
 ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
-Дата экспорта: 2026-04-20 18:26:38
+Дата экспорта: 2026-04-24 10:56:24
 ================================================================================
 
 📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
@@ -13,13 +13,17 @@
    db\import_json.py
    db\init_db.py
    db\models.py
+   export_db_to_single_csv.py
    generator\__init__.py
    generator\docx_generator.py
    generator\mapper.py
+   import_csv_to_db.py
    parser\__init__.py
    parser\models.py
    parser\utils.py
    parser\xml_parser.py
+   requirements.txt
+   templates\index.html
    test_generator.py
 
 
@@ -30,8 +34,6 @@ AUTO-GEN-FINAL-VERSION/
 ├──    checklists/
 
 ├──    Context.py (15.8 KB)
-├──    converted/
-
 ├── ✅ db/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
@@ -42,12 +44,17 @@ AUTO-GEN-FINAL-VERSION/
 │   ├── ✅ import_json.py (6.1 KB)
 │   ├── ✅ init_db.py (2.3 KB)
 │   └── ✅ models.py (4.4 KB)
+├──    db_export_all.csv (225.2 KB)
+├──    db_import_all.csv (229.9 KB)
+├──    db_import_all_full.csv (222.7 KB)
+├── ✅ export_db_to_single_csv.py (4.4 KB)
 ├── ✅ generator/
-│   ├── ✅ __init__.py (0.3 KB)
+│   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
-│   ├── ✅ docx_generator.py (9.6 KB)
+│   ├── ✅ docx_generator.py (15.4 KB)
 │   └── ✅ mapper.py (2.9 KB)
+├── ✅ import_csv_to_db.py (20.6 KB)
 ├── ✅ parser/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
@@ -55,18 +62,21 @@ AUTO-GEN-FINAL-VERSION/
 │   ├── ✅ models.py (2.4 KB)
 │   ├── ✅ utils.py (0.7 KB)
 │   └── ✅ xml_parser.py (16.9 KB)
-├──    README.md (13.1 KB)
-├──    requirements.txt (0.5 KB)
+├──    profile_generator.py (2.6 KB)
+├──    README.md (17.4 KB)
+├── ✅ requirements.txt (0.5 KB)
 ├──    tech_card_templates/
 
 ├──    tech_cards/
 
-├──    templates/
-│   └──    index.html (16.2 KB)
-├── ✅ test_generator.py (7.8 KB)
+├── ✅ templates/
+│   └── ✅ index.html (16.2 KB)
+├── ✅ test_generator.py (9.5 KB)
 ├──    Готовый код на 20.04.26.txt (0.0 KB)
 └──    Разное/
     ├──    1.py (4.1 KB)
+    ├──    __pycache__/
+
     ├──    add_missing_objects.py (1.6 KB)
     ├──    check_cameras_now.py (1.3 KB)
     ├──    check_compound_objects.py (1.7 KB)
@@ -90,6 +100,10 @@ AUTO-GEN-FINAL-VERSION/
     ├──    detailed_analysis.py (7.3 KB)
     ├──    diagnose_potolok.py (0.5 KB)
     ├──    diagnose_template.py (1.8 KB)
+    ├──    docx_generator.py (9.2 KB)
+    ├──    docx_generator_lxml.py (10.6 KB)
+    ├──    docx_generator_new.py (14.0 KB)
+    ├──    docx_generator_simple.py (5.3 KB)
     ├──    dump_parsed_objects_with_categories.py (3.7 KB)
     ├──    export_all_objects.py (15.5 KB)
     ├──    export_all_objects_txt.py (16.3 KB)
@@ -105,6 +119,8 @@ AUTO-GEN-FINAL-VERSION/
     ├──    objects_export.txt (39.3 KB)
     ├──    parsed_objects_with_categories.txt (6.2 KB)
     ├──    prepare_import_json.py (11.1 KB)
+    ├──    test_generator.py (8.1 KB)
+    ├──    test_generator_new.py (8.1 KB)
     ├──    test_sdt_parser.py (7.4 KB)
     ├──    test_sdt_parser_debug.py (4.6 KB)
     ├──    update_db_normalized_names.py (9.0 KB)
@@ -920,6 +936,144 @@ Index('idx_object_category', Object.category_id)
 Index('idx_instruction_object', Instruction.object_id)
 
 ================================================================================
+ФАЙЛ: export_db_to_single_csv.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+export_db_to_single_csv.py
+
+Экспортирует все данные из БД в один CSV файл.
+Каждая строка = один объект со всеми его инструкциями.
+"""
+
+import csv
+import sys
+from pathlib import Path
+from collections import defaultdict
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction
+
+
+def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
+    """Экспортирует все данные в один CSV"""
+
+    session = SessionLocal()
+
+    # Получаем все данные
+    categories = {cat.id: cat for cat in session.query(Category).all()}
+    objects = session.query(Object).order_by(Object.category_id, Object.display_name).all()
+    instructions = session.query(Instruction).all()
+
+    # Группируем инструкции по object_id
+    instr_by_object = defaultdict(list)
+    for instr in instructions:
+        instr_by_object[instr.object_id].append(instr)
+
+    # Создаём CSV
+    with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
+        writer = csv.writer(f, delimiter=';')
+
+        # Заголовок
+        writer.writerow([
+            'object_id',
+            'category_name',
+            'normalized_name',
+            'display_name',
+            'base_name',
+            'modifier',
+            'sort_priority',
+            'instruction_id',
+            'cleaning_method',
+            'instruction_number',
+            'product_name',
+            'cleaning_technique',
+            'concentration',
+            'temperature',
+            'exposure_time',
+            'inventory',
+            'frequency',
+            'executor',
+            'control_method',
+        ])
+
+        # Данные
+        total_rows = 0
+        for obj in objects:
+            cat = categories.get(obj.category_id)
+            cat_name = cat.name if cat else ''
+
+            obj_instrs = instr_by_object.get(obj.id, [])
+
+            if obj_instrs:
+                for instr in obj_instrs:
+                    writer.writerow([
+                        obj.id,
+                        cat_name,
+                        obj.normalized_name,
+                        obj.display_name,
+                        obj.base_name,
+                        obj.modifier or '',
+                        obj.sort_priority,
+                        instr.id,
+                        instr.cleaning_method or '',
+                        instr.instruction_number or '',
+                        instr.product_name or '',
+                        instr.cleaning_technique or '',
+                        instr.concentration or '',
+                        instr.temperature or '',
+                        instr.exposure_time or '',
+                        instr.inventory or '',
+                        instr.frequency or '',
+                        instr.executor or '',
+                        instr.control_method or '',
+                    ])
+                    total_rows += 1
+            else:
+                # Объект без инструкций
+                writer.writerow([
+                    obj.id,
+                    cat_name,
+                    obj.normalized_name,
+                    obj.display_name,
+                    obj.base_name,
+                    obj.modifier or '',
+                    obj.sort_priority,
+                    '', '', '', '', '', '', '', '', '', '', '', ''
+                ])
+                total_rows += 1
+
+    session.close()
+
+    print("=" * 80)
+    print("📊 ЭКСПОРТ БАЗЫ ДАННЫХ В CSV")
+    print("=" * 80)
+    print(f"📁 Файл: {output_path}")
+    print(f"📋 Объектов: {len(objects)}")
+    print(f"📋 Инструкций: {len(instructions)}")
+    print(f"📋 Строк в CSV: {total_rows}")
+    print("=" * 80)
+
+    return output_path
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Экспорт БД в один CSV")
+    parser.add_argument("--output", "-o", default="db_export_all.csv", help="Выходной CSV файл")
+    args = parser.parse_args()
+
+    export_all_to_single_csv(args.output)
+    print("\n✅ Готово!")
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
 ФАЙЛ: generator\__init__.py
 ================================================================================
 
@@ -927,7 +1081,6 @@ Index('idx_instruction_object', Instruction.object_id)
 Модуль для генерации технологических карт
 """
 
-from generator.docx_generator import TechCardGenerator
 from generator.mapper import (
     CategoryMapper,
     find_object_and_instructions,
@@ -939,8 +1092,9 @@ from generator.mapper import (
 ФАЙЛ: generator\docx_generator.py
 ================================================================================
 
+# generator/docx_generator.py
+
 from docx import Document
-from docx.shared import Pt
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pathlib import Path
@@ -955,7 +1109,6 @@ class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
 
-    # Словарь цветов для средств (4 колонка)
     PRODUCT_COLORS = {
         "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
         "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
@@ -970,7 +1123,6 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
     def _normalize_product_name(self, name: str) -> str:
-        """Нормализует название средства для сравнения"""
         if not name:
             return ""
         normalized = re.sub(r'[^\w\s\-]', '', name)
@@ -979,93 +1131,135 @@ class TechCardGenerator:
         return normalized.strip()
 
     def _get_color_for_product(self, product_name: str) -> str:
-        """Возвращает цвет для средства"""
         if not product_name:
             return None
         normalized_input = self._normalize_product_name(product_name)
         for key, color in self.PRODUCT_COLORS.items():
-            normalized_key = self._normalize_product_name(key)
-            if normalized_input == normalized_key:
+            if self._normalize_product_name(key) == normalized_input:
                 return color
         return None
 
-    def _set_cell_font(self, cell, text: str, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
-        """Устанавливает текст и шрифт в ячейке"""
-        cell.text = text
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.font.name = font_name
-                run.font.size = Pt(size_pt)
-                run.font.bold = bold
-
     def _set_cell_background(self, cell, hex_color: str):
-        """Устанавливает цвет фона ячейки"""
         shading = OxmlElement('w:shd')
         shading.set(qn('w:val'), 'clear')
         shading.set(qn('w:color'), 'auto')
         shading.set(qn('w:fill'), hex_color)
         cell._tc.get_or_add_tcPr().append(shading)
 
-    def _apply_font_to_row(self, row, font_name: str = 'Arial', size_pt: int = 9, bold: bool = False):
-        """Применяет шрифт ко всем ячейкам строки"""
-        for col in range(len(row.cells)):
-            for paragraph in row.cells[col].paragraphs:
-                for run in paragraph.runs:
-                    run.font.name = font_name
-                    run.font.size = Pt(size_pt)
-                    run.font.bold = bold
-
     def _merge_cells_horizontal(self, row, start_col: int, end_col: int):
-        """Объединяет ячейки в строке по горизонтали"""
         if start_col >= end_col:
             return
         start_cell = row.cells[start_col]
         for col in range(start_col + 1, end_col + 1):
             start_cell.merge(row.cells[col])
 
+    def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
+        """Объединяет ячейки по вертикали"""
+        if start_row >= end_row:
+            return
+        start_cell = table.cell(start_row, col)
+        for row in range(start_row + 1, end_row + 1):
+            start_cell.merge(table.cell(row, col))
+
+    def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
+        """Проверяет, одинаковые ли значения в ячейках колонки"""
+        first_text = table.cell(start_row, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            if table.cell(row, col).text.strip() != first_text:
+                return False
+        return True
+
     def _get_category_priority(self, session) -> dict:
-        """Загружает приоритеты категорий из БД"""
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
 
-    def generate(self, checklist_data: ChecklistData, output_path: str) -> str:
-        doc = Document(self.template_path)
+    def _get_instruction_signature(self, instructions: list) -> tuple:
+        """
+        Создаёт сигнатуру для полного набора инструкций объекта.
+        Сигнатура — это кортеж из отсортированных сигнатур каждой инструкции.
+        """
+        if not instructions:
+            return (("empty",),)
 
-        # Основная таблица - вторая в документе (индекс 1)
+        signatures = []
+        for instr in sorted(instructions, key=lambda x: x.cleaning_method or ""):
+            sig = (
+                instr.cleaning_method or "",
+                instr.instruction_number or "",
+                instr.product_name or "",
+                instr.cleaning_technique or "",
+                instr.concentration or "",
+                instr.temperature or "",
+                instr.exposure_time or "",
+                instr.inventory or "",
+                instr.frequency or "",
+                instr.executor or "",
+                instr.control_method or "",
+            )
+            signatures.append(sig)
+
+        return tuple(signatures)
+
+    def _group_by_full_instructions(self, object_instructions: list) -> list:
+        """
+        Группирует объекты с ПОЛНОСТЬЮ ИДЕНТИЧНЫМИ наборами инструкций.
+        object_instructions: список [(obj_name, [instructions]), ...]
+        Возвращает: список [(merged_names, [instructions]), ...]
+        """
+        groups = {}
+
+        for obj_name, instructions in object_instructions:
+            signature = self._get_instruction_signature(instructions)
+
+            if signature not in groups:
+                groups[signature] = {
+                    "names": [],
+                    "instructions": instructions
+                }
+            groups[signature]["names"].append(obj_name)
+
+        result = []
+        for signature, data in groups.items():
+            merged_name = ", ".join(sorted(data["names"]))
+            result.append((merged_name, data["instructions"]))
+
+        return result
+
+    def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1) -> str:
+        """
+        Генерирует техкарту.
+        mode: 1 - по категориям (с заголовками), 2 - по приоритету (единый список)
+        """
+        doc = Document(self.template_path)
         main_table = doc.tables[1]
 
-        # Заполняем помещение (строка 1, ячейка 0)
+        # Заполняем помещение
         room_cell = main_table.cell(1, 0)
-        room_text = room_cell.text
-        if "Помещение:" in room_text:
-            new_text = f"Помещение: {checklist_data.room_name or '______________'}"
-            self._set_cell_font(room_cell, new_text, bold=True)
+        if "Помещение:" in room_cell.text:
+            room_cell.text = f"Помещение: {checklist_data.room_name or '______________'}"
+            if room_cell.paragraphs and room_cell.paragraphs[0].runs:
+                room_cell.paragraphs[0].runs[0].font.bold = True
 
-        # === ОПТИМИЗАЦИЯ: ЗАГРУЖАЕМ ВСЕ ДАННЫЕ ИЗ БД ЗА ОДИН РАЗ ===
+        # === ЗАГРУЗКА ДАННЫХ ИЗ БД ===
         session = SessionLocal()
-
-        # Приоритеты категорий
         category_priority = self._get_category_priority(session)
 
-        # Собираем все normalized_name из чек-листа
         checked_items = checklist_data.get_checked_items()
         all_names = [item.name for item in checked_items]
 
-        # Загружаем все объекты одним запросом
         db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
         objects_dict = {obj.normalized_name: obj for obj in db_objects}
 
-        # Загружаем все инструкции одним запросом
         object_ids = [obj.id for obj in db_objects]
         db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
 
-        # Группируем инструкции по object_id
         instructions_dict = defaultdict(list)
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
-        # Группируем объекты по категориям
-        category_items = defaultdict(list)
+        # Собираем данные: для каждого объекта — его полный набор инструкций
+        category_object_instructions = defaultdict(list)  # для режима 1
+        all_object_instructions = []  # для режима 2
         category_order = {}
 
         for item in checked_items:
@@ -1074,51 +1268,113 @@ class TechCardGenerator:
             priority = category_priority.get(cat_name, 999)
             category_order[cat_name] = priority
 
-            # Используем display_name для вывода в техкарту
             display_name = obj.display_name if obj else item.name
+            sort_priority = obj.sort_priority if obj else 999
 
             if obj and obj.id in instructions_dict:
-                for instr in instructions_dict[obj.id]:
-                    category_items[cat_name].append((display_name, instr, item.category))
+                instructions = instructions_dict[obj.id]
             else:
-                category_items[cat_name].append((display_name, None, item.category))
+                instructions = []
+
+            category_object_instructions[cat_name].append((display_name, instructions))
+            all_object_instructions.append((display_name, instructions, sort_priority))
 
         session.close()
 
-        # === СОРТИРУЕМ ===
-        sorted_categories = sorted(category_items.keys(), key=lambda x: category_order.get(x, 999))
-        for cat_name in sorted_categories:
-            category_items[cat_name].sort(key=lambda x: x[0])
+        # === ПОДГОТОВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
+        rows_data = []
+        merge_info = []  # (start_row, end_row) для вертикального объединения
 
-        # Заполняем таблицу
-        start_row = 6  # после 5 объединенных строк + заголовки
+        if mode == 1:
+            # Режим 1: по категориям
+            sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
 
-        # Удаляем старые строки данных
-        while len(main_table.rows) > start_row:
-            tbl = main_table._tbl
-            tbl.remove(main_table.rows[start_row]._tr)
+            for cat_name in sorted_categories:
+                items = category_object_instructions[cat_name]
+                if not items:
+                    continue
 
+                # Сортируем объекты внутри категории по алфавиту
+                items.sort(key=lambda x: x[0])
+
+                # Группируем объекты с полностью идентичными наборами инструкций
+                grouped = self._group_by_full_instructions(items)
+
+                # Добавляем заголовок категории
+                rows_data.append(('category', cat_name, None))
+
+                # Добавляем строки для каждой группы инструкций
+                for obj_name, instructions in grouped:
+                    group_start_row = len(rows_data)
+
+                    if instructions:
+                        for i, instr in enumerate(instructions):
+                            # Только первая строка содержит имя объекта
+                            display_name = obj_name if i == 0 else ""
+                            rows_data.append(('object', display_name, instr))
+                    else:
+                        rows_data.append(('object', obj_name, None))
+
+                    group_end_row = len(rows_data) - 1
+
+                    # Если в группе больше одной строки — запоминаем для объединения
+                    if group_end_row > group_start_row:
+                        merge_info.append((group_start_row, group_end_row))
+        else:
+            # Режим 2: по приоритету (единый список)
+            # Сортируем по sort_priority, затем по display_name
+            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+
+            # Группируем объекты с полностью идентичными наборами инструкций
+            items_for_grouping = [(name, instrs) for name, instrs, _ in all_object_instructions]
+            grouped = self._group_by_full_instructions(items_for_grouping)
+
+            # Добавляем строки для каждой группы инструкций
+            for obj_name, instructions in grouped:
+                group_start_row = len(rows_data)
+
+                if instructions:
+                    for i, instr in enumerate(instructions):
+                        # Только первая строка содержит имя объекта
+                        display_name = obj_name if i == 0 else ""
+                        rows_data.append(('object', display_name, instr))
+                else:
+                    rows_data.append(('object', obj_name, None))
+
+                group_end_row = len(rows_data) - 1
+
+                # Если в группе больше одной строки — запоминаем для объединения
+                if group_end_row > group_start_row:
+                    merge_info.append((group_start_row, group_end_row))
+
+        # === ОЧИСТКА ТАБЛИЦЫ ===
+        start_row = 6
+        tbl = main_table._tbl
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+        while len(tr_elements) > start_row:
+            tbl.remove(tr_elements[-1])
+            tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+
+        # === ДОБАВЛЕНИЕ СТРОК ===
+        for _ in range(len(rows_data)):
+            main_table.add_row()
+
+        # === ЗАПОЛНЕНИЕ ===
         current_row = start_row
+        for row_info in rows_data:
+            row = main_table.rows[current_row]
 
-        # === ВЫВОД ===
-        for category_name in sorted_categories:
-            items = category_items[category_name]
+            if row_info[0] == 'category':
+                self._merge_cells_horizontal(row, 0, 11)
+                row.cells[0].text = row_info[1]
+                if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
+                    row.cells[0].paragraphs[0].runs[0].font.bold = True
 
-            # Строка категории
-            if current_row >= len(main_table.rows):
-                main_table.add_row()
-            category_row = main_table.rows[current_row]
-            self._merge_cells_horizontal(category_row, 0, 11)
-            self._set_cell_font(category_row.cells[0], category_name, bold=True)
-            current_row += 1
-
-            # Строки объектов
-            for obj_name, instr, _ in items:
-                if current_row >= len(main_table.rows):
-                    main_table.add_row()
-                row = main_table.rows[current_row]
-
+            elif row_info[0] == 'object':
+                obj_name, instr = row_info[1], row_info[2]
                 row.cells[0].text = obj_name
+
                 if instr:
                     row.cells[1].text = instr.cleaning_method or ""
                     row.cells[2].text = instr.instruction_number or ""
@@ -1132,7 +1388,6 @@ class TechCardGenerator:
                     row.cells[10].text = instr.executor or ""
                     row.cells[11].text = instr.control_method or ""
 
-                    # Цветовое кодирование 4 колонки (индекс 3) - Наименование средства
                     if instr.product_name:
                         color = self._get_color_for_product(instr.product_name)
                         if color:
@@ -1141,8 +1396,29 @@ class TechCardGenerator:
                     for col in range(1, 12):
                         row.cells[col].text = ""
 
-                self._apply_font_to_row(row, font_name='Arial', size_pt=8, bold=False)
-                current_row += 1
+            current_row += 1
+
+        # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
+        # Корректируем индексы с учётом start_row
+        for group_start, group_end in merge_info:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+
+            if actual_end > actual_start:
+                # Очищаем ячейки в первой колонке (кроме первой) ДО объединения
+                for row in range(actual_start + 1, actual_end + 1):
+                    main_table.cell(row, 0).text = ""
+                # Объединяем первую колонку
+                self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+
+                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11) если значения одинаковые
+                for col in [8, 9, 10, 11]:
+                    if self._cells_are_equal(main_table, col, actual_start, actual_end):
+                        # Очищаем ячейки (кроме первой) ДО объединения
+                        for row in range(actual_start + 1, actual_end + 1):
+                            main_table.cell(row, col).text = ""
+                        # Объединяем
+                        self._merge_cells_vertical(main_table, col, actual_start, actual_end)
 
         # Сохраняем
         output_file = Path(output_path)
@@ -1218,6 +1494,503 @@ def find_object_and_instructions(session, item_name: str, parser_category: Parse
 
     instructions = get_instructions_for_object(session, obj.id)
     return obj, instructions
+
+================================================================================
+ФАЙЛ: import_csv_to_db.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+import_csv_to_db.py
+
+Импорт данных из CSV в базу данных с выбором режима работы.
+Подготовлен для интеграции в веб-версию.
+"""
+
+import csv
+import sys
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Callable
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from db.database import SessionLocal, engine
+from db.models import Base, Category, Object, Instruction
+
+
+class ImportStats:
+    """Статистика импорта"""
+
+    def __init__(self):
+        self.categories_created = 0
+        self.categories_updated = 0
+        self.objects_created = 0
+        self.objects_updated = 0
+        self.objects_skipped = 0
+        self.instructions_created = 0
+        self.instructions_updated = 0
+        self.instructions_skipped = 0
+        self.errors = []
+        self.start_time = datetime.now()
+        self.end_time = None
+
+    def finish(self):
+        self.end_time = datetime.now()
+
+    def duration_seconds(self) -> float:
+        if self.end_time:
+            return (self.end_time - self.start_time).total_seconds()
+        return 0
+
+    def to_dict(self) -> dict:
+        return {
+            'categories_created': self.categories_created,
+            'categories_updated': self.categories_updated,
+            'objects_created': self.objects_created,
+            'objects_updated': self.objects_updated,
+            'objects_skipped': self.objects_skipped,
+            'instructions_created': self.instructions_created,
+            'instructions_updated': self.instructions_updated,
+            'instructions_skipped': self.instructions_skipped,
+            'errors': len(self.errors),
+            'error_details': self.errors[:10],
+            'duration_seconds': self.duration_seconds(),
+        }
+
+    def print_report(self):
+        print("\n" + "=" * 80)
+        print("📊 СТАТИСТИКА ИМПОРТА")
+        print("=" * 80)
+        print(f"   Категорий создано:    {self.categories_created}")
+        print(f"   Категорий обновлено:  {self.categories_updated}")
+        print(f"   Объектов создано:     {self.objects_created}")
+        print(f"   Объектов обновлено:   {self.objects_updated}")
+        print(f"   Объектов пропущено:   {self.objects_skipped}")
+        print(f"   Инструкций создано:   {self.instructions_created}")
+        print(f"   Инструкций обновлено: {self.instructions_updated}")
+        print(f"   Инструкций пропущено: {self.instructions_skipped}")
+        print(f"   Ошибок:               {len(self.errors)}")
+        print(f"   Время выполнения:     {self.duration_seconds():.2f} сек")
+        print("=" * 80)
+
+        if self.errors:
+            print("\n⚠️ ОШИБКИ:")
+            for err in self.errors[:10]:
+                print(f"   - {err}")
+            if len(self.errors) > 10:
+                print(f"   ... и ещё {len(self.errors) - 10}")
+
+
+class CSVImporter:
+    """Импортер CSV в БД"""
+
+    # Режимы импорта
+    MODE_ADD_NEW = 1  # Добавление новых, пропуск дубликатов
+    MODE_CLEAR_DATA = 2  # Очистка данных перед импортом
+    MODE_RECREATE_DB = 3  # Полное пересоздание БД
+    MODE_EXIT = 4  # Выход без импорта
+
+    MODE_NAMES = {
+        MODE_ADD_NEW: "Добавление новых (пропуск дубликатов)",
+        MODE_CLEAR_DATA: "Очистка данных перед импортом",
+        MODE_RECREATE_DB: "Полное пересоздание БД",
+        MODE_EXIT: "Выход без импорта",
+    }
+
+    def __init__(self, csv_path: str, mode: int = MODE_ADD_NEW, progress_callback: Callable = None):
+        """
+        Инициализация импортера.
+
+        Args:
+            csv_path: Путь к CSV файлу
+            mode: Режим импорта (1, 2, 3, 4)
+            progress_callback: Функция для обновления прогресса (для веб-версии)
+        """
+        self.csv_path = Path(csv_path)
+        self.mode = mode
+        self.progress_callback = progress_callback
+        self.stats = ImportStats()
+        self.session = None
+
+    def _log_progress(self, message: str, percent: int = None):
+        """Логирование прогресса"""
+        print(message)
+        if self.progress_callback:
+            self.progress_callback(message, percent)
+
+    def _recreate_database(self):
+        """Полное пересоздание БД"""
+        self._log_progress("🔄 Удаление старых таблиц...", 5)
+        Base.metadata.drop_all(bind=engine)
+
+        self._log_progress("🔄 Создание новых таблиц...", 10)
+        Base.metadata.create_all(bind=engine)
+
+        self._log_progress("✅ БД пересоздана", 15)
+
+    def _clear_data(self):
+        """Очистка данных из таблиц"""
+        self._log_progress("🔄 Очистка инструкций...", 5)
+        self.session.query(Instruction).delete()
+
+        self._log_progress("🔄 Очистка объектов...", 10)
+        self.session.query(Object).delete()
+
+        self._log_progress("🔄 Очистка категорий...", 15)
+        self.session.query(Category).delete()
+
+        self.session.commit()
+        self._log_progress("✅ Данные очищены", 20)
+
+    def _read_csv(self) -> List[Dict]:
+        """Чтение CSV файла"""
+        self._log_progress("📖 Чтение CSV файла...", 25)
+
+        rows = []
+        with open(self.csv_path, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            for row in reader:
+                rows.append(row)
+
+        self._log_progress(f"✅ Прочитано {len(rows)} строк", 30)
+        return rows
+
+    def _import_categories(self, rows: List[Dict]) -> Dict[str, int]:
+        """Импорт категорий"""
+        self._log_progress("📁 Импорт категорий...", 35)
+
+        # Собираем уникальные категории
+        unique_categories = {}
+        for row in rows:
+            cat_name = row.get('category_name', '').strip()
+            if cat_name:
+                unique_categories[cat_name] = unique_categories.get(cat_name, 0) + 1
+
+        category_ids = {}
+
+        for cat_name in unique_categories:
+            existing = self.session.query(Category).filter(Category.name == cat_name).first()
+
+            if existing:
+                category_ids[cat_name] = existing.id
+                self.stats.categories_updated += 1
+            else:
+                # Определяем sort_order по алфавиту или из данных
+                cat = Category(name=cat_name, sort_order=len(category_ids) + 1)
+                self.session.add(cat)
+                self.session.flush()
+                category_ids[cat_name] = cat.id
+                self.stats.categories_created += 1
+
+        self.session.commit()
+        self._log_progress(f"✅ Категорий: {len(category_ids)} (новых: {self.stats.categories_created})", 40)
+        return category_ids
+
+    def _import_objects_and_instructions(self, rows: List[Dict], category_ids: Dict[str, int]):
+        """Импорт объектов и инструкций"""
+        total_rows = len(rows)
+
+        # Группируем строки по object_id (если есть) или по normalized_name
+        object_groups = {}
+        for row in rows:
+            obj_id = row.get('object_id', '').strip()
+            norm_name = row.get('normalized_name', '').strip()
+
+            if not norm_name:
+                continue
+
+            key = obj_id if obj_id else norm_name
+            if key not in object_groups:
+                object_groups[key] = {
+                    'object_data': row,
+                    'instructions': []
+                }
+
+            # Добавляем инструкцию, если есть данные
+            if row.get('cleaning_method', '').strip() or row.get('product_name', '').strip():
+                object_groups[key]['instructions'].append(row)
+
+        processed = 0
+        total_groups = len(object_groups)
+
+        for key, group in object_groups.items():
+            processed += 1
+
+            if processed % 50 == 0:
+                percent = 40 + int((processed / total_groups) * 50)
+                self._log_progress(f"📦 Обработка объектов: {processed}/{total_groups}", percent)
+
+            row = group['object_data']
+            norm_name = row.get('normalized_name', '').strip()
+            display_name = row.get('display_name', '').strip()
+            base_name = row.get('base_name', '').strip()
+            modifier = row.get('modifier', '').strip() or None
+            cat_name = row.get('category_name', '').strip()
+            sort_priority = int(row.get('sort_priority', 0) or 0)
+
+            if not norm_name or not display_name:
+                continue
+
+            category_id = category_ids.get(cat_name)
+            if not category_id:
+                self.stats.errors.append(f"Категория не найдена: {cat_name} для {norm_name}")
+                continue
+
+            # Ищем существующий объект
+            existing = self.session.query(Object).filter(Object.normalized_name == norm_name).first()
+
+            if existing:
+                if self.mode == self.MODE_ADD_NEW:
+                    # Пропускаем, объект уже есть
+                    obj = existing
+                    self.stats.objects_skipped += 1
+                else:
+                    # Обновляем
+                    existing.display_name = display_name
+                    existing.base_name = base_name
+                    existing.modifier = modifier
+                    existing.category_id = category_id
+                    existing.sort_priority = sort_priority
+                    obj = existing
+                    self.stats.objects_updated += 1
+            else:
+                # Создаём новый
+                obj = Object(
+                    normalized_name=norm_name,
+                    display_name=display_name,
+                    base_name=base_name or display_name,
+                    modifier=modifier,
+                    category_id=category_id,
+                    sort_priority=sort_priority
+                )
+                self.session.add(obj)
+                self.session.flush()
+                self.stats.objects_created += 1
+
+            # Импорт инструкций
+            for instr_row in group['instructions']:
+                cleaning_method = instr_row.get('cleaning_method', '').strip()
+                product_name = instr_row.get('product_name', '').strip()
+
+                if not cleaning_method and not product_name:
+                    continue
+
+                # Ищем существующую инструкцию
+                existing_instr = self.session.query(Instruction).filter(
+                    Instruction.object_id == obj.id,
+                    Instruction.cleaning_method == cleaning_method,
+                    Instruction.product_name == product_name
+                ).first()
+
+                if existing_instr:
+                    if self.mode == self.MODE_ADD_NEW:
+                        self.stats.instructions_skipped += 1
+                    else:
+                        # Обновляем
+                        existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
+                        existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
+                        existing_instr.concentration = instr_row.get('concentration', '').strip() or None
+                        existing_instr.temperature = instr_row.get('temperature', '').strip() or None
+                        existing_instr.exposure_time = instr_row.get('exposure_time', '').strip() or None
+                        existing_instr.inventory = instr_row.get('inventory', '').strip() or None
+                        existing_instr.frequency = instr_row.get('frequency', '').strip() or None
+                        existing_instr.executor = instr_row.get('executor', '').strip() or None
+                        existing_instr.control_method = instr_row.get('control_method', '').strip() or None
+                        self.stats.instructions_updated += 1
+                else:
+                    # Создаём новую
+                    instr = Instruction(
+                        object_id=obj.id,
+                        cleaning_method=cleaning_method or None,
+                        instruction_number=instr_row.get('instruction_number', '').strip() or None,
+                        product_name=product_name or None,
+                        cleaning_technique=instr_row.get('cleaning_technique', '').strip() or None,
+                        concentration=instr_row.get('concentration', '').strip() or None,
+                        temperature=instr_row.get('temperature', '').strip() or None,
+                        exposure_time=instr_row.get('exposure_time', '').strip() or None,
+                        inventory=instr_row.get('inventory', '').strip() or None,
+                        frequency=instr_row.get('frequency', '').strip() or None,
+                        executor=instr_row.get('executor', '').strip() or None,
+                        control_method=instr_row.get('control_method', '').strip() or None
+                    )
+                    self.session.add(instr)
+                    self.stats.instructions_created += 1
+
+            if processed % 100 == 0:
+                self.session.commit()
+
+        self.session.commit()
+        self._log_progress(f"✅ Объектов: создано {self.stats.objects_created}, обновлено {self.stats.objects_updated}",
+                           90)
+        self._log_progress(
+            f"✅ Инструкций: создано {self.stats.instructions_created}, обновлено {self.stats.instructions_updated}", 95)
+
+    def run(self) -> ImportStats:
+        """Запуск импорта"""
+
+        if not self.csv_path.exists():
+            raise FileNotFoundError(f"CSV файл не найден: {self.csv_path}")
+
+        self._log_progress("🚀 Начало импорта...", 0)
+        self._log_progress(f"📂 Файл: {self.csv_path}", 0)
+        self._log_progress(f"🔧 Режим: {self.MODE_NAMES.get(self.mode, 'Неизвестно')}", 0)
+
+        try:
+            self.session = SessionLocal()
+
+            # Режимы
+            if self.mode == self.MODE_EXIT:
+                self._log_progress("👋 Выход без импорта", 100)
+                self.stats.finish()
+                return self.stats
+
+            if self.mode == self.MODE_RECREATE_DB:
+                self._recreate_database()
+            elif self.mode == self.MODE_CLEAR_DATA:
+                self._clear_data()
+
+            # Чтение CSV
+            rows = self._read_csv()
+
+            if not rows:
+                self._log_progress("⚠️ CSV файл пуст", 100)
+                self.stats.finish()
+                return self.stats
+
+            # Импорт
+            category_ids = self._import_categories(rows)
+            self._import_objects_and_instructions(rows, category_ids)
+
+            self._log_progress("🎉 Импорт завершён!", 100)
+
+        except Exception as e:
+            self.session.rollback()
+            self.stats.errors.append(str(e))
+            self._log_progress(f"❌ Ошибка: {e}", 100)
+            raise
+        finally:
+            self.session.close()
+            self.stats.finish()
+
+        return self.stats
+
+
+def select_mode() -> int:
+    """Интерактивный выбор режима"""
+    print("\n" + "=" * 60)
+    print("📥 ИМПОРТ CSV В БАЗУ ДАННЫХ")
+    print("=" * 60)
+    print("\nВыберите режим импорта:")
+    print(f"  1. {CSVImporter.MODE_NAMES[CSVImporter.MODE_ADD_NEW]}")
+    print(f"  2. {CSVImporter.MODE_NAMES[CSVImporter.MODE_CLEAR_DATA]}")
+    print(f"  3. {CSVImporter.MODE_NAMES[CSVImporter.MODE_RECREATE_DB]}")
+    print(f"  4. {CSVImporter.MODE_NAMES[CSVImporter.MODE_EXIT]}")
+
+    while True:
+        try:
+            choice = input("\n🔢 Ваш выбор (1-4): ").strip()
+            mode = int(choice)
+            if mode in [1, 2, 3, 4]:
+                return mode
+            print("❌ Введите число от 1 до 4")
+        except ValueError:
+            print("❌ Введите корректное число")
+        except KeyboardInterrupt:
+            print("\n👋 Отмена")
+            return CSVImporter.MODE_EXIT
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Импорт CSV в базу данных")
+    parser.add_argument("file", nargs="?", help="Путь к CSV файлу")
+    parser.add_argument("--mode", "-m", type=int, choices=[1, 2, 3, 4],
+                        help="Режим импорта (1-добавление, 2-очистка, 3-пересоздание, 4-выход)")
+    parser.add_argument("--yes", "-y", action="store_true", help="Пропустить подтверждение")
+    args = parser.parse_args()
+
+    # Определяем файл
+    if args.file:
+        csv_path = args.file
+    else:
+        # Ищем CSV в текущей папке
+        csv_files = list(Path(".").glob("*.csv"))
+        if not csv_files:
+            print("❌ CSV файлы не найдены в текущей папке")
+            return
+        elif len(csv_files) == 1:
+            csv_path = str(csv_files[0])
+            print(f"📁 Найден файл: {csv_path}")
+        else:
+            print("\n📁 Найдено несколько CSV файлов:")
+            for i, f in enumerate(csv_files, 1):
+                print(f"   {i}. {f.name}")
+            choice = input("\n🔢 Выберите номер файла: ").strip()
+            try:
+                csv_path = str(csv_files[int(choice) - 1])
+            except (ValueError, IndexError):
+                print("❌ Неверный выбор")
+                return
+
+    if not Path(csv_path).exists():
+        print(f"❌ Файл не найден: {csv_path}")
+        return
+
+    # Определяем режим
+    if args.mode:
+        mode = args.mode
+    else:
+        mode = select_mode()
+
+    if mode == CSVImporter.MODE_EXIT:
+        print("👋 Выход")
+        return
+
+    # Подтверждение для опасных режимов
+    if mode in [CSVImporter.MODE_CLEAR_DATA, CSVImporter.MODE_RECREATE_DB] and not args.yes:
+        print(f"\n⚠️ ВНИМАНИЕ! Выбран режим: {CSVImporter.MODE_NAMES[mode]}")
+        print("   Все существующие данные будут УДАЛЕНЫ!")
+        confirm = input("\n   Продолжить? (yes/no): ").strip().lower()
+        if confirm not in ['yes', 'y', 'да', 'д']:
+            print("👋 Отмена")
+            return
+
+    # Запуск импорта
+    try:
+        importer = CSVImporter(csv_path, mode)
+        stats = importer.run()
+        stats.print_report()
+    except Exception as e:
+        print(f"\n❌ Ошибка импорта: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+# ============================================================
+# ФУНКЦИИ ДЛЯ ИНТЕГРАЦИИ В ВЕБ-ВЕРСИЮ
+# ============================================================
+
+def import_csv_web(csv_path: str, mode: int, progress_callback: Callable = None) -> dict:
+    """
+    Функция для вызова из веб-приложения.
+
+    Args:
+        csv_path: Путь к CSV файлу
+        mode: Режим импорта (1, 2, 3)
+        progress_callback: Функция(message, percent) для обновления прогресса
+
+    Returns:
+        dict: Статистика импорта
+    """
+    importer = CSVImporter(csv_path, mode, progress_callback)
+    stats = importer.run()
+    return stats.to_dict()
+
+
+if __name__ == "__main__":
+    main()
 
 ================================================================================
 ФАЙЛ: parser\__init__.py
@@ -1729,6 +2502,535 @@ def parse_checklist(file_path: str) -> ChecklistData:
     return parser.parse(file_path)
 
 ================================================================================
+ФАЙЛ: requirements.txt
+================================================================================
+
+[ОШИБКА ЧТЕНИЯ: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte]
+
+================================================================================
+ФАЙЛ: templates\index.html
+================================================================================
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор технологических карт</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed #cbd5e0;
+            border-radius: 15px;
+            padding: 50px;
+            text-align: center;
+            background: #f8fafc;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 30px;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e8f0fe;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .upload-text {
+            font-size: 1.2em;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #718096;
+            font-size: 0.9em;
+        }
+
+        .file-info {
+            background: #f0f4ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #2d3748;
+        }
+
+        .file-size {
+            color: #718096;
+            font-size: 0.9em;
+        }
+
+        .remove-file {
+            color: #e53e3e;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .remove-file:hover {
+            background: #fff5f5;
+        }
+
+        .process-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            width: 100%;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .process-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .process-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loader-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            margin-top: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+
+        .result-header {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            padding: 20px;
+        }
+
+        .result-header h2 {
+            margin-bottom: 10px;
+        }
+
+        .result-content {
+            padding: 20px;
+            background: #f8fafc;
+        }
+
+        .summary {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .summary-item {
+            text-align: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 10px;
+        }
+
+        .summary-label {
+            color: #718096;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .summary-value {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .category {
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+
+        .category-header {
+            background: #f7fafc;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1.1em;
+        }
+
+        .category-items {
+            padding: 15px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .item {
+            display: inline-block;
+            background: #edf2f7;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            color: #2d3748;
+            transition: all 0.2s;
+        }
+
+        .item:hover {
+            background: #e2e8f0;
+            transform: translateY(-1px);
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid #fc8181;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-size: 0.9em;
+            border-top: 1px solid #e2e8f0;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Генератор технологических карт</h1>
+            <p>Загрузите чек-лист в формате .docx для анализа</p>
+        </div>
+
+        <div class="content">
+            <!-- Область загрузки -->
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📎</div>
+                <div class="upload-text">Перетащите файл сюда или нажмите для выбора</div>
+                <div class="upload-hint">Поддерживаются только .docx файлы</div>
+                <input type="file" id="fileInput" accept=".docx" style="display: none;">
+            </div>
+
+            <!-- Информация о выбранном файле -->
+            <div id="fileInfo" class="file-info hidden">
+                <div>
+                    <div class="file-name" id="fileName"></div>
+                    <div class="file-size" id="fileSize"></div>
+                </div>
+                <div class="remove-file" id="removeFile">Удалить</div>
+            </div>
+
+            <!-- Кнопка обработки -->
+            <button class="process-btn" id="processBtn" disabled>
+                🔄 Обработать чек-лист
+            </button>
+
+            <!-- Индикатор загрузки -->
+            <div id="loader" class="loader">
+                <div class="loader-spinner"></div>
+                <p>Обработка файла...</p>
+            </div>
+
+            <!-- Результат -->
+            <div id="result" class="result hidden"></div>
+
+            <!-- Футер -->
+            <div class="footer">
+                Автоматическая генерация технологических карт v1.0
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFile = document.getElementById('removeFile');
+        const processBtn = document.getElementById('processBtn');
+        const loader = document.getElementById('loader');
+        const result = document.getElementById('result');
+
+        let selectedFile = null;
+
+        // Клик по области загрузки
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag & Drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        // Выбор файла через диалог
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        // Удаление файла
+        removeFile.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            processBtn.disabled = true;
+            result.classList.add('hidden');
+        });
+
+        // Обработка выбранного файла
+        function handleFileSelect(file) {
+            // Проверка расширения
+            if (!file.name.toLowerCase().endsWith('.docx')) {
+                alert('Пожалуйста, выберите файл .docx');
+                return;
+            }
+
+            selectedFile = file;
+
+            // Отображаем информацию о файле
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.remove('hidden');
+
+            // Активируем кнопку
+            processBtn.disabled = false;
+
+            // Прячем предыдущий результат
+            result.classList.add('hidden');
+        }
+
+        // Форматирование размера файла
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' Б';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+        }
+
+        // Обработка кнопки
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            // Показываем loader
+            loader.style.display = 'block';
+            processBtn.disabled = true;
+            result.classList.add('hidden');
+
+            // Создаём FormData
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                // Отправляем на сервер
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResult(data.data);
+                } else {
+                    showError(data.error || 'Ошибка при обработке файла');
+                }
+            } catch (error) {
+                showError('Ошибка соединения с сервером');
+            } finally {
+                loader.style.display = 'none';
+                processBtn.disabled = false;
+            }
+        });
+
+        // Отображение результата
+        function displayResult(data) {
+            let html = `
+                <div class="result-header">
+                    <h2>✅ Результат обработки</h2>
+                    <p>Файл: ${data.file_name}</p>
+                </div>
+                <div class="result-content">
+                    <div class="summary">
+                        <h3>📊 Общая информация</h3>
+                        <div class="summary-grid">
+                            <div class="summary-item">
+                                <div class="summary-label">Предприятие</div>
+                                <div class="summary-value">${data.enterprise}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Участок</div>
+                                <div class="summary-value">${data.room_name}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Всего позиций</div>
+                                <div class="summary-value">${data.total_items}</div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Отмечено</div>
+                                <div class="summary-value">${data.checked_items}</div>
+                            </div>
+                        </div>
+                    </div>
+            `;
+
+            // Категории с элементами
+            if (data.categories && data.categories.length > 0) {
+                data.categories.forEach(category => {
+                    if (category.items && category.items.length > 0) {
+                        html += `
+                            <div class="category">
+                                <div class="category-header">📌 ${category.name}</div>
+                                <div class="category-items">
+                        `;
+
+                        category.items.forEach(item => {
+                            html += `<span class="item">${item.name}</span>`;
+                        });
+
+                        html += `</div></div>`;
+                    }
+                });
+            } else {
+                html += '<p style="text-align: center; padding: 20px;">❌ Нет отмеченных позиций</p>';
+            }
+
+            html += `</div>`;
+            result.innerHTML = html;
+            result.classList.remove('hidden');
+        }
+
+        // Отображение ошибки
+        function showError(message) {
+            result.innerHTML = `
+                <div class="error">
+                    <strong>❌ Ошибка:</strong> ${message}
+                </div>
+            `;
+            result.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
+
+================================================================================
 ФАЙЛ: test_generator.py
 ================================================================================
 
@@ -1736,11 +3038,13 @@ def parse_checklist(file_path: str) -> ChecklistData:
 """
 test_generator.py - Пакетная генерация технологических карт
 Поддерживает .docx и .zip
+Режимы: 1 - по категориям, 2 - по приоритету (без категорий)
 """
 
 import sys
 import zipfile
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -1773,33 +3077,38 @@ def find_files(input_dir: Path) -> list:
     return files
 
 
-def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path) -> dict:
+def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path, mode: int) -> dict:
     """Обрабатывает один .docx файл"""
     result = {"file": file_path.name, "status": "error", "output": None, "error": None}
     try:
         print(f"   🔍 Парсинг чек-листа...")
+        parse_start = time.time()
         checklist_data = parse_checklist(str(file_path))
+        parse_time = time.time() - parse_start
 
         checked_count = len(checklist_data.get_checked_items())
-        print(f"   ✅ Найдено отмеченных объектов: {checked_count}")
-
-        # Статистика по объектам для "Прочее"
-        other_count = sum(1 for item in checklist_data.get_checked_items()
-                          if not getattr(item, 'markers', None) or len(item.markers) == 0)
-        if other_count > 0:
-            print(f"   ⚠️ Из них в раздел 'Прочее': {other_count}")
+        print(f"   ✅ Найдено отмеченных объектов: {checked_count} (за {parse_time:.2f} сек)")
 
         room_name = checklist_data.room_name or file_path.stem
         safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
         output_path = output_dir / f"{safe_name}_tech_card.docx"
 
-        print(f"   📝 Генерация техкарты...")
-        generator.generate(checklist_data, str(output_path))
+        mode_str = "по категориям" if mode == 1 else "по приоритету"
+        print(f"   📝 Генерация техкарты (режим {mode}: {mode_str})...")
+        gen_start = time.time()
+        generator.generate(checklist_data, str(output_path), mode)
+        gen_time = time.time() - gen_start
 
         result["status"] = "success"
         result["output"] = str(output_path)
         result["objects"] = checked_count
-        result["other"] = other_count
+        result["parse_time"] = parse_time
+        result["gen_time"] = gen_time
+        result["total_time"] = parse_time + gen_time
+        result["mode"] = mode
+
+        print(
+            f"   ✅ Готово! (парсинг: {parse_time:.2f}с, генерация: {gen_time:.2f}с, всего: {parse_time + gen_time:.2f}с)")
     except Exception as e:
         result["error"] = str(e)
         import traceback
@@ -1807,7 +3116,7 @@ def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path
     return result
 
 
-def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path) -> list:
+def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path, mode: int) -> list:
     """Обрабатывает ZIP архив"""
     results = []
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -1821,43 +3130,54 @@ def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path) 
             })
             return results
         for docx_file in docx_files:
-            results.append(process_docx(docx_file, generator, output_dir))
+            results.append(process_docx(docx_file, generator, output_dir, mode))
     return results
 
 
-def print_report(results: list):
+def print_report(results: list, mode: int):
     """Выводит отчёт о генерации"""
     success = sum(1 for r in results if r["status"] == "success")
     error = len(results) - success
 
     total_objects = sum(r.get("objects", 0) for r in results if r["status"] == "success")
-    total_other = sum(r.get("other", 0) for r in results if r["status"] == "success")
+    total_time = sum(r.get("total_time", 0) for r in results if r["status"] == "success")
 
+    mode_str = "по категориям" if mode == 1 else "по приоритету"
     print("\n" + "=" * 70)
-    print("📊 ОТЧЁТ О ГЕНЕРАЦИИ")
+    print(f"📊 ОТЧЁТ О ГЕНЕРАЦИИ (режим {mode}: {mode_str})")
     print("=" * 70)
 
     for r in results:
         if r["status"] == "success":
-            obj_info = f" ({r.get('objects', 0)} об."
-            if r.get('other', 0) > 0:
-                obj_info += f", {r.get('other')} в Прочее"
-            obj_info += ")"
-            print(f"✅ {r['file']}{obj_info}")
+            print(f"✅ {r['file']} ({r.get('objects', 0)} об.)")
             print(f"   → {r['output']}")
+            print(
+                f"   ⏱️ Парсинг: {r.get('parse_time', 0):.2f}с | Генерация: {r.get('gen_time', 0):.2f}с | Всего: {r.get('total_time', 0):.2f}с")
         else:
             print(f"❌ {r['file']} → {r.get('error', 'Ошибка')}")
 
     print("-" * 70)
     print(f"✅ Успешно обработано файлов: {success}")
     print(f"❌ Ошибок: {error}")
-    print(f"📋 Всего объектов в техкартах: {total_objects}")
-    if total_other > 0:
-        print(f"⚠️ Из них в разделе 'Прочее': {total_other}")
+    print(f"📋 Всего объектов: {total_objects}")
+    print(f"⏱️ Общее время: {total_time:.2f} сек")
     print("=" * 70)
 
 
-def process_single_file(file_path: str, output_dir: str = "tech_cards"):
+def select_mode() -> int:
+    """Интерактивный выбор режима"""
+    print("\nВыберите режим генерации:")
+    print("   1. По категориям (с заголовками, по алфавиту)")
+    print("   2. По приоритету (единый список, сверху вниз)")
+
+    while True:
+        choice = input("\n🔢 Ваш выбор (1 или 2): ").strip()
+        if choice in ['1', '2']:
+            return int(choice)
+        print("❌ Введите 1 или 2")
+
+
+def process_single_file(file_path: str, output_dir: str = "tech_cards", mode: int = None):
     """Обрабатывает один файл (для тестирования)"""
     input_path = Path(file_path)
     if not input_path.exists():
@@ -1867,12 +3187,15 @@ def process_single_file(file_path: str, output_dir: str = "tech_cards"):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    if mode is None:
+        mode = select_mode()
+
     generator = TechCardGenerator()
 
     if input_path.suffix.lower() == '.docx':
-        return process_docx(input_path, generator, output_path)
+        return process_docx(input_path, generator, output_path, mode)
     elif input_path.suffix.lower() == '.zip':
-        results = process_zip(input_path, generator, output_path)
+        results = process_zip(input_path, generator, output_path, mode)
         return results[0] if results else None
     else:
         print(f"❌ Неподдерживаемый формат: {input_path.suffix}")
@@ -1885,15 +3208,25 @@ def main():
     parser.add_argument("--input", "-i", default="checklists", help="Папка с чек-листами")
     parser.add_argument("--output", "-o", default="tech_cards", help="Папка для сохранения")
     parser.add_argument("--single", "-s", help="Обработать один файл (для тестирования)")
+    parser.add_argument("--mode", "-m", type=int, choices=[1, 2], help="Режим: 1 - по категориям, 2 - по приоритету")
     args = parser.parse_args()
+
+    # Определяем режим
+    if args.mode:
+        mode = args.mode
+    elif args.single:
+        mode = select_mode()
+    else:
+        mode = select_mode()
 
     # Режим обработки одного файла
     if args.single:
-        print("🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (ОДИН ФАЙЛ)")
+        mode_str = "по категориям" if mode == 1 else "по приоритету"
+        print(f"🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (режим {mode}: {mode_str})")
         print("=" * 60)
-        result = process_single_file(args.single, args.output)
+        result = process_single_file(args.single, args.output, mode)
         if result:
-            print_report([result])
+            print_report([result], mode)
         return
 
     # Режим пакетной обработки
@@ -1905,7 +3238,8 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ")
+    mode_str = "по категориям" if mode == 1 else "по приоритету"
+    print(f"🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ (режим {mode}: {mode_str})")
     print("=" * 60)
     print(f"📂 Входная папка: {input_dir}")
     print(f"📂 Выходная папка: {output_dir}")
@@ -1926,12 +3260,12 @@ def main():
     for file_path in files:
         if file_path.suffix.lower() == '.docx':
             print(f"\n📄 Обработка: {file_path.name}")
-            all_results.append(process_docx(file_path, generator, output_dir))
+            all_results.append(process_docx(file_path, generator, output_dir, mode))
         elif file_path.suffix.lower() == '.zip':
             print(f"\n📦 Обработка ZIP: {file_path.name}")
-            all_results.extend(process_zip(file_path, generator, output_dir))
+            all_results.extend(process_zip(file_path, generator, output_dir, mode))
 
-    print_report(all_results)
+    print_report(all_results, mode)
 
 
 if __name__ == "__main__":
