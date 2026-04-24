@@ -43,9 +43,7 @@ body {
     padding: 8px 16px;
 }
 .navbar-ct .nav-link:hover,
-.navbar-ct .nav-link.active {
-    color: var(--ct-primary);
-}
+.navbar-ct .nav-link.active { color: var(--ct-primary); }
 
 /* Карточки */
 .card-ct {
@@ -75,9 +73,11 @@ body {
     font-weight: 600;
     font-size: 0.9rem;
     transition: all 0.2s;
+    cursor: pointer;
 }
 .btn-ct-primary:hover { background: var(--ct-primary-hover); color: #fff; transform: translateY(-1px); }
 .btn-ct-primary:disabled { background: #A0C4E8; cursor: not-allowed; transform: none; }
+
 .btn-ct-accent {
     background: var(--ct-accent);
     color: #fff;
@@ -87,8 +87,10 @@ body {
     font-weight: 600;
     font-size: 0.9rem;
     transition: all 0.2s;
+    cursor: pointer;
 }
 .btn-ct-accent:hover { background: var(--ct-accent-hover); color: #fff; transform: translateY(-1px); }
+
 .btn-ct-outline {
     background: transparent;
     color: var(--ct-primary);
@@ -98,8 +100,16 @@ body {
     font-weight: 600;
     font-size: 0.9rem;
     transition: all 0.2s;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
 }
-.btn-ct-outline:hover { background: var(--ct-primary-light); color: var(--ct-primary-hover); }
+.btn-ct-outline:hover {
+    background: var(--ct-primary-light);
+    color: var(--ct-primary-hover);
+    transform: translateY(-1px);
+}
 
 /* Drag & Drop */
 .upload-zone {

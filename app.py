@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Веб-приложение для парсинга чек-листов и генерации техкарт.
-Поддерживает одиночные .docx, несколько .docx, .zip архивы.
+Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
 """
 
 import os
@@ -10,6 +10,7 @@ import zipfile
 import tempfile
 from pathlib import Path
 from datetime import datetime
+from io import BytesIO
 
 from flask import Flask, request, render_template, jsonify, send_file
 
@@ -121,8 +122,13 @@ def api_generate():
                 i += 1
 
             for file in files:
-                result = process_single_file(file, mode, generator)
-                results.append(result)
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                if ext == 'zip':
+                    zip_results = process_zip_file(file, mode, generator)
+                    results.extend(zip_results)
+                else:
+                    result = process_single_file(file, mode, generator)
+                    results.append(result)
         else:
             file = request.files['file']
             ext = file.filename.rsplit('.', 1)[1].lower()
@@ -135,19 +141,41 @@ def api_generate():
 
         total_objects = sum(r.get('objects', 0) for r in results)
         errors = [r for r in results if 'error' in r]
+        success_files = [r for r in results if 'error' not in r]
+
+        # Если несколько успешных файлов — создаём ZIP-архив
+        zip_url = None
+        if len(success_files) > 1:
+            zip_url = create_zip_archive(success_files)
 
         return jsonify({
             'success': True,
             'total_files': len(results),
             'total_objects': total_objects,
             'files': results,
-            'errors': errors
+            'errors': errors,
+            'zip_url': zip_url
         })
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def create_zip_archive(files_info):
+    """Создаёт ZIP-архив из сгенерированных техкарт"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    zip_filename = f"tech_cards_{timestamp}.zip"
+    zip_path = f"tech_cards/{zip_filename}"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        for f in files_info:
+            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
+            if os.path.exists(docx_path):
+                zf.write(docx_path, Path(docx_path).name)
+
+    return f'/download/{zip_filename}'
 
 
 @app.route('/download/<filename>')

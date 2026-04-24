@@ -8,6 +8,49 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Дополнительные стили для прогресс-бара */
+        .progress-container {
+            margin-top: 16px;
+        }
+        .progress-ct {
+            height: 10px;
+            border-radius: 5px;
+            background: var(--ct-border);
+            overflow: hidden;
+        }
+        .progress-ct .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--ct-primary) 0%, #0078D4 100%);
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+        .progress-message {
+            font-size: 0.85rem;
+            color: var(--ct-text-secondary);
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .progress-message .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--ct-border);
+            border-top-color: var(--ct-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .progress-percent {
+            font-weight: 600;
+            color: var(--ct-primary);
+            font-size: 0.9rem;
+            margin-left: auto;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar-ct navbar navbar-expand-lg sticky-top">
@@ -33,7 +76,8 @@
                     <p class="text-muted" style="font-size: 0.95rem;">Загрузите чек-листы в формате .docx или .zip архивы</p>
                 </div>
 
-                <div class="card-ct mb-4">
+                <!-- Карточка загрузки -->
+                <div class="card-ct mb-4" v-if="!result">
                     <div class="card-body">
                         <div class="upload-zone" id="uploadZone"
                              @click="selectedFiles.length === 0 ? triggerUpload() : null"
@@ -76,33 +120,50 @@
 
                         <button class="btn-ct-primary w-100 mt-3" :disabled="selectedFiles.length === 0 || isProcessing" @click="processFiles">
                             <i class="bi bi-gear me-2"></i>
-                            <span v-text="isProcessing ? 'Генерация...' : 'Сгенерировать техкарты'"></span>
+                            <span v-text="isProcessing ? 'Идёт генерация...' : 'Сгенерировать техкарты'"></span>
                         </button>
 
-                        <div v-if="isProcessing" class="mt-3">
+                        <!-- Прогресс-бар -->
+                        <div v-if="isProcessing" class="progress-container">
                             <div class="progress-ct">
                                 <div class="progress-bar" :style="{width: progress + '%'}"></div>
                             </div>
-                            <p class="text-muted mt-2" style="font-size:0.8rem;" v-text="progressMessage"></p>
+                            <div class="progress-message">
+                                <span class="spinner"></span>
+                                <span v-text="progressMessage"></span>
+                                <span class="progress-percent" v-text="Math.round(progress) + '%'"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Результат -->
-                <div v-if="result" class="card-ct">
-                    <div class="card-header">
-                        <i class="bi bi-check-circle-fill text-success me-2"></i>Результат обработки
+                <div v-if="result" class="card-ct mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-check-circle-fill text-success me-2"></i>Результат обработки</span>
+                        <button class="btn-ct-outline btn-sm" @click="resetAll">
+                            <i class="bi bi-arrow-repeat me-1"></i>Новая генерация
+                        </button>
                     </div>
                     <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-4"><small class="text-muted">Файлов обработано</small><div class="fw-bold fs-5" v-text="result.total_files || 1"></div></div>
-                            <div class="col-4"><small class="text-muted">Всего объектов</small><div class="fw-bold fs-5" v-text="result.total_objects || 0"></div></div>
-                            <div class="col-4"><small class="text-muted">Ошибок</small><div class="fw-bold fs-5" v-text="result.errors ? result.errors.length : 0"></div></div>
+                        <div class="row mb-4">
+                            <div class="col-4 text-center">
+                                <small class="text-muted">Файлов обработано</small>
+                                <div class="fw-bold fs-5" v-text="result.total_files || 1"></div>
+                            </div>
+                            <div class="col-4 text-center">
+                                <small class="text-muted">Всего объектов</small>
+                                <div class="fw-bold fs-5" v-text="result.total_objects || 0"></div>
+                            </div>
+                            <div class="col-4 text-center">
+                                <small class="text-muted">Ошибок</small>
+                                <div class="fw-bold fs-5" v-text="result.errors ? result.errors.length : 0"></div>
+                            </div>
                         </div>
 
                         <div v-if="result.files && result.files.length > 0">
                             <table class="table table-sm">
-                                <thead><tr><th>Файл</th><th>Объектов</th><th></th></tr></thead>
+                                <thead><tr><th>Файл</th><th>Объектов</th><th style="width:140px"></th></tr></thead>
                                 <tbody>
                                     <tr v-for="f in result.files" :key="f.filename">
                                         <td v-text="f.filename" style="font-size:0.85rem"></td>
@@ -111,7 +172,7 @@
                                             <span v-else class="text-danger">Ошибка</span>
                                         </td>
                                         <td>
-                                            <a v-if="f.download_url" :href="f.download_url" class="btn-ct-accent btn-sm" download>
+                                            <a v-if="f.download_url" :href="f.download_url" class="btn-ct-outline btn-sm w-100" download>
                                                 <i class="bi bi-download me-1"></i>Скачать
                                             </a>
                                         </td>
@@ -119,10 +180,16 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <div v-if="result.zip_url" class="text-center mt-3">
+                            <button class="btn-ct-outline" @click="downloadZip">
+                                <i class="bi bi-file-zip me-2"></i>Скачать все одним архивом
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div v-if="error" class="alert alert-danger mt-3 d-flex align-items-center">
+                <div v-if="error" class="alert alert-danger d-flex align-items-center">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i><span v-text="error"></span>
                 </div>
             </div>
