@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>История генераций | Chemitech</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar-ct navbar navbar-expand-lg sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="bi bi-droplet me-2"></i>Chemitech | Техкарты</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navMain">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-house me-1"></i>Главная</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/admin"><i class="bi bi-database me-1"></i>База данных</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/history"><i class="bi bi-clock-history me-1"></i>История генерации</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5" id="historyApp">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="fw-bold"><i class="bi bi-clock-history me-2"></i>История генераций</h3>
+            <div>
+                <button class="btn-ct-outline btn-sm me-2" @click="selectAll"><i class="bi bi-check-all me-1"></i>Выбрать всё</button>
+                <button class="btn-ct-outline btn-sm me-2" @click="deleteSelected" :disabled="selectedCount === 0">
+                    <i class="bi bi-trash me-1"></i>Удалить (<span v-text="selectedCount"></span>)
+                </button>
+                <button class="btn-ct-outline btn-sm" @click="showDateDelete = !showDateDelete">
+                    <i class="bi bi-calendar-x me-1"></i>Удалить старше даты
+                </button>
+            </div>
+        </div>
+
+        <!-- Удаление по дате -->
+        <div v-if="showDateDelete" class="alert alert-warning">
+            <div class="row align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" style="font-size:0.85rem">Удалить техкарты старше:</label>
+                    <input type="date" class="form-control form-control-sm" v-model="deleteBeforeDate">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn-ct-outline btn-sm w-100" @click="deleteByDate" :disabled="!deleteBeforeDate">
+                        <i class="bi bi-trash me-1"></i>Удалить
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-ct">
+            <div class="card-body p-0">
+                <table class="table table-hover m-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:40px"><input type="checkbox" @change="toggleAll" :checked="allSelected"></th>
+                            <th>Дата</th>
+                            <th>Название</th>
+                            <th>Объектов</th>
+                            <th>Размер</th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, idx) in history" :key="idx">
+                            <td><input type="checkbox" v-model="item.selected"></td>
+                            <td v-text="item.datetime" style="font-size:0.8rem; white-space:nowrap"></td>
+                            <td v-text="item.display_name" style="font-size:0.9rem"></td>
+                            <td><span class="badge-ct badge-info" v-text="item.objects"></span></td>
+                            <td v-text="item.size_kb + ' KB'" style="font-size:0.8rem"></td>
+                            <td>
+                                <a :href="item.download_url" class="btn-ct-outline btn-sm" download>
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        <tr v-if="history.length === 0">
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="bi bi-info-circle me-2"></i>История пуста
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Пагинация -->
+        <div class="d-flex justify-content-center mt-4" v-if="totalPages > 1">
+            <nav>
+                <ul class="pagination">
+                    <li class="page-item" :class="{disabled: page <= 1}">
+                        <a class="page-link" href="#" @click.prevent="page > 1 ? page-- : null">←</a>
+                    </li>
+                    <li class="page-item" v-for="p in displayPages" :key="p" :class="{active: p === page}">
+                        <a class="page-link" href="#" @click.prevent="page = p" v-text="p"></a>
+                    </li>
+                    <li class="page-item" :class="{disabled: page >= totalPages}">
+                        <a class="page-link" href="#" @click.prevent="page < totalPages ? page++ : null">→</a>
+                    </li>
+                </ul>
+            </nav>
+            <span class="ms-3 text-muted" style="font-size:0.85rem; line-height:2.5">
+                Всего: <span v-text="total"></span> записей
+            </span>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="/static/js/history.js"></script>
+</body>
+</html>

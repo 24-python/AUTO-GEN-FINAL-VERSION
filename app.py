@@ -2,15 +2,16 @@
 """
 Веб-приложение для парсинга чек-листов и генерации техкарт.
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
+Добавлена история генераций с пагинацией и автоочистка загрузок.
 """
 
 import os
 import uuid
 import zipfile
 import tempfile
+import time
 from pathlib import Path
-from datetime import datetime
-from io import BytesIO
+from datetime import datetime, timedelta
 
 from flask import Flask, request, render_template, jsonify, send_file
 
@@ -21,10 +22,12 @@ from db.models import Object, Category as DBCategory
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+app.config['HISTORY_FILE'] = 'tech_cards/generation_history.json'
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs('tech_cards', exist_ok=True)
+os.makedirs(app.config['TECH_CARDS_FOLDER'], exist_ok=True)
 
 # Совместимость Jinja2 с Vue.js
 app.jinja_env.variable_start_string = '{?'
@@ -33,6 +36,58 @@ app.jinja_env.variable_end_string = '?}'
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['docx', 'zip']
+
+
+def cleanup_old_files(folder: str, hours: int = 24):
+    """Удаляет файлы старше N часов"""
+    now = time.time()
+    folder_path = Path(folder)
+    if not folder_path.exists():
+        return
+    count = 0
+    for f in folder_path.glob("*"):
+        if f.is_file() and (now - f.stat().st_mtime) > hours * 3600:
+            f.unlink()
+            count += 1
+    if count > 0:
+        print(f"🧹 Очищено {count} файлов из {folder} (старше {hours} ч)")
+
+
+def load_history() -> list:
+    """Загружает историю генераций"""
+    import json
+    history_path = Path(app.config['HISTORY_FILE'])
+    if history_path.exists():
+        with open(history_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+
+def save_history(history: list):
+    """Сохраняет историю генераций (не более 1000 записей)"""
+    import json
+    history_path = Path(app.config['HISTORY_FILE'])
+    history = history[:1000]
+    with open(history_path, 'w', encoding='utf-8') as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def add_to_history(filename: str, objects_count: int, room_name: str = ""):
+    """Добавляет запись в историю"""
+    history = load_history()
+    file_path = Path(f"tech_cards/{filename}")
+    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0
+
+    history.insert(0, {
+        'filename': filename,
+        'display_name': room_name or Path(filename).stem,
+        'objects': objects_count,
+        'datetime': datetime.now().strftime('%d.%m.%Y %H:%M'),
+        'timestamp': datetime.now().isoformat(),
+        'download_url': f'/download/{filename}',
+        'size_kb': size_kb
+    })
+    save_history(history)
 
 
 def process_single_file(file, mode, generator):
@@ -47,13 +102,16 @@ def process_single_file(file, mode, generator):
         checklist_data = parse_checklist(filepath)
         room_name = checklist_data.room_name or Path(filepath).stem
         safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        output_path = f"tech_cards/{safe_name}_tech_card.docx"
+        output_filename = f"{safe_name}_tech_card.docx"
+        output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
         generator.generate(checklist_data, output_path, mode)
+
+        add_to_history(output_filename, len(checklist_data.get_checked_items()), room_name)
 
         return {
             'filename': file.filename,
             'objects': len(checklist_data.get_checked_items()),
-            'download_url': f'/download/{safe_name}_tech_card.docx'
+            'download_url': f'/download/{output_filename}'
         }
     except Exception as e:
         return {'filename': file.filename, 'error': str(e)}
@@ -80,17 +138,40 @@ def process_zip_file(file, mode, generator):
                 checklist_data = parse_checklist(str(docx_path))
                 room_name = checklist_data.room_name or docx_path.stem
                 safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-                output_path = f"tech_cards/{safe_name}_tech_card.docx"
+                output_filename = f"{safe_name}_tech_card.docx"
+                output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
                 generator.generate(checklist_data, output_path, mode)
+
+                add_to_history(output_filename, len(checklist_data.get_checked_items()), room_name)
+
                 results.append({
                     'filename': docx_path.name,
                     'objects': len(checklist_data.get_checked_items()),
-                    'download_url': f'/download/{safe_name}_tech_card.docx'
+                    'download_url': f'/download/{output_filename}'
                 })
             except Exception as e:
                 results.append({'filename': docx_path.name, 'error': str(e)})
 
     return results
+
+
+def create_zip_archive(files_info):
+    """Создаёт ZIP-архив из сгенерированных техкарт"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    zip_filename = f"tech_cards_{timestamp}.zip"
+    zip_path = os.path.join(app.config['TECH_CARDS_FOLDER'], zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        for f in files_info:
+            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
+            if os.path.exists(docx_path):
+                zf.write(docx_path, Path(docx_path).name)
+
+    return f'/download/{zip_filename}'
+
+
+# === АВТООЧИСТКА ПРИ ЗАПУСКЕ ===
+cleanup_old_files(app.config['UPLOAD_FOLDER'], 24)
 
 
 @app.route('/')
@@ -101,6 +182,11 @@ def index():
 @app.route('/admin')
 def admin():
     return render_template('admin.html')
+
+
+@app.route('/history')
+def history():
+    return render_template('history.html')
 
 
 @app.route('/api/generate', methods=['POST'])
@@ -143,7 +229,6 @@ def api_generate():
         errors = [r for r in results if 'error' in r]
         success_files = [r for r in results if 'error' not in r]
 
-        # Если несколько успешных файлов — создаём ZIP-архив
         zip_url = None
         if len(success_files) > 1:
             zip_url = create_zip_archive(success_files)
@@ -163,27 +248,64 @@ def api_generate():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def create_zip_archive(files_info):
-    """Создаёт ZIP-архив из сгенерированных техкарт"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    zip_filename = f"tech_cards_{timestamp}.zip"
-    zip_path = f"tech_cards/{zip_filename}"
-
-    with zipfile.ZipFile(zip_path, 'w') as zf:
-        for f in files_info:
-            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
-            if os.path.exists(docx_path):
-                zf.write(docx_path, Path(docx_path).name)
-
-    return f'/download/{zip_filename}'
-
-
 @app.route('/download/<filename>')
 def download(filename):
     path = f"tech_cards/{filename}"
     if os.path.exists(path):
         return send_file(path, as_attachment=True)
     return jsonify({'error': 'Файл не найден'}), 404
+
+
+@app.route('/api/history')
+def api_history():
+    """Возвращает историю генераций с пагинацией"""
+    page = int(request.args.get('page', 1))
+    per_page = 100
+
+    history = load_history()
+    total = len(history)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    start = (page - 1) * per_page
+    end = start + per_page
+
+    return jsonify({
+        'history': history[start:end],
+        'page': page,
+        'total_pages': total_pages,
+        'total': total
+    })
+
+
+@app.route('/api/history/delete', methods=['POST'])
+def api_delete_history():
+    """Удаляет выбранные техкарты или по дате"""
+    data = request.get_json()
+    filenames = data.get('filenames', [])
+    before_date = data.get('before_date', None)
+
+    deleted = 0
+    history = load_history()
+
+    if before_date:
+        cutoff = datetime.strptime(before_date, '%Y-%m-%d')
+        to_delete = []
+        for item in history:
+            item_date = datetime.fromisoformat(item['timestamp'])
+            if item_date < cutoff:
+                to_delete.append(item['filename'])
+        filenames = to_delete
+
+    for filename in filenames:
+        path = os.path.join(app.config['TECH_CARDS_FOLDER'], filename)
+        if os.path.exists(path):
+            os.remove(path)
+            deleted += 1
+
+    history = [h for h in history if h['filename'] not in filenames]
+    save_history(history)
+
+    return jsonify({'success': True, 'deleted': deleted})
 
 
 @app.route('/api/objects')
@@ -248,4 +370,6 @@ def api_export_csv():
 
 if __name__ == '__main__':
     print("🚀 Запуск сервера на http://localhost:5000")
+    print(f"📂 Папка техкарт: {app.config['TECH_CARDS_FOLDER']}")
+    print(f"🧹 Автоочистка uploads: 24 часа")
     app.run(debug=True, host='0.0.0.0', port=5000)
