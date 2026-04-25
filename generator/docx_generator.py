@@ -75,6 +75,46 @@ class TechCardGenerator:
                 return False
         return True
 
+    def _merge_adjacent_equal_cells(self, table, col: int, start_row: int, end_row: int):
+        """
+        Объединяет соседние строки с одинаковыми значениями в колонке col
+        в пределах диапазона [start_row, end_row].
+        Например: "A", "A", "B" → объединит первые две, третья останется отдельно.
+        """
+        if start_row >= end_row:
+            return
+
+        # Ищем диапазоны одинаковых значений
+        range_start = start_row
+        range_value = table.cell(range_start, col).text.strip()
+
+        for row in range(start_row + 1, end_row + 1):
+            current_value = table.cell(row, col).text.strip()
+
+            if current_value == range_value:
+                # Значения совпадают — продолжаем текущий диапазон
+                continue
+            else:
+                # Значение изменилось — объединяем предыдущий диапазон
+                if row - 1 > range_start:
+                    # Очищаем ячейки (кроме первой)
+                    for r in range(range_start + 1, row):
+                        table.cell(r, col).text = ""
+                    # Объединяем
+                    self._merge_cells_vertical(table, col, range_start, row - 1)
+
+                # Начинаем новый диапазон
+                range_start = row
+                range_value = current_value
+
+        # Объединяем последний диапазон
+        if end_row > range_start:
+            # Очищаем ячейки (кроме первой)
+            for r in range(range_start + 1, end_row + 1):
+                table.cell(r, col).text = ""
+            # Объединяем
+            self._merge_cells_vertical(table, col, range_start, end_row)
+
     def _get_category_priority(self, session) -> dict:
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
@@ -314,17 +354,13 @@ class TechCardGenerator:
                 # Очищаем ячейки в первой колонке (кроме первой) ДО объединения
                 for row in range(actual_start + 1, actual_end + 1):
                     main_table.cell(row, 0).text = ""
-                # Объединяем первую колонку
+                # Объединяем первую колонку (всегда весь диапазон)
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11) если значения одинаковые
+                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11)
+                # Теперь объединяем ПОСЛЕДОВАТЕЛЬНЫЕ строки с одинаковыми значениями
                 for col in [8, 9, 10, 11]:
-                    if self._cells_are_equal(main_table, col, actual_start, actual_end):
-                        # Очищаем ячейки (кроме первой) ДО объединения
-                        for row in range(actual_start + 1, actual_end + 1):
-                            main_table.cell(row, col).text = ""
-                        # Объединяем
-                        self._merge_cells_vertical(main_table, col, actual_start, actual_end)
+                    self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
         # Сохраняем
         output_file = Path(output_path)
