@@ -5,6 +5,7 @@ createApp({
         return {
             objects: [],
             categories: [],
+            roomCategories: [],
             searchQuery: '',
             sortField: 'sort_priority',
             sortDir: 'asc',
@@ -56,6 +57,7 @@ createApp({
     mounted() {
         this.loadObjects();
         this.loadCategories();
+        this.loadRoomCategories();
     },
     methods: {
         async loadObjects() {
@@ -72,6 +74,13 @@ createApp({
                 const res = await fetch('/api/categories');
                 const data = await res.json();
                 this.categories = data.categories || [];
+            } catch (e) {}
+        },
+        async loadRoomCategories() {
+            try {
+                const res = await fetch('/api/room-categories');
+                const data = await res.json();
+                this.roomCategories = data.room_categories || [];
             } catch (e) {}
         },
 
@@ -150,7 +159,11 @@ createApp({
             try {
                 const res = await fetch(`/api/objects/${obj.id}/instructions`);
                 const data = await res.json();
-                this.currentInstructions = (data.instructions || []).map(i => ({...i, isNew: false}));
+                this.currentInstructions = (data.instructions || []).map(i => ({
+                    ...i,
+                    isNew: false,
+                    room_category_id: i.room_category_id || null
+                }));
                 this.editObject = obj;
                 this.showInstructionsModal = true;
             } catch (e) {
@@ -160,6 +173,7 @@ createApp({
         addInstruction() {
             this.currentInstructions.push({
                 id: null, isNew: true,
+                room_category_id: null,
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
@@ -168,11 +182,26 @@ createApp({
         },
         async saveInstruction(instr) {
             try {
+                const payload = {
+                    room_category_id: instr.room_category_id || null,
+                    cleaning_method: instr.cleaning_method,
+                    product_name: instr.product_name,
+                    cleaning_technique: instr.cleaning_technique,
+                    concentration: instr.concentration,
+                    temperature: instr.temperature,
+                    exposure_time: instr.exposure_time,
+                    inventory: instr.inventory,
+                    frequency: instr.frequency,
+                    executor: instr.executor,
+                    control_method: instr.control_method,
+                    instruction_number: instr.instruction_number
+                };
+
                 if (instr.isNew) {
                     const res = await fetch(`/api/objects/${this.editObject.id}/instructions`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(instr)
+                        body: JSON.stringify(payload)
                     });
                     const data = await res.json();
                     instr.id = data.id;
@@ -182,7 +211,7 @@ createApp({
                     await fetch(`/api/instructions/${instr.id}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(instr)
+                        body: JSON.stringify(payload)
                     });
                     Toastify({ text: '✅ Инструкция обновлена', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
                 }
@@ -215,7 +244,7 @@ createApp({
                 const res = await fetch('/api/import_csv', { method: 'POST', body: formData });
                 const data = await res.json();
                 if (data.success) {
-                    Toastify({ text: `✅ Импорт: создано ${data.created}, обновлено ${data.updated}`, duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    Toastify({ text: `✅ Импорт: создано ${data.objects_created || 0}, обновлено ${data.objects_updated || 0}`, duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
                     this.showImportModal = false;
                     await this.loadObjects();
                 } else {

@@ -3,6 +3,7 @@
 Веб-приложение для парсинга чек-листов и генерации техкарт.
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
 Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
+Добавлена поддержка категорий помещений (room_categories).
 """
 
 import os
@@ -18,7 +19,7 @@ from flask import Flask, request, render_template, jsonify, send_file
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
-from db.models import Object, Instruction, Category as DBCategory
+from db.models import Object, Instruction, Category as DBCategory, RoomCategory
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -172,6 +173,41 @@ def create_zip_archive(files_info):
 
 # === АВТООЧИСТКА ПРИ ЗАПУСКЕ ===
 cleanup_old_files(app.config['UPLOAD_FOLDER'], 24)
+
+
+# === АВТОИНИЦИАЛИЗАЦИЯ БД ПРИ ПЕРВОМ ЗАПУСКЕ ===
+def initialize_database():
+    """Проверяет и инициализирует БД при запуске"""
+    from db.database import engine
+    from db.models import Base, Category as DBCategory, RoomCategory
+
+    # Создаём таблицы, если их нет
+    Base.metadata.create_all(bind=engine)
+
+    # Проверяем и заполняем категории объектов
+    session = SessionLocal()
+    try:
+        count = session.query(DBCategory).count()
+        if count == 0:
+            print("📦 Первичная инициализация категорий объектов...")
+            from db.init_db import seed_categories
+            seed_categories()
+        else:
+            print(f"✅ БД содержит {count} категорий объектов")
+
+        # Проверяем и заполняем категории помещений
+        rc_count = session.query(RoomCategory).count()
+        if rc_count == 0:
+            print("📦 Первичная инициализация категорий помещений...")
+            from db.init_db import seed_room_categories
+            seed_room_categories()
+        else:
+            print(f"✅ БД содержит {rc_count} категорий помещений")
+    finally:
+        session.close()
+
+
+initialize_database()
 
 
 @app.route('/')
@@ -328,6 +364,72 @@ def api_categories():
 
 
 # ============================================================
+# API: КАТЕГОРИИ ПОМЕЩЕНИЙ (Room Categories)
+# ============================================================
+
+@app.route('/api/room-categories')
+def api_room_categories():
+    session = SessionLocal()
+    room_cats = session.query(RoomCategory).order_by(RoomCategory.name).all()
+    result = [{'id': rc.id, 'name': rc.name} for rc in room_cats]
+    session.close()
+    return jsonify({'room_categories': result})
+
+
+@app.route('/api/room-categories', methods=['POST'])
+def api_create_room_category():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'}), 400
+
+    session = SessionLocal()
+    existing = session.query(RoomCategory).filter(RoomCategory.name == name).first()
+    if existing:
+        session.close()
+        return jsonify({'success': False, 'error': 'Такая категория уже существует'}), 400
+
+    rc = RoomCategory(name=name)
+    session.add(rc)
+    session.commit()
+    session.refresh(rc)
+    rc_id = rc.id
+    session.close()
+    return jsonify({'success': True, 'id': rc_id, 'name': name})
+
+
+@app.route('/api/room-categories/<int:rc_id>', methods=['PUT'])
+def api_update_room_category(rc_id):
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'}), 400
+
+    session = SessionLocal()
+    rc = session.query(RoomCategory).get(rc_id)
+    if rc:
+        rc.name = name
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+@app.route('/api/room-categories/<int:rc_id>', methods=['DELETE'])
+def api_delete_room_category(rc_id):
+    session = SessionLocal()
+    rc = session.query(RoomCategory).get(rc_id)
+    if rc:
+        session.delete(rc)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+# ============================================================
 # API: ОБЪЕКТЫ
 # ============================================================
 
@@ -409,8 +511,13 @@ def api_object_instructions(obj_id):
     session = SessionLocal()
     obj = session.query(Object).get(obj_id)
     if obj:
+        # Получаем категории помещений для отображения
+        room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
+
         result = [{
             'id': i.id,
+            'room_category_id': i.room_category_id,
+            'room_category_name': room_cats.get(i.room_category_id, 'Общая') if i.room_category_id else 'Общая',
             'cleaning_method': i.cleaning_method or '',
             'product_name': i.product_name or '',
             'cleaning_technique': i.cleaning_technique or '',
@@ -433,8 +540,18 @@ def api_object_instructions(obj_id):
 def api_create_instruction(obj_id):
     data = request.get_json()
     session = SessionLocal()
+
+    # Получаем room_category_id (может быть None для общей инструкции)
+    room_category_id = data.get('room_category_id')
+    if room_category_id is not None:
+        try:
+            room_category_id = int(room_category_id)
+        except (ValueError, TypeError):
+            room_category_id = None
+
     instr = Instruction(
         object_id=obj_id,
+        room_category_id=room_category_id,
         cleaning_method=data.get('cleaning_method', ''),
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
@@ -461,9 +578,20 @@ def api_update_instruction(instr_id):
     session = SessionLocal()
     instr = session.query(Instruction).get(instr_id)
     if instr:
+        # Обновляем room_category_id
+        if 'room_category_id' in data:
+            rc_id = data['room_category_id']
+            if rc_id is not None:
+                try:
+                    rc_id = int(rc_id)
+                except (ValueError, TypeError):
+                    rc_id = None
+            instr.room_category_id = rc_id
+
+        # Обновляем остальные поля
         fields = ['cleaning_method', 'product_name', 'cleaning_technique', 'concentration',
-                   'temperature', 'exposure_time', 'inventory', 'frequency', 'executor',
-                   'control_method', 'instruction_number']
+                  'temperature', 'exposure_time', 'inventory', 'frequency', 'executor',
+                  'control_method', 'instruction_number']
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])
@@ -499,26 +627,39 @@ def api_export_csv():
     session = SessionLocal()
     objects = session.query(Object).order_by(Object.sort_priority, Object.display_name).all()
     cats = {c.id: c.name for c in session.query(DBCategory).all()}
+    room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
 
     si = StringIO()
     writer = csv.writer(si, delimiter=';')
-    writer.writerow(['object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
-                     'modifier', 'sort_priority', 'cleaning_method', 'product_name', 'concentration',
-                     'temperature', 'exposure_time', 'inventory', 'frequency', 'executor', 'control_method'])
+    writer.writerow([
+        'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
+        'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
+        'cleaning_method', 'instruction_number', 'product_name', 'cleaning_technique',
+        'concentration', 'temperature', 'exposure_time', 'inventory',
+        'frequency', 'executor', 'control_method'
+    ])
 
     for obj in objects:
         if obj.instructions:
             for instr in obj.instructions:
-                writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
-                               obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                               instr.cleaning_method or '', instr.product_name or '',
-                               instr.concentration or '', instr.temperature or '',
-                               instr.exposure_time or '', instr.inventory or '',
-                               instr.frequency or '', instr.executor or '', instr.control_method or ''])
+                room_cat_name = room_cats.get(instr.room_category_id, '') if instr.room_category_id else ''
+                writer.writerow([
+                    obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                    obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                    instr.id, room_cat_name,
+                                                     instr.cleaning_method or '', instr.instruction_number or '',
+                                                     instr.product_name or '', instr.cleaning_technique or '',
+                                                     instr.concentration or '', instr.temperature or '',
+                                                     instr.exposure_time or '', instr.inventory or '',
+                                                     instr.frequency or '', instr.executor or '',
+                                                     instr.control_method or ''
+                ])
         else:
-            writer.writerow([obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
-                           obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                           '', '', '', '', '', '', '', '', ''])
+            writer.writerow([
+                obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ])
 
     session.close()
 
@@ -528,6 +669,41 @@ def api_export_csv():
     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
         tmp.write(output)
         return send_file(tmp.name, as_attachment=True, download_name='db_export.csv')
+
+
+# ============================================================
+# API: ИМПОРТ CSV
+# ============================================================
+
+@app.route('/api/import_csv', methods=['POST'])
+def api_import_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+
+    file = request.files['file']
+    mode = int(request.form.get('mode', 1))
+
+    # Сохраняем временный файл
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    try:
+        from import_csv_to_db import CSVImporter
+        importer = CSVImporter(filepath, mode)
+        stats = importer.run()
+        result = stats.to_dict()
+        result['success'] = True
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        # Удаляем временный файл
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
 
 if __name__ == '__main__':

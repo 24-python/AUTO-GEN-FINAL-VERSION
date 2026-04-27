@@ -5,7 +5,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pathlib import Path
 from parser.models import ChecklistData
-from db.models import Instruction, Category as DBCategory, Object as DBObject
+from db.models import Instruction, Category as DBCategory, Object as DBObject, RoomCategory
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -23,6 +23,15 @@ class TechCardGenerator:
         "ХИМИТЕК ПОЛИКОР®": "FFCCCC",
         "ХИМИТЕК ЧАРОЙТ®-СПРЕЙ": "99FF99",
         "ХИМИТЕК СВЕЖЕСТЬ-АНТИСЕПТИК": "FFFFCC",
+    }
+
+    # Порядок вывода способов обработки (чем меньше число, тем выше)
+    CLEANING_METHOD_ORDER = {
+        "обеспыливание": 1,
+        "очистка": 2,
+        "мойка": 3,
+        "ополаскивание": 4,
+        "дезинфекция": 5,
     }
 
     def __init__(self, template_path: str = None):
@@ -84,7 +93,6 @@ class TechCardGenerator:
         if start_row >= end_row:
             return
 
-        # Ищем диапазоны одинаковых значений
         range_start = start_row
         range_value = table.cell(range_start, col).text.strip()
 
@@ -92,43 +100,51 @@ class TechCardGenerator:
             current_value = table.cell(row, col).text.strip()
 
             if current_value == range_value:
-                # Значения совпадают — продолжаем текущий диапазон
                 continue
             else:
-                # Значение изменилось — объединяем предыдущий диапазон
                 if row - 1 > range_start:
-                    # Очищаем ячейки (кроме первой)
                     for r in range(range_start + 1, row):
                         table.cell(r, col).text = ""
-                    # Объединяем
                     self._merge_cells_vertical(table, col, range_start, row - 1)
 
-                # Начинаем новый диапазон
                 range_start = row
                 range_value = current_value
 
-        # Объединяем последний диапазон
         if end_row > range_start:
-            # Очищаем ячейки (кроме первой)
             for r in range(range_start + 1, end_row + 1):
                 table.cell(r, col).text = ""
-            # Объединяем
             self._merge_cells_vertical(table, col, range_start, end_row)
 
     def _get_category_priority(self, session) -> dict:
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
 
+    def _get_room_category_id(self, session, room_category_name: str) -> int:
+        """Получает ID категории помещения по названию"""
+        if not room_category_name:
+            return None
+        rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
+        return rc.id if rc else None
+
     def _get_instruction_signature(self, instructions: list) -> tuple:
         """
         Создаёт сигнатуру для полного набора инструкций объекта.
         Сигнатура — это кортеж из отсортированных сигнатур каждой инструкции.
+        Сортировка по CLEANING_METHOD_ORDER.
         """
         if not instructions:
             return (("empty",),)
 
         signatures = []
-        for instr in sorted(instructions, key=lambda x: x.cleaning_method or ""):
+        # Сортируем по заданному порядку cleaning_method
+        sorted_instructions = sorted(
+            instructions,
+            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+
+        for instr in sorted_instructions:
             sig = (
                 instr.cleaning_method or "",
                 instr.instruction_number or "",
@@ -171,6 +187,47 @@ class TechCardGenerator:
 
         return result
 
+    def _select_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
+        """
+        Выбирает инструкции для конкретной категории помещения.
+        Приоритет: инструкция для конкретного помещения > общая инструкция (room_category_id IS NULL)
+        Для каждого cleaning_method берётся наиболее специфичная инструкция.
+        Сортировка результата по CLEANING_METHOD_ORDER.
+        """
+        if not all_instructions:
+            return []
+
+        # Группируем инструкции по cleaning_method
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            method = instr.cleaning_method or ""
+            by_method[method].append(instr)
+
+        selected = []
+        for method, instrs in by_method.items():
+            # Ищем инструкцию для конкретной категории помещения
+            specific = None
+            general = None
+
+            for instr in instrs:
+                if instr.room_category_id == room_category_id:
+                    specific = instr
+                elif instr.room_category_id is None:
+                    general = instr
+
+            # Приоритет: специфичная > общая
+            chosen = specific or general
+            if chosen:
+                selected.append(chosen)
+
+        # Сортируем по заданному порядку cleaning_method
+        selected.sort(
+            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        return selected
+
     def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1) -> str:
         """
         Генерирует техкарту.
@@ -190,6 +247,13 @@ class TechCardGenerator:
         session = SessionLocal()
         category_priority = self._get_category_priority(session)
 
+        # Получаем ID категории помещения
+        room_category_id = self._get_room_category_id(session, checklist_data.room_category)
+        if room_category_id:
+            print(f"🔍 Категория помещения: {checklist_data.room_category} (id={room_category_id})")
+        else:
+            print(f"🔍 Категория помещения не указана, используем общие инструкции")
+
         checked_items = checklist_data.get_checked_items()
         all_names = [item.name for item in checked_items]
 
@@ -203,9 +267,8 @@ class TechCardGenerator:
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
-        # Собираем данные: для каждого объекта — его полный набор инструкций
-        category_object_instructions = defaultdict(list)  # для режима 1
-        all_object_instructions = []  # для режима 2
+        category_object_instructions = defaultdict(list)
+        all_object_instructions = []
         category_order = {}
 
         for item in checked_items:
@@ -218,7 +281,9 @@ class TechCardGenerator:
             sort_priority = obj.sort_priority if obj else 999
 
             if obj and obj.id in instructions_dict:
-                instructions = instructions_dict[obj.id]
+                # ВАЖНО: выбираем инструкции с учётом категории помещения
+                all_instrs = instructions_dict[obj.id]
+                instructions = self._select_instructions_for_room(all_instrs, room_category_id)
             else:
                 instructions = []
 
@@ -227,12 +292,11 @@ class TechCardGenerator:
 
         session.close()
 
-        # === ПОДГОТОВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
+        # === ПОДГОТОВКА ДАННЫХ ===
         rows_data = []
-        merge_info = []  # (start_row, end_row) для вертикального объединения
+        merge_info = []
 
         if mode == 1:
-            # Режим 1: по категориям
             sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
 
             for cat_name in sorted_categories:
@@ -240,22 +304,15 @@ class TechCardGenerator:
                 if not items:
                     continue
 
-                # Сортируем объекты внутри категории по алфавиту
                 items.sort(key=lambda x: x[0])
-
-                # Группируем объекты с полностью идентичными наборами инструкций
                 grouped = self._group_by_full_instructions(items)
-
-                # Добавляем заголовок категории
                 rows_data.append(('category', cat_name, None))
 
-                # Добавляем строки для каждой группы инструкций
                 for obj_name, instructions in grouped:
                     group_start_row = len(rows_data)
 
                     if instructions:
                         for i, instr in enumerate(instructions):
-                            # Только первая строка содержит имя объекта
                             display_name = obj_name if i == 0 else ""
                             rows_data.append(('object', display_name, instr))
                     else:
@@ -263,25 +320,18 @@ class TechCardGenerator:
 
                     group_end_row = len(rows_data) - 1
 
-                    # Если в группе больше одной строки — запоминаем для объединения
                     if group_end_row > group_start_row:
                         merge_info.append((group_start_row, group_end_row))
         else:
-            # Режим 2: по приоритету (единый список)
-            # Сортируем по sort_priority, затем по display_name
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-
-            # Группируем объекты с полностью идентичными наборами инструкций
             items_for_grouping = [(name, instrs) for name, instrs, _ in all_object_instructions]
             grouped = self._group_by_full_instructions(items_for_grouping)
 
-            # Добавляем строки для каждой группы инструкций
             for obj_name, instructions in grouped:
                 group_start_row = len(rows_data)
 
                 if instructions:
                     for i, instr in enumerate(instructions):
-                        # Только первая строка содержит имя объекта
                         display_name = obj_name if i == 0 else ""
                         rows_data.append(('object', display_name, instr))
                 else:
@@ -289,7 +339,6 @@ class TechCardGenerator:
 
                 group_end_row = len(rows_data) - 1
 
-                # Если в группе больше одной строки — запоминаем для объединения
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
 
@@ -345,20 +394,15 @@ class TechCardGenerator:
             current_row += 1
 
         # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
-        # Корректируем индексы с учётом start_row
         for group_start, group_end in merge_info:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
 
             if actual_end > actual_start:
-                # Очищаем ячейки в первой колонке (кроме первой) ДО объединения
                 for row in range(actual_start + 1, actual_end + 1):
                     main_table.cell(row, 0).text = ""
-                # Объединяем первую колонку (всегда весь диапазон)
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-                # Объединяем колонки 9, 10, 11, 12 (индексы 8, 9, 10, 11)
-                # Теперь объединяем ПОСЛЕДОВАТЕЛЬНЫЕ строки с одинаковыми значениями
                 for col in [8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 

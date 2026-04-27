@@ -4,6 +4,10 @@ import_csv_to_db.py
 
 Импорт данных из CSV в базу данных с выбором режима работы.
 Подготовлен для интеграции в веб-версию.
+
+Поддерживает:
+- Импорт категорий помещений (room_categories)
+- Импорт инструкций с привязкой к категории помещения (room_category_id)
 """
 
 import csv
@@ -15,7 +19,7 @@ from typing import Dict, List, Tuple, Optional, Callable
 sys.path.insert(0, str(Path(__file__).parent))
 
 from db.database import SessionLocal, engine
-from db.models import Base, Category, Object, Instruction
+from db.models import Base, Category, Object, Instruction, RoomCategory
 
 
 class ImportStats:
@@ -24,6 +28,8 @@ class ImportStats:
     def __init__(self):
         self.categories_created = 0
         self.categories_updated = 0
+        self.room_categories_created = 0
+        self.room_categories_updated = 0
         self.objects_created = 0
         self.objects_updated = 0
         self.objects_skipped = 0
@@ -46,6 +52,8 @@ class ImportStats:
         return {
             'categories_created': self.categories_created,
             'categories_updated': self.categories_updated,
+            'room_categories_created': self.room_categories_created,
+            'room_categories_updated': self.room_categories_updated,
             'objects_created': self.objects_created,
             'objects_updated': self.objects_updated,
             'objects_skipped': self.objects_skipped,
@@ -61,16 +69,18 @@ class ImportStats:
         print("\n" + "=" * 80)
         print("📊 СТАТИСТИКА ИМПОРТА")
         print("=" * 80)
-        print(f"   Категорий создано:    {self.categories_created}")
-        print(f"   Категорий обновлено:  {self.categories_updated}")
-        print(f"   Объектов создано:     {self.objects_created}")
-        print(f"   Объектов обновлено:   {self.objects_updated}")
-        print(f"   Объектов пропущено:   {self.objects_skipped}")
-        print(f"   Инструкций создано:   {self.instructions_created}")
-        print(f"   Инструкций обновлено: {self.instructions_updated}")
-        print(f"   Инструкций пропущено: {self.instructions_skipped}")
-        print(f"   Ошибок:               {len(self.errors)}")
-        print(f"   Время выполнения:     {self.duration_seconds():.2f} сек")
+        print(f"   Категорий объектов создано:    {self.categories_created}")
+        print(f"   Категорий объектов обновлено:  {self.categories_updated}")
+        print(f"   Категорий помещений создано:   {self.room_categories_created}")
+        print(f"   Категорий помещений обновлено: {self.room_categories_updated}")
+        print(f"   Объектов создано:              {self.objects_created}")
+        print(f"   Объектов обновлено:            {self.objects_updated}")
+        print(f"   Объектов пропущено:            {self.objects_skipped}")
+        print(f"   Инструкций создано:            {self.instructions_created}")
+        print(f"   Инструкций обновлено:          {self.instructions_updated}")
+        print(f"   Инструкций пропущено:          {self.instructions_skipped}")
+        print(f"   Ошибок:                        {len(self.errors)}")
+        print(f"   Время выполнения:              {self.duration_seconds():.2f} сек")
         print("=" * 80)
 
         if self.errors:
@@ -85,10 +95,10 @@ class CSVImporter:
     """Импортер CSV в БД"""
 
     # Режимы импорта
-    MODE_ADD_NEW = 1  # Добавление новых, пропуск дубликатов
-    MODE_CLEAR_DATA = 2  # Очистка данных перед импортом
+    MODE_ADD_NEW = 1      # Добавление новых, пропуск дубликатов
+    MODE_CLEAR_DATA = 2   # Очистка данных перед импортом
     MODE_RECREATE_DB = 3  # Полное пересоздание БД
-    MODE_EXIT = 4  # Выход без импорта
+    MODE_EXIT = 4         # Выход без импорта
 
     MODE_NAMES = {
         MODE_ADD_NEW: "Добавление новых (пропуск дубликатов)",
@@ -111,6 +121,7 @@ class CSVImporter:
         self.progress_callback = progress_callback
         self.stats = ImportStats()
         self.session = None
+        self.room_category_cache = {}  # Кэш {name: id} для категорий помещений
 
     def _log_progress(self, message: str, percent: int = None):
         """Логирование прогресса"""
@@ -136,7 +147,10 @@ class CSVImporter:
         self._log_progress("🔄 Очистка объектов...", 10)
         self.session.query(Object).delete()
 
-        self._log_progress("🔄 Очистка категорий...", 15)
+        self._log_progress("🔄 Очистка категорий помещений...", 12)
+        self.session.query(RoomCategory).delete()
+
+        self._log_progress("🔄 Очистка категорий объектов...", 15)
         self.session.query(Category).delete()
 
         self.session.commit()
@@ -156,8 +170,8 @@ class CSVImporter:
         return rows
 
     def _import_categories(self, rows: List[Dict]) -> Dict[str, int]:
-        """Импорт категорий"""
-        self._log_progress("📁 Импорт категорий...", 35)
+        """Импорт категорий объектов"""
+        self._log_progress("📁 Импорт категорий объектов...", 35)
 
         # Собираем уникальные категории
         unique_categories = {}
@@ -175,7 +189,6 @@ class CSVImporter:
                 category_ids[cat_name] = existing.id
                 self.stats.categories_updated += 1
             else:
-                # Определяем sort_order по алфавиту или из данных
                 cat = Category(name=cat_name, sort_order=len(category_ids) + 1)
                 self.session.add(cat)
                 self.session.flush()
@@ -183,10 +196,70 @@ class CSVImporter:
                 self.stats.categories_created += 1
 
         self.session.commit()
-        self._log_progress(f"✅ Категорий: {len(category_ids)} (новых: {self.stats.categories_created})", 40)
+        self._log_progress(f"✅ Категорий объектов: {len(category_ids)} (новых: {self.stats.categories_created})", 40)
         return category_ids
 
-    def _import_objects_and_instructions(self, rows: List[Dict], category_ids: Dict[str, int]):
+    def _import_room_categories(self, rows: List[Dict]) -> Dict[str, int]:
+        """Импорт категорий помещений из колонки room_category_name"""
+        self._log_progress("📁 Импорт категорий помещений...", 42)
+
+        unique_room_cats = set()
+        for row in rows:
+            rc_name = row.get('room_category_name', '').strip()
+            if rc_name:
+                unique_room_cats.add(rc_name)
+
+        # Добавляем стандартные, если их нет
+        standard_cats = ["Производственное", "Складское", "Инженерное", "Вспомогательное"]
+        for sc in standard_cats:
+            unique_room_cats.add(sc)
+
+        room_cat_ids = {}
+
+        for rc_name in sorted(unique_room_cats):
+            existing = self.session.query(RoomCategory).filter(RoomCategory.name == rc_name).first()
+
+            if existing:
+                room_cat_ids[rc_name] = existing.id
+                self.stats.room_categories_updated += 1
+            else:
+                rc = RoomCategory(name=rc_name)
+                self.session.add(rc)
+                self.session.flush()
+                room_cat_ids[rc_name] = rc.id
+                self.stats.room_categories_created += 1
+
+        self.session.commit()
+        self._log_progress(
+            f"✅ Категорий помещений: {len(room_cat_ids)} (новых: {self.stats.room_categories_created})", 45
+        )
+        return room_cat_ids
+
+    def _get_room_category_id(self, room_cat_name: str, room_cat_ids: Dict[str, int]) -> Optional[int]:
+        """Получает ID категории помещения по названию"""
+        if not room_cat_name:
+            return None
+
+        # Проверяем кэш
+        if room_cat_name in self.room_category_cache:
+            return self.room_category_cache[room_cat_name]
+
+        # Ищем в переданном словаре
+        if room_cat_name in room_cat_ids:
+            rc_id = room_cat_ids[room_cat_name]
+            self.room_category_cache[room_cat_name] = rc_id
+            return rc_id
+
+        # Ищем в БД
+        rc = self.session.query(RoomCategory).filter(RoomCategory.name == room_cat_name).first()
+        if rc:
+            self.room_category_cache[room_cat_name] = rc.id
+            return rc.id
+
+        return None
+
+    def _import_objects_and_instructions(self, rows: List[Dict], category_ids: Dict[str, int],
+                                          room_cat_ids: Dict[str, int]):
         """Импорт объектов и инструкций"""
         total_rows = len(rows)
 
@@ -217,7 +290,7 @@ class CSVImporter:
             processed += 1
 
             if processed % 50 == 0:
-                percent = 40 + int((processed / total_groups) * 50)
+                percent = 45 + int((processed / total_groups) * 45)
                 self._log_progress(f"📦 Обработка объектов: {processed}/{total_groups}", percent)
 
             row = group['object_data']
@@ -241,11 +314,9 @@ class CSVImporter:
 
             if existing:
                 if self.mode == self.MODE_ADD_NEW:
-                    # Пропускаем, объект уже есть
                     obj = existing
                     self.stats.objects_skipped += 1
                 else:
-                    # Обновляем
                     existing.display_name = display_name
                     existing.base_name = base_name
                     existing.modifier = modifier
@@ -254,7 +325,6 @@ class CSVImporter:
                     obj = existing
                     self.stats.objects_updated += 1
             else:
-                # Создаём новый
                 obj = Object(
                     normalized_name=norm_name,
                     display_name=display_name,
@@ -275,18 +345,23 @@ class CSVImporter:
                 if not cleaning_method and not product_name:
                     continue
 
-                # Ищем существующую инструкцию
+                # Получаем room_category_id из CSV
+                room_cat_name = instr_row.get('room_category_name', '').strip()
+                room_category_id = self._get_room_category_id(room_cat_name, room_cat_ids)
+
+                # Ищем существующую инструкцию (с учётом room_category_id)
                 existing_instr = self.session.query(Instruction).filter(
                     Instruction.object_id == obj.id,
                     Instruction.cleaning_method == cleaning_method,
-                    Instruction.product_name == product_name
+                    Instruction.product_name == product_name,
+                    Instruction.room_category_id == room_category_id
                 ).first()
 
                 if existing_instr:
                     if self.mode == self.MODE_ADD_NEW:
                         self.stats.instructions_skipped += 1
                     else:
-                        # Обновляем
+                        existing_instr.room_category_id = room_category_id
                         existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
                         existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
                         existing_instr.concentration = instr_row.get('concentration', '').strip() or None
@@ -298,9 +373,9 @@ class CSVImporter:
                         existing_instr.control_method = instr_row.get('control_method', '').strip() or None
                         self.stats.instructions_updated += 1
                 else:
-                    # Создаём новую
                     instr = Instruction(
                         object_id=obj.id,
+                        room_category_id=room_category_id,
                         cleaning_method=cleaning_method or None,
                         instruction_number=instr_row.get('instruction_number', '').strip() or None,
                         product_name=product_name or None,
@@ -320,10 +395,12 @@ class CSVImporter:
                 self.session.commit()
 
         self.session.commit()
-        self._log_progress(f"✅ Объектов: создано {self.stats.objects_created}, обновлено {self.stats.objects_updated}",
-                           90)
         self._log_progress(
-            f"✅ Инструкций: создано {self.stats.instructions_created}, обновлено {self.stats.instructions_updated}", 95)
+            f"✅ Объектов: создано {self.stats.objects_created}, обновлено {self.stats.objects_updated}", 90
+        )
+        self._log_progress(
+            f"✅ Инструкций: создано {self.stats.instructions_created}, обновлено {self.stats.instructions_updated}", 95
+        )
 
     def run(self) -> ImportStats:
         """Запуск импорта"""
@@ -338,7 +415,6 @@ class CSVImporter:
         try:
             self.session = SessionLocal()
 
-            # Режимы
             if self.mode == self.MODE_EXIT:
                 self._log_progress("👋 Выход без импорта", 100)
                 self.stats.finish()
@@ -349,7 +425,6 @@ class CSVImporter:
             elif self.mode == self.MODE_CLEAR_DATA:
                 self._clear_data()
 
-            # Чтение CSV
             rows = self._read_csv()
 
             if not rows:
@@ -357,9 +432,12 @@ class CSVImporter:
                 self.stats.finish()
                 return self.stats
 
-            # Импорт
+            # Импорт категорий
             category_ids = self._import_categories(rows)
-            self._import_objects_and_instructions(rows, category_ids)
+            room_cat_ids = self._import_room_categories(rows)
+
+            # Импорт объектов и инструкций
+            self._import_objects_and_instructions(rows, category_ids, room_cat_ids)
 
             self._log_progress("🎉 Импорт завершён!", 100)
 
@@ -410,11 +488,9 @@ def main():
     parser.add_argument("--yes", "-y", action="store_true", help="Пропустить подтверждение")
     args = parser.parse_args()
 
-    # Определяем файл
     if args.file:
         csv_path = args.file
     else:
-        # Ищем CSV в текущей папке
         csv_files = list(Path(".").glob("*.csv"))
         if not csv_files:
             print("❌ CSV файлы не найдены в текущей папке")
@@ -437,7 +513,6 @@ def main():
         print(f"❌ Файл не найден: {csv_path}")
         return
 
-    # Определяем режим
     if args.mode:
         mode = args.mode
     else:
@@ -447,7 +522,6 @@ def main():
         print("👋 Выход")
         return
 
-    # Подтверждение для опасных режимов
     if mode in [CSVImporter.MODE_CLEAR_DATA, CSVImporter.MODE_RECREATE_DB] and not args.yes:
         print(f"\n⚠️ ВНИМАНИЕ! Выбран режим: {CSVImporter.MODE_NAMES[mode]}")
         print("   Все существующие данные будут УДАЛЕНЫ!")
@@ -456,7 +530,6 @@ def main():
             print("👋 Отмена")
             return
 
-    # Запуск импорта
     try:
         importer = CSVImporter(csv_path, mode)
         stats = importer.run()

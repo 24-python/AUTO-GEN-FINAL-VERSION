@@ -9,20 +9,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import engine, SessionLocal
-from db.models import Base, Category
+from db.models import Base, Category, RoomCategory
 
 
 def create_tables():
-    """Создание таблиц (удаляет старые)"""
-    print("🔄 Создание таблиц...")
-    Base.metadata.drop_all(bind=engine)
+    """Создание таблиц (без удаления существующих)"""
+    print("🔄 Создание таблиц (если не существуют)...")
     Base.metadata.create_all(bind=engine)
-    print("✅ Таблицы созданы")
+    print("✅ Таблицы проверены/созданы")
 
 
 def seed_categories():
-    """Заполнение категорий (15 штук с порядком сортировки для умного маппинга)"""
-    print("🔄 Заполнение категорий...")
+    """Заполнение категорий объектов (15 штук)"""
+    print("🔄 Проверка категорий объектов...")
+
+    session = SessionLocal()
+
+    existing_count = session.query(Category).count()
+    if existing_count > 0:
+        print(f"✅ Категории объектов уже существуют ({existing_count} шт.), пропускаем")
+        session.close()
+        return
 
     categories_data = [
         ("Поверхности", 1),
@@ -42,8 +49,6 @@ def seed_categories():
         ("Упаковочное оборудование", 15),
     ]
 
-    session = SessionLocal()
-
     for name, sort_order in categories_data:
         category = Category(name=name, sort_order=sort_order)
         session.add(category)
@@ -51,8 +56,36 @@ def seed_categories():
 
     session.commit()
     session.close()
-
     print(f"✅ Добавлено {len(categories_data)} категорий")
+
+
+def seed_room_categories():
+    """Заполнение категорий помещений"""
+    print("🔄 Проверка категорий помещений...")
+
+    session = SessionLocal()
+
+    existing_count = session.query(RoomCategory).count()
+    if existing_count > 0:
+        print(f"✅ Категории помещений уже существуют ({existing_count} шт.), пропускаем")
+        session.close()
+        return
+
+    room_categories = [
+        "Производственное",
+        "Складское",
+        "Инженерное",
+        "Вспомогательное",
+    ]
+
+    for name in room_categories:
+        rc = RoomCategory(name=name)
+        session.add(rc)
+        print(f"  ➕ {name}")
+
+    session.commit()
+    session.close()
+    print(f"✅ Добавлено {len(room_categories)} категорий помещений")
 
 
 def main():
@@ -61,6 +94,7 @@ def main():
 
     create_tables()
     seed_categories()
+    seed_room_categories()
 
     print(f"\n📁 Файл БД: {engine.url.database}")
     print("🎉 Готово!")

@@ -4,6 +4,7 @@ export_db_to_single_csv.py
 
 Экспортирует все данные из БД в один CSV файл.
 Каждая строка = один объект со всеми его инструкциями.
+Добавлена колонка room_category_name для категории помещения.
 """
 
 import csv
@@ -14,7 +15,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent))
 
 from db.database import SessionLocal
-from db.models import Category, Object, Instruction
+from db.models import Category, Object, Instruction, RoomCategory
 
 
 def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
@@ -24,6 +25,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
 
     # Получаем все данные
     categories = {cat.id: cat for cat in session.query(Category).all()}
+    room_categories = {rc.id: rc for rc in session.query(RoomCategory).all()}
     objects = session.query(Object).order_by(Object.category_id, Object.display_name).all()
     instructions = session.query(Instruction).all()
 
@@ -46,6 +48,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
             'modifier',
             'sort_priority',
             'instruction_id',
+            'room_category_name',
             'cleaning_method',
             'instruction_number',
             'product_name',
@@ -69,6 +72,9 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
 
             if obj_instrs:
                 for instr in obj_instrs:
+                    rc = room_categories.get(instr.room_category_id) if instr.room_category_id else None
+                    room_cat_name = rc.name if rc else ''
+
                     writer.writerow([
                         obj.id,
                         cat_name,
@@ -78,6 +84,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
                         obj.modifier or '',
                         obj.sort_priority,
                         instr.id,
+                        room_cat_name,
                         instr.cleaning_method or '',
                         instr.instruction_number or '',
                         instr.product_name or '',
@@ -92,7 +99,6 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
                     ])
                     total_rows += 1
             else:
-                # Объект без инструкций
                 writer.writerow([
                     obj.id,
                     cat_name,
@@ -101,7 +107,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
                     obj.base_name,
                     obj.modifier or '',
                     obj.sort_priority,
-                    '', '', '', '', '', '', '', '', '', '', '', ''
+                    '', '', '', '', '', '', '', '', '', '', '', '', ''
                 ])
                 total_rows += 1
 
@@ -114,6 +120,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
     print(f"📋 Объектов: {len(objects)}")
     print(f"📋 Инструкций: {len(instructions)}")
     print(f"📋 Строк в CSV: {total_rows}")
+    print(f"📋 Категорий помещений: {len(room_categories)}")
     print("=" * 80)
 
     return output_path

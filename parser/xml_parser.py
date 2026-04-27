@@ -8,6 +8,8 @@
   - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
   - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
   - Базовый ⬜ → ничего не добавляем
+
+Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
 """
 
 import zipfile
@@ -341,6 +343,36 @@ class SDTChecklistParser:
                 if texts:
                     data.room_name = ' '.join([t.text for t in texts if t.text]).strip()
 
+    def _parse_room_category(self, root, data: ChecklistData):
+        """
+        Извлекает категорию помещения из выпадающего списка (dropDownList SDT) в чек-листе.
+        Ищет SDT с тегом w:dropDownList и читает выбранное значение.
+        """
+        # Ищем все SDT элементы в документе
+        sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+
+        for sdt in sdt_elements:
+            sdt_pr = sdt.find('.//w:sdtPr', namespaces=self.NAMESPACES)
+            if sdt_pr is None:
+                continue
+
+            # Проверяем, есть ли выпадающий список в этом SDT
+            dropdown = sdt_pr.find('.//w:dropDownList', namespaces=self.NAMESPACES)
+            if dropdown is None:
+                continue
+
+            # Нашли выпадающий список — извлекаем выбранное значение
+            sdt_content = sdt.find('.//w:sdtContent', namespaces=self.NAMESPACES)
+            if sdt_content is not None:
+                texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
+                value = ''.join(t.text or '' for t in texts).strip()
+                if value:
+                    data.room_category = value
+                    print(f"  📋 Категория помещения (из выпадающего списка): «{value}»")
+                    return
+
+        print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
@@ -352,8 +384,13 @@ class SDTChecklistParser:
                 xml_content = xml_file.read()
                 root = etree.fromstring(xml_content)
 
+                # Парсим заголовок (предприятие и участок)
                 self._parse_header(root, data)
 
+                # Парсим категорию помещения из выпадающего списка
+                self._parse_room_category(root, data)
+
+                # Парсим объекты (чек-боксы)
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
 
@@ -392,6 +429,8 @@ class SDTChecklistParser:
         print(f"\n📋 ИТОГО:")
         print(f"   В основных категориях: {main_total}")
         print(f"   В Прочее: {other_total}")
+        if data.room_category:
+            print(f"   Категория помещения: {data.room_category}")
 
 
 def parse_checklist(file_path: str) -> ChecklistData:

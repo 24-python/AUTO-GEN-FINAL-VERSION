@@ -24,6 +24,19 @@ class Category(Base):
         return f"<Category(id={self.id}, name='{self.name}')>"
 
 
+class RoomCategory(Base):
+    """Категории помещений (производственное, складское, инженерное, вспомогательное)"""
+    __tablename__ = 'room_categories'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+
+    instructions = relationship("Instruction", back_populates="room_category")
+
+    def __repr__(self):
+        return f"<RoomCategory(id={self.id}, name='{self.name}')>"
+
+
 class Object(Base):
     """Объекты обработки из чек-листа"""
     __tablename__ = 'objects'
@@ -56,6 +69,7 @@ class Instruction(Base):
 
     id = Column(Integer, primary_key=True)
     object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
+    room_category_id = Column(Integer, ForeignKey('room_categories.id'), nullable=True)  # NULL = общая инструкция
 
     # Поля из Excel
     cleaning_method = Column(String(100), nullable=True)       # мойка/дезинфекция/очистка
@@ -74,9 +88,10 @@ class Instruction(Base):
 
     # Связи
     object = relationship("Object", back_populates="instructions")
+    room_category = relationship("RoomCategory", back_populates="instructions")
 
     def __repr__(self):
-        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}')>"
+        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}', room_cat='{self.room_category.name if self.room_category else 'общая'}')>"
 
     def is_empty(self) -> bool:
         """Проверяет, пустая ли инструкция (нет данных)"""
@@ -92,3 +107,4 @@ class Instruction(Base):
 Index('idx_object_normalized_name', Object.normalized_name)
 Index('idx_object_category', Object.category_id)
 Index('idx_instruction_object', Instruction.object_id)
+Index('idx_instruction_room_category', Instruction.room_category_id)
