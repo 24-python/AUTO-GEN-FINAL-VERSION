@@ -542,7 +542,7 @@ docker run -d \
 ```yaml
 services:
   app:
-    build: .
+    build: ../..
     ports:
       - "5000:5000"
     volumes:

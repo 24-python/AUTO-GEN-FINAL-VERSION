@@ -22,6 +22,10 @@ from db.database import SessionLocal
 from db.models import Object, Instruction, Category as DBCategory, RoomCategory
 
 app = Flask(__name__)
+# Настройка MIME-типов для Markdown
+import mimetypes
+mimetypes.add_type('text/markdown', '.md')
+mimetypes.add_type('text/plain', '.md')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
