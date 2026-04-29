@@ -27,6 +27,30 @@
     </nav>
 
     <div class="container py-5" id="adminApp">
+        <!-- Управление категориями помещений -->
+        <div class="card-ct mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-building me-2"></i>Категории помещений</span>
+                <button class="btn-ct-primary btn-sm" @click="openRoomCatForm()">
+                    <i class="bi bi-plus-circle me-1"></i>Добавить
+                </button>
+            </div>
+            <div class="card-body">
+                <div v-if="roomCategories.length === 0" class="text-muted text-center py-2">
+                    Нет категорий помещений. Нажмите «Добавить».
+                </div>
+                <div v-else class="d-flex flex-wrap gap-2">
+                    <span v-for="rc in roomCategories" :key="rc.id"
+                          class="badge-ct badge-info d-flex align-items-center gap-2"
+                          style="cursor:pointer; padding: 6px 12px; font-size: 0.85rem;">
+                        <span v-text="rc.name"></span>
+                        <i class="bi bi-pencil-square" @click="editRoomCategory(rc)" title="Редактировать" style="cursor:pointer"></i>
+                        <i class="bi bi-x-circle text-danger" @click="deleteRoomCategory(rc)" title="Удалить" style="cursor:pointer"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <!-- Заголовок и кнопки -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3 class="fw-bold"><i class="bi bi-database me-2"></i>Управление объектами</h3>
@@ -83,7 +107,25 @@
         </div>
         <div class="text-muted mt-2" style="font-size:0.8rem">Всего: <span v-text="objects.length"></span> объектов | Отфильтровано: <span v-text="filteredObjects.length"></span></div>
 
-        <!-- МОДАЛКА: Редактирование -->
+        <!-- МОДАЛКА: Категория помещения -->
+        <div class="modal-overlay" v-if="showRoomCatForm" @click.self="showRoomCatForm = false">
+            <div class="modal-content-ct" style="max-width:400px">
+                <div class="modal-header-ct">
+                    <span v-text="editingRoomCat ? 'Редактировать категорию' : 'Добавить категорию'"></span>
+                    <button class="btn-ct-outline btn-sm" @click="showRoomCatForm = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <label class="form-label-ct">Название</label>
+                    <input class="form-control-ct" v-model="roomCatForm.name" @keyup.enter="saveRoomCategory" placeholder="Например: Производственное">
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showRoomCatForm = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="saveRoomCategory">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- МОДАЛКА: Редактирование объекта -->
         <div class="modal-overlay" v-if="showEditModal" @click.self="showEditModal = false">
             <div class="modal-content-ct">
                 <div class="modal-header-ct">
@@ -105,7 +147,7 @@
             </div>
         </div>
 
-        <!-- МОДАЛКА: Добавление -->
+        <!-- МОДАЛКА: Добавление объекта -->
         <div class="modal-overlay" v-if="showAddModal" @click.self="showAddModal = false">
             <div class="modal-content-ct">
                 <div class="modal-header-ct"><span>Добавить объект</span><button class="btn-ct-outline btn-sm" @click="showAddModal = false">✕</button></div>
@@ -196,9 +238,6 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
-    <script src="/static/js/admin.js"></script>
     <!-- Футер Chemitech -->
     <footer style="background: var(--ct-surface); border-top: 1px solid var(--ct-border); padding: 16px 0; margin-top: 40px;">
         <div class="container">
@@ -217,5 +256,9 @@
             </div>
         </div>
     </footer>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="/static/js/admin.js"></script>
 </body>
 </html>

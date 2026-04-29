@@ -10,6 +10,7 @@ createApp({
             sortField: 'sort_priority',
             sortDir: 'asc',
 
+            // Модалки объектов
             showEditModal: false,
             showAddModal: false,
             showImportModal: false,
@@ -27,8 +28,14 @@ createApp({
 
             currentInstructions: [],
 
+            // Импорт CSV
             importMode: 1,
-            importFile: null
+            importFile: null,
+
+            // Категории помещений
+            showRoomCatForm: false,
+            editingRoomCat: null,
+            roomCatForm: { name: '' },
         }
     },
     computed: {
@@ -60,6 +67,7 @@ createApp({
         this.loadRoomCategories();
     },
     methods: {
+        // ========== ЗАГРУЗКА ДАННЫХ ==========
         async loadObjects() {
             try {
                 const res = await fetch('/api/objects');
@@ -84,6 +92,7 @@ createApp({
             } catch (e) {}
         },
 
+        // ========== СОРТИРОВКА ==========
         toggleSort(field) {
             if (this.sortField === field) {
                 this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
@@ -93,6 +102,60 @@ createApp({
             }
         },
 
+        // ========== КАТЕГОРИИ ПОМЕЩЕНИЙ ==========
+        openRoomCatForm() {
+            this.editingRoomCat = null;
+            this.roomCatForm.name = '';
+            this.showRoomCatForm = true;
+        },
+        editRoomCategory(rc) {
+            this.editingRoomCat = rc;
+            this.roomCatForm.name = rc.name;
+            this.showRoomCatForm = true;
+        },
+        async saveRoomCategory() {
+            const name = this.roomCatForm.name.trim();
+            if (!name) {
+                Toastify({ text: '⚠️ Введите название', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            try {
+                const url = this.editingRoomCat
+                    ? `/api/room-categories/${this.editingRoomCat.id}`
+                    : '/api/room-categories';
+                const method = this.editingRoomCat ? 'PUT' : 'POST';
+
+                const res = await fetch(url, {
+                    method,
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Toastify({ text: '✅ Категория сохранена', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showRoomCatForm = false;
+                    this.editingRoomCat = null;
+                    this.roomCatForm.name = '';
+                    await this.loadRoomCategories();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        async deleteRoomCategory(rc) {
+            if (!confirm(`Удалить категорию «${rc.name}»?`)) return;
+            try {
+                await fetch(`/api/room-categories/${rc.id}`, { method: 'DELETE' });
+                Toastify({ text: '✅ Категория удалена', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                await this.loadRoomCategories();
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка удаления', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ========== ОБЪЕКТЫ: РЕДАКТИРОВАНИЕ ==========
         openEditModal(obj) {
             this.editObject = obj;
             this.formData = {
@@ -123,6 +186,7 @@ createApp({
             }
         },
 
+        // ========== ОБЪЕКТЫ: ДОБАВЛЕНИЕ ==========
         openAddModal() {
             this.formData = { display_name: '', normalized_name: '', sort_priority: 0, category_id: 1, base_name: '', modifier: '' };
             this.showAddModal = true;
@@ -144,6 +208,7 @@ createApp({
             }
         },
 
+        // ========== ОБЪЕКТЫ: УДАЛЕНИЕ ==========
         async deleteObject(obj) {
             if (!confirm(`Удалить «${obj.display_name}»?`)) return;
             try {
@@ -155,6 +220,7 @@ createApp({
             }
         },
 
+        // ========== ИНСТРУКЦИИ ==========
         async openInstructions(obj) {
             try {
                 const res = await fetch(`/api/objects/${obj.id}/instructions`);
@@ -234,6 +300,7 @@ createApp({
             }
         },
 
+        // ========== ИМПОРТ CSV ==========
         handleImportFile(e) { this.importFile = e.target.files[0]; },
         async doImport() {
             if (!this.importFile) return;
@@ -247,6 +314,7 @@ createApp({
                     Toastify({ text: `✅ Импорт: создано ${data.objects_created || 0}, обновлено ${data.objects_updated || 0}`, duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
                     this.showImportModal = false;
                     await this.loadObjects();
+                    await this.loadRoomCategories();
                 } else {
                     Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
                 }
