@@ -270,6 +270,7 @@ class TechCardGenerator:
         category_object_instructions = defaultdict(list)
         all_object_instructions = []
         category_order = {}
+        unmatched_objects = []  # Объекты без инструкций
 
         for item in checked_items:
             obj = objects_dict.get(item.name)
@@ -284,11 +285,19 @@ class TechCardGenerator:
                 # ВАЖНО: выбираем инструкции с учётом категории помещения
                 all_instrs = instructions_dict[obj.id]
                 instructions = self._select_instructions_for_room(all_instrs, room_category_id)
-            else:
-                instructions = []
 
-            category_object_instructions[cat_name].append((display_name, instructions))
-            all_object_instructions.append((display_name, instructions, sort_priority))
+                if instructions:
+                    category_object_instructions[cat_name].append((display_name, instructions))
+                    all_object_instructions.append((display_name, instructions, sort_priority))
+                else:
+                    # Объект есть в БД, но инструкции не подходят под категорию помещения
+                    unmatched_objects.append(display_name)
+            elif obj:
+                # Объект есть в БД, но без инструкций
+                unmatched_objects.append(display_name)
+            else:
+                # Объекта нет в БД
+                unmatched_objects.append(item.name)
 
         session.close()
 
@@ -341,6 +350,13 @@ class TechCardGenerator:
 
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
+
+        # === ДОБАВЛЯЕМ ОБЪЕКТЫ БЕЗ ИНСТРУКЦИЙ В КОНЕЦ ===
+        if unmatched_objects:
+            rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
+            for name in sorted(unmatched_objects):
+                rows_data.append(('object', name, None))
+                # НЕ добавляем в merge_info — каждый объект в отдельной строке без объединения
 
         # === ОЧИСТКА ТАБЛИЦЫ ===
         start_row = 6
