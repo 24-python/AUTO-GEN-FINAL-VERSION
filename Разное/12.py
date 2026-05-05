@@ -23,8 +23,8 @@ from lxml import etree
 NAMESPACES = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 
 # Конфигурация
-DOCX_FILE = "производственных помещений.docx"
-CSV_FILE = "db_export_all.csv"
+DOCX_FILE = "../производственных помещений.docx"
+CSV_FILE = "../db_export_all.csv"
 
 
 def main():
