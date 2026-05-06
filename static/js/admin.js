@@ -10,7 +10,6 @@ createApp({
             sortField: 'sort_priority',
             sortDir: 'asc',
 
-            // Модалки объектов
             showEditModal: false,
             showAddModal: false,
             showImportModal: false,
@@ -28,11 +27,9 @@ createApp({
 
             currentInstructions: [],
 
-            // Импорт CSV
             importMode: 1,
             importFile: null,
 
-            // Категории помещений
             showRoomCatForm: false,
             editingRoomCat: null,
             roomCatForm: { name: '' },
@@ -67,7 +64,6 @@ createApp({
         this.loadRoomCategories();
     },
     methods: {
-        // ========== ЗАГРУЗКА ДАННЫХ ==========
         async loadObjects() {
             try {
                 const res = await fetch('/api/objects');
@@ -92,7 +88,6 @@ createApp({
             } catch (e) {}
         },
 
-        // ========== СОРТИРОВКА ==========
         toggleSort(field) {
             if (this.sortField === field) {
                 this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
@@ -102,7 +97,6 @@ createApp({
             }
         },
 
-        // ========== КАТЕГОРИИ ПОМЕЩЕНИЙ ==========
         openRoomCatForm() {
             this.editingRoomCat = null;
             this.roomCatForm.name = '';
@@ -124,7 +118,6 @@ createApp({
                     ? `/api/room-categories/${this.editingRoomCat.id}`
                     : '/api/room-categories';
                 const method = this.editingRoomCat ? 'PUT' : 'POST';
-
                 const res = await fetch(url, {
                     method,
                     headers: {'Content-Type': 'application/json'},
@@ -155,7 +148,6 @@ createApp({
             }
         },
 
-        // ========== ОБЪЕКТЫ: РЕДАКТИРОВАНИЕ ==========
         openEditModal(obj) {
             this.editObject = obj;
             this.formData = {
@@ -186,7 +178,6 @@ createApp({
             }
         },
 
-        // ========== ОБЪЕКТЫ: ДОБАВЛЕНИЕ ==========
         openAddModal() {
             this.formData = { display_name: '', normalized_name: '', sort_priority: 0, category_id: 1, base_name: '', modifier: '' };
             this.showAddModal = true;
@@ -208,7 +199,6 @@ createApp({
             }
         },
 
-        // ========== ОБЪЕКТЫ: УДАЛЕНИЕ ==========
         async deleteObject(obj) {
             if (!confirm(`Удалить «${obj.display_name}»?`)) return;
             try {
@@ -220,7 +210,6 @@ createApp({
             }
         },
 
-        // ========== ИНСТРУКЦИИ ==========
         async openInstructions(obj) {
             try {
                 const res = await fetch(`/api/objects/${obj.id}/instructions`);
@@ -228,7 +217,8 @@ createApp({
                 this.currentInstructions = (data.instructions || []).map(i => ({
                     ...i,
                     isNew: false,
-                    room_category_id: i.room_category_id || null
+                    room_category_id: i.room_category_id || null,
+                    maintenance_type: i.maintenance_type || 'основная'
                 }));
                 this.editObject = obj;
                 this.showInstructionsModal = true;
@@ -240,16 +230,27 @@ createApp({
             this.currentInstructions.push({
                 id: null, isNew: true,
                 room_category_id: null,
+                maintenance_type: 'основная',
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
                 instruction_number: ''
             });
         },
+        duplicateInstruction(instr, idx) {
+            // Создаём глубокую копию инструкции
+            const copy = JSON.parse(JSON.stringify(instr));
+            copy.id = null;
+            copy.isNew = true;
+            // Вставляем после текущей инструкции
+            this.currentInstructions.splice(idx + 1, 0, copy);
+            Toastify({ text: '✅ Инструкция дублирована', duration: 2000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+        },
         async saveInstruction(instr) {
             try {
                 const payload = {
                     room_category_id: instr.room_category_id || null,
+                    maintenance_type: instr.maintenance_type,
                     cleaning_method: instr.cleaning_method,
                     product_name: instr.product_name,
                     cleaning_technique: instr.cleaning_technique,
@@ -300,7 +301,6 @@ createApp({
             }
         },
 
-        // ========== ИМПОРТ CSV ==========
         handleImportFile(e) { this.importFile = e.target.files[0]; },
         async doImport() {
             if (!this.importFile) return;

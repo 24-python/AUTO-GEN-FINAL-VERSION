@@ -34,6 +34,13 @@ class TechCardGenerator:
         "дезинфекция": 5,
     }
 
+    # Приоритет уровней обработки (основная > поддерживающая > генеральная)
+    MAINTENANCE_TYPE_PRIORITY = {
+        "основная": 1,
+        "поддерживающая": 2,
+        "генеральная": 3,
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
@@ -146,6 +153,7 @@ class TechCardGenerator:
 
         for instr in sorted_instructions:
             sig = (
+                instr.maintenance_type or "",
                 instr.cleaning_method or "",
                 instr.instruction_number or "",
                 instr.product_name or "",
@@ -189,10 +197,9 @@ class TechCardGenerator:
 
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
         """
-        Выбирает инструкции для конкретной категории помещения.
-        Приоритет: инструкция для конкретного помещения > общая инструкция (room_category_id IS NULL)
-        Для каждого cleaning_method берётся наиболее специфичная инструкция.
-        Сортировка результата по CLEANING_METHOD_ORDER.
+        Выбирает лучшую инструкцию для каждого cleaning_method с учётом:
+        1. Приоритет maintenance_type: основная > поддерживающая > генеральная.
+        2. Специфичность: инструкция для конкретного помещения > общая (room_category_id IS NULL).
         """
         if not all_instructions:
             return []
@@ -205,20 +212,37 @@ class TechCardGenerator:
 
         selected = []
         for method, instrs in by_method.items():
-            # Ищем инструкцию для конкретной категории помещения
-            specific = None
-            general = None
+            best = None
+            best_priority = 999
+            best_is_specific = False
 
             for instr in instrs:
-                if instr.room_category_id == room_category_id:
-                    specific = instr
-                elif instr.room_category_id is None:
-                    general = instr
+                # Приоритет уровня обработки
+                maint_priority = self.MAINTENANCE_TYPE_PRIORITY.get(
+                    (instr.maintenance_type or "").lower(), 99
+                )
+                is_specific = (instr.room_category_id == room_category_id)
 
-            # Приоритет: специфичная > общая
-            chosen = specific or general
-            if chosen:
-                selected.append(chosen)
+                # Лучше, если:
+                # - выше приоритет maintenance_type (меньше число)
+                # - при равном приоритете — специфичная для помещения инструкция
+                if maint_priority < best_priority or (maint_priority == best_priority and is_specific and not best_is_specific):
+                    best = instr
+                    best_priority = maint_priority
+                    best_is_specific = is_specific
+
+            # Если ничего не нашли — ищем среди общих инструкций с тем же приоритетом уровней
+            if not best:
+                for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                    for instr in instrs:
+                        if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
+                            best = instr
+                            break
+                    if best:
+                        break
+
+            if best:
+                selected.append(best)
 
         # Сортируем по заданному порядку cleaning_method
         selected.sort(
@@ -282,7 +306,7 @@ class TechCardGenerator:
             sort_priority = obj.sort_priority if obj else 999
 
             if obj and obj.id in instructions_dict:
-                # ВАЖНО: выбираем инструкции с учётом категории помещения
+                # ВАЖНО: выбираем инструкции с учётом категории помещения и maintenance_type
                 all_instrs = instructions_dict[obj.id]
                 instructions = self._select_instructions_for_room(all_instrs, room_category_id)
 

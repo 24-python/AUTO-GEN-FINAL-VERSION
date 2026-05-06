@@ -3,7 +3,7 @@
 Веб-приложение для парсинга чек-листов и генерации техкарт.
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
 Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
-Добавлена поддержка категорий помещений (room_categories).
+Добавлена поддержка категорий помещений (room_categories) и maintenance_type.
 """
 
 import os
@@ -25,7 +25,6 @@ app = Flask(__name__)
 # Настройка MIME-типов для Markdown
 import mimetypes
 mimetypes.add_type('text/markdown', '.md')
-mimetypes.add_type('text/plain', '.md')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
@@ -515,13 +514,12 @@ def api_object_instructions(obj_id):
     session = SessionLocal()
     obj = session.query(Object).get(obj_id)
     if obj:
-        # Получаем категории помещений для отображения
         room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
-
         result = [{
             'id': i.id,
             'room_category_id': i.room_category_id,
             'room_category_name': room_cats.get(i.room_category_id, 'Общая') if i.room_category_id else 'Общая',
+            'maintenance_type': i.maintenance_type or '',
             'cleaning_method': i.cleaning_method or '',
             'product_name': i.product_name or '',
             'cleaning_technique': i.cleaning_technique or '',
@@ -545,7 +543,6 @@ def api_create_instruction(obj_id):
     data = request.get_json()
     session = SessionLocal()
 
-    # Получаем room_category_id (может быть None для общей инструкции)
     room_category_id = data.get('room_category_id')
     if room_category_id is not None:
         try:
@@ -553,9 +550,12 @@ def api_create_instruction(obj_id):
         except (ValueError, TypeError):
             room_category_id = None
 
+    maintenance_type = data.get('maintenance_type', '')
+
     instr = Instruction(
         object_id=obj_id,
         room_category_id=room_category_id,
+        maintenance_type=maintenance_type,
         cleaning_method=data.get('cleaning_method', ''),
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
@@ -582,7 +582,6 @@ def api_update_instruction(instr_id):
     session = SessionLocal()
     instr = session.query(Instruction).get(instr_id)
     if instr:
-        # Обновляем room_category_id
         if 'room_category_id' in data:
             rc_id = data['room_category_id']
             if rc_id is not None:
@@ -592,10 +591,9 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
-        # Обновляем остальные поля
-        fields = ['cleaning_method', 'product_name', 'cleaning_technique', 'concentration',
-                  'temperature', 'exposure_time', 'inventory', 'frequency', 'executor',
-                  'control_method', 'instruction_number']
+        fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
+                  'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency',
+                  'executor', 'control_method', 'instruction_number']
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])
@@ -638,8 +636,8 @@ def api_export_csv():
     writer.writerow([
         'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
-        'cleaning_method', 'instruction_number', 'product_name', 'cleaning_technique',
-        'concentration', 'temperature', 'exposure_time', 'inventory',
+        'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
+        'cleaning_technique', 'concentration', 'temperature', 'exposure_time', 'inventory',
         'frequency', 'executor', 'control_method'
     ])
 
@@ -651,18 +649,18 @@ def api_export_csv():
                     obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
                     obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
                     instr.id, room_cat_name,
-                                                     instr.cleaning_method or '', instr.instruction_number or '',
-                                                     instr.product_name or '', instr.cleaning_technique or '',
-                                                     instr.concentration or '', instr.temperature or '',
-                                                     instr.exposure_time or '', instr.inventory or '',
-                                                     instr.frequency or '', instr.executor or '',
-                                                     instr.control_method or ''
+                    instr.maintenance_type or '',
+                    instr.cleaning_method or '', instr.instruction_number or '',
+                    instr.product_name or '', instr.cleaning_technique or '',
+                    instr.concentration or '', instr.temperature or '',
+                    instr.exposure_time or '', instr.inventory or '',
+                    instr.frequency or '', instr.executor or '', instr.control_method or ''
                 ])
         else:
             writer.writerow([
                 obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
                 obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ])
 
     session.close()
@@ -687,7 +685,6 @@ def api_import_csv():
     file = request.files['file']
     mode = int(request.form.get('mode', 1))
 
-    # Сохраняем временный файл
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"import_{timestamp}_{file.filename}"
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -705,7 +702,6 @@ def api_import_csv():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        # Удаляем временный файл
         if os.path.exists(filepath):
             os.remove(filepath)
 

@@ -180,17 +180,37 @@
                     <div v-for="(instr, idx) in currentInstructions" :key="idx" class="instruction-row" :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB'}">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <span class="badge-ct" :class="instr.isNew ? 'badge-success' : 'badge-info'" v-text="instr.isNew ? 'Новая' : 'ID: ' + instr.id + (instr.room_category_name ? ' | ' + instr.room_category_name : '')"></span>
-                            <button class="btn-ct-outline btn-sm text-danger" @click="deleteInstruction(instr, idx)"><i class="bi bi-trash"></i></button>
+                            <div>
+                                <button class="btn-ct-outline btn-sm me-1" @click="duplicateInstruction(instr, idx)" title="Дублировать"><i class="bi bi-files"></i></button>
+                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteInstruction(instr, idx)"><i class="bi bi-trash"></i></button>
+                            </div>
                         </div>
                         <div class="row">
-                            <div class="col-6">
+                            <div class="col-4">
+                                <label class="form-label-ct">Уровень обработки</label>
+                                <select class="form-select-ct form-select-sm" v-model="instr.maintenance_type">
+                                    <option value="основная">основная</option>
+                                    <option value="поддерживающая">поддерживающая</option>
+                                    <option value="генеральная">генеральная</option>
+                                </select>
+                            </div>
+                            <div class="col-4">
                                 <label class="form-label-ct">Категория помещения</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.room_category_id">
                                     <option :value="null">Общая (для всех)</option>
                                     <option v-for="rc in roomCategories" :value="rc.id" v-text="rc.name"></option>
                                 </select>
                             </div>
-                            <div class="col-6"><label class="form-label-ct">Способ обработки</label><input class="form-control-ct form-control-sm" v-model="instr.cleaning_method"></div>
+                            <div class="col-4">
+                                <label class="form-label-ct">Способ обработки</label>
+                                <select class="form-select-ct form-select-sm" v-model="instr.cleaning_method">
+                                    <option value="">-- выберите --</option>
+                                    <option value="обеспыливание">обеспыливание</option>
+                                    <option value="мойка">мойка</option>
+                                    <option value="ополаскивание">ополаскивание</option>
+                                    <option value="дезинфекция">дезинфекция</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="row">
                             <div class="col-6"><label class="form-label-ct">Средство</label><input class="form-control-ct form-control-sm" v-model="instr.product_name"></div>
@@ -238,7 +258,6 @@
         </div>
     </div>
 
-    <!-- Футер Chemitech -->
     <footer style="background: var(--ct-surface); border-top: 1px solid var(--ct-border); padding: 16px 0; margin-top: 40px;">
         <div class="container">
             <div class="d-flex justify-content-between align-items-center flex-wrap" style="font-size: 0.85rem; color: var(--ct-text-secondary);">
