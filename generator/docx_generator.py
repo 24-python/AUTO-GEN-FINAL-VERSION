@@ -92,9 +92,6 @@ class TechCardGenerator:
         "ХИМИТЕК ПОЛИКОР®-ГЕЛЬ ДДС": "FFCCCC",
         "ХИМИТЕК ПОЛИКОР-ГЕЛЬ® ДДС 180022": "FFCCCC",
         "ХИМИТЕК ПОЛИКОР® ДДС": "FFCCCC",
-
-        # Специальные (без цвета)
-        "ХИМИТЕК ДЕГИДРОФОБИНОЛ": "FFFFFF",
     }
 
     CLEANING_METHOD_ORDER = {
@@ -237,8 +234,7 @@ class TechCardGenerator:
             best = None
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
                 for instr in instrs:
-                    if (
-                            instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
+                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
                         best = instr
                         break
                 if best:
@@ -315,7 +311,7 @@ class TechCardGenerator:
                     target_para._p.append(new_run)
 
     def _set_cell_text(self, cell, text: str):
-        """Устанавливает текст в ячейку"""
+        """Устанавливает текст в ячейку через первый абзац"""
         if not cell.paragraphs:
             cell.add_paragraph()
         para = cell.paragraphs[0]
@@ -503,6 +499,7 @@ class TechCardGenerator:
                     product_name = instr.product_name or ""
                     concentration = instr.concentration or ""
                     cleaning_technique = instr.cleaning_technique or ""
+                    extra_method_text = None
 
                     # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
                     if cleaning_method == "мойка":
@@ -511,20 +508,33 @@ class TechCardGenerator:
                         if checklist_data.cleaning_concentration:
                             concentration = checklist_data.cleaning_concentration
                         if checklist_data.cleaning_method_text:
-                            concentration = f"{concentration}, {checklist_data.cleaning_method_text}" if concentration else checklist_data.cleaning_method_text
+                            extra_method_text = checklist_data.cleaning_method_text
                     elif cleaning_method == "дезинфекция":
                         if checklist_data.disinfection_product:
                             product_name = checklist_data.disinfection_product
                         if checklist_data.disinfection_concentration:
                             concentration = checklist_data.disinfection_concentration
                         if checklist_data.disinfection_method_text:
-                            concentration = f"{concentration}, {checklist_data.disinfection_method_text}" if concentration else checklist_data.disinfection_method_text
+                            extra_method_text = checklist_data.disinfection_method_text
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
                     self._set_cell_text(row.cells[3], product_name)
                     self._set_cell_text(row.cells[4], cleaning_technique)
                     self._set_cell_text(row.cells[5], concentration)
+
+                    # Добавляем способ разведения на новую строку в колонке концентрации
+                    if extra_method_text:
+                        para = row.cells[5].paragraphs[0]
+                        # Добавляем разрыв строки
+                        run_br = para.add_run()
+                        br = OxmlElement('w:br')
+                        run_br._r.append(br)
+                        # Добавляем текст способа разведения
+                        run_text = para.add_run(extra_method_text)
+                        run_text.font.name = 'Arial'
+                        run_text.font.size = Pt(7)
+
                     self._set_cell_text(row.cells[6], instr.temperature or "")
                     self._set_cell_text(row.cells[7], instr.exposure_time or "")
                     self._set_cell_text(row.cells[8], instr.inventory or "")
