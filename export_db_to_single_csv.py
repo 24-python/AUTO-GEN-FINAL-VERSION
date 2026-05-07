@@ -18,7 +18,7 @@ from db.database import SessionLocal
 from db.models import Category, Object, Instruction, RoomCategory
 
 
-def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
+def export_all_to_single_csv(output_path: str = "db_export_all1111.csv"):
     """Экспортирует все данные в один CSV"""
 
     session = SessionLocal()
@@ -131,7 +131,7 @@ def export_all_to_single_csv(output_path: str = "db_export_all.csv"):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Экспорт БД в один CSV")
-    parser.add_argument("--output", "-o", default="db_export_all.csv", help="Выходной CSV файл")
+    parser.add_argument("--output", "-o", default="db_export_all1111.csv", help="Выходной CSV файл")
     args = parser.parse_args()
 
     export_all_to_single_csv(args.output)

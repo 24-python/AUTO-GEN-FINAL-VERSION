@@ -43,7 +43,17 @@ class ChecklistData:
     file_path: str
     room_name: Optional[str] = None
     enterprise: Optional[str] = None
-    room_category: Optional[str] = None  # <-- НОВОЕ ПОЛЕ
+    room_category: Optional[str] = None
+
+    # Средства из раздела "Дополнительная информация"
+    cleaning_product: Optional[str] = None  # название моющего средства
+    cleaning_concentration: Optional[str] = None  # концентрация моющего
+    cleaning_method_text: Optional[str] = None  # способ разведения моющего
+
+    disinfection_product: Optional[str] = None  # название дезинфицирующего
+    disinfection_concentration: Optional[str] = None  # концентрация дезинфицирующего
+    disinfection_method_text: Optional[str] = None  # способ разведения дезинфицирующего
+
     items: List[ChecklistItem] = field(default_factory=list)
 
     def get_checked_items(self) -> List[ChecklistItem]:

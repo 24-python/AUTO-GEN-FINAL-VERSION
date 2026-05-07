@@ -113,7 +113,7 @@ python -m db.init_db
 ```bash
 # Через веб-интерфейс: Админ-панель → Импорт CSV
 # Или через CLI:
-python import_csv_to_db.py db_export_all.csv --mode 1
+python import_csv_to_db.py db_export_all1111.csv --mode 1
 ```
 
 ---
@@ -461,7 +461,7 @@ python export_db_to_single_csv.py
 
 ```bash
 # CLI
-python import_csv_to_db.py db_export_all.csv --mode 1
+python import_csv_to_db.py db_export_all1111.csv --mode 1
 
 # Веб
 # /admin → «Импорт CSV» → выбор режима → загрузка

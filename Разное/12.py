@@ -24,7 +24,7 @@ NAMESPACES = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main
 
 # Конфигурация
 DOCX_FILE = "../производственных помещений.docx"
-CSV_FILE = "../db_export_all.csv"
+CSV_FILE = "../db_export_all1111.csv"
 
 
 def main():
