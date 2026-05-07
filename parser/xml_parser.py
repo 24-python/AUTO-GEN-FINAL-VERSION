@@ -10,6 +10,7 @@
   - Базовый ⬜ → ничего не добавляем
 
 Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
+Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
 """
 
 import zipfile
@@ -104,7 +105,6 @@ class SDTChecklistParser:
         """Очищает текст от лишних пробелов и символов"""
         if not text:
             return ""
-        # Удаляем символы чек-боксов, если они попали в текст
         text = text.replace('☒', '').replace('☐', '')
         return ' '.join(text.split()).strip()
 
@@ -160,14 +160,12 @@ class SDTChecklistParser:
         if not elements:
             return
 
-        # Собираем объект
         current_obj = None
         current_state = False
         text_parts = []
 
         for elem in elements:
             if elem['type'] == 'checkbox':
-                # Сохраняем накопленный текст перед новым чек-боксом
                 if text_parts:
                     full_text = self._clean_text(''.join(text_parts))
                     if full_text:
@@ -178,7 +176,6 @@ class SDTChecklistParser:
                                 'modifiers': []
                             }
                         else:
-                            # Добавляем модификатор
                             current_obj['modifiers'].append({
                                 'name': full_text,
                                 'checked': current_state
@@ -188,7 +185,6 @@ class SDTChecklistParser:
             elif elem['type'] == 'text':
                 text_parts.append(elem['value'])
 
-        # ВАЖНО: Сохраняем последний накопленный текст (последний модификатор)
         if text_parts:
             full_text = self._clean_text(''.join(text_parts))
             if full_text:
@@ -199,7 +195,6 @@ class SDTChecklistParser:
                         'modifiers': []
                     }
                 else:
-                    # Добавляем последний модификатор
                     current_obj['modifiers'].append({
                         'name': full_text,
                         'checked': current_state
@@ -216,7 +211,6 @@ class SDTChecklistParser:
         if not full_text or ('☒' not in full_text and '☐' not in full_text):
             return
 
-        # Считаем количество чек-боксов
         checkbox_count = full_text.count('☒') + full_text.count('☐')
 
         parts = re.split(r'([☐☒])', full_text)
@@ -226,7 +220,6 @@ class SDTChecklistParser:
 
         for i in range(1, len(parts)):
             if parts[i] in ['☒', '☐']:
-                # Сохраняем накопленный текст
                 if text_parts:
                     full_text = self._clean_text(''.join(text_parts))
                     if full_text:
@@ -246,7 +239,6 @@ class SDTChecklistParser:
             else:
                 text_parts.append(parts[i])
 
-        # Сохраняем последний текст
         if text_parts:
             full_text = self._clean_text(''.join(text_parts))
             if full_text:
@@ -266,29 +258,17 @@ class SDTChecklistParser:
             self._add_object_to_data(current_obj, checkbox_count, data)
 
     def _add_object_to_data(self, obj: dict, checkbox_count: int, data: ChecklistData):
-        """
-        Добавляет объект в ChecklistData с правильной логикой.
-
-        Логика:
-        - checkbox_count == 1 → одиночный объект → в свою категорию (если отмечен)
-        - checkbox_count >= 2 → объект с модификаторами
-          - Базовый ✅ + модификаторы ✅ → каждый модификатор в свою категорию
-          - Базовый ✅ + модификаторы ⬜ → базовый в "Прочее"
-          - Базовый ⬜ → ничего не добавляем
-        """
+        """Добавляет объект в ChecklistData с правильной логикой"""
         base_name = obj['name']
         base_checked = obj['checked']
         modifiers = obj['modifiers']
 
-        # Если базовый объект НЕ отмечен → ничего не добавляем
         if not base_checked:
             return
 
-        # Нормализуем базовое имя
         normalized_base = smart_normalize(base_name)
 
         if checkbox_count == 1:
-            # ОДИНОЧНЫЙ ОБЪЕКТ → в свою категорию
             category = self._get_category_from_db(normalized_base)
             print(f"  [{category.value}] ✅ {base_name}")
             data.items.append(ChecklistItem(
@@ -299,20 +279,15 @@ class SDTChecklistParser:
             ))
             return
 
-        # ОБЪЕКТ С МОДИФИКАТОРАМИ (checkbox_count >= 2)
         checked_modifiers = [m for m in modifiers if m['checked']]
 
         if checked_modifiers:
-            # Есть отмеченные модификаторы → добавляем каждый
             for mod in checked_modifiers:
                 full_name = f"{base_name} {mod['name']}"
                 normalized_full = smart_normalize(full_name)
-
-                # Пытаемся получить категорию для полного имени
                 mod_category = self._get_category_from_db(normalized_full)
                 if mod_category == Category.OTHER:
                     mod_category = self._get_category_from_db(normalized_base)
-
                 print(f"  [{mod_category.value}] ✅ {full_name}")
                 data.items.append(ChecklistItem(
                     name=normalized_full,
@@ -321,7 +296,6 @@ class SDTChecklistParser:
                     markers=[mod['name']]
                 ))
         else:
-            # Нет отмеченных модификаторов → базовый в "Прочее"
             print(f"  [Прочее] ⚠️ {base_name} (модификаторы не отмечены)")
             data.items.append(ChecklistItem(
                 name=normalized_base,
@@ -344,11 +318,7 @@ class SDTChecklistParser:
                     data.room_name = ' '.join([t.text for t in texts if t.text]).strip()
 
     def _parse_room_category(self, root, data: ChecklistData):
-        """
-        Извлекает категорию помещения из выпадающего списка (dropDownList SDT) в чек-листе.
-        Ищет SDT с тегом w:dropDownList и читает выбранное значение.
-        """
-        # Ищем все SDT элементы в документе
+        """Извлекает категорию помещения из выпадающего списка (dropDownList SDT)"""
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
         for sdt in sdt_elements:
@@ -356,22 +326,79 @@ class SDTChecklistParser:
             if sdt_pr is None:
                 continue
 
-            # Проверяем, есть ли выпадающий список в этом SDT
             dropdown = sdt_pr.find('.//w:dropDownList', namespaces=self.NAMESPACES)
             if dropdown is None:
                 continue
 
-            # Нашли выпадающий список — извлекаем выбранное значение
             sdt_content = sdt.find('.//w:sdtContent', namespaces=self.NAMESPACES)
             if sdt_content is not None:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
                 if value:
+                    # Проверяем, не является ли это средством (не категорией помещения)
+                    if value not in ['Производственное', 'Бытовое', 'Складское', 'Санитарное',
+                                     'Вспомогательное', 'Моечное', 'Техническое', 'Офисное',
+                                     'Общего назначения']:
+                        continue
                     data.room_category = value
                     print(f"  📋 Категория помещения (из выпадающего списка): «{value}»")
                     return
 
         print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
+
+    def _parse_additional_info(self, root, data: ChecklistData):
+        """
+        Извлекает моющие и дезинфицирующие средства из раздела "Дополнительная информация".
+        Ищет все выпадающие списки (SDT dropDownList), которые не являются категорией помещения.
+        Собирает их последовательно:
+        - Первые три: моющее средство (название, концентрация, способ разведения)
+        - Вторые три: дезинфицирующее средство
+        """
+        sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
+
+        dropdown_values = []
+
+        for sdt in sdt_elements:
+            sdt_pr = sdt.find('.//w:sdtPr', namespaces=self.NAMESPACES)
+            if sdt_pr is None:
+                continue
+
+            dropdown = sdt_pr.find('.//w:dropDownList', namespaces=self.NAMESPACES)
+            if dropdown is None:
+                continue
+
+            # Проверяем, не категория ли это помещения
+            sdt_content = sdt.find('.//w:sdtContent', namespaces=self.NAMESPACES)
+            if sdt_content is not None:
+                texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
+                value = ''.join(t.text or '' for t in texts).strip()
+                if value:
+                    # Пропускаем категории помещений
+                    if value in ['Производственное', 'Бытовое', 'Складское', 'Санитарное',
+                                 'Вспомогательное', 'Моечное', 'Техническое', 'Офисное',
+                                 'Общего назначения']:
+                        continue
+                    dropdown_values.append(value)
+
+        print(f"  📦 Найдено выпадающих списков со средствами: {len(dropdown_values)}")
+
+        # Первые три значения — моющее средство
+        if len(dropdown_values) >= 3:
+            data.cleaning_product = dropdown_values[0]
+            data.cleaning_concentration = dropdown_values[1]
+            data.cleaning_method_text = dropdown_values[2]
+            print(f"  🧴 Моющее средство: {data.cleaning_product}")
+            print(f"     Концентрация: {data.cleaning_concentration}")
+            print(f"     Способ разведения: {data.cleaning_method_text}")
+
+        # Следующие три — дезинфицирующее
+        if len(dropdown_values) >= 6:
+            data.disinfection_product = dropdown_values[3]
+            data.disinfection_concentration = dropdown_values[4]
+            data.disinfection_method_text = dropdown_values[5]
+            print(f"  🦠 Дезинфицирующее средство: {data.disinfection_product}")
+            print(f"     Концентрация: {data.disinfection_concentration}")
+            print(f"     Способ разведения: {data.disinfection_method_text}")
 
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
@@ -384,13 +411,10 @@ class SDTChecklistParser:
                 xml_content = xml_file.read()
                 root = etree.fromstring(xml_content)
 
-                # Парсим заголовок (предприятие и участок)
                 self._parse_header(root, data)
-
-                # Парсим категорию помещения из выпадающего списка
                 self._parse_room_category(root, data)
+                self._parse_additional_info(root, data)  # Новый метод
 
-                # Парсим объекты (чек-боксы)
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
 
@@ -431,6 +455,10 @@ class SDTChecklistParser:
         print(f"   В Прочее: {other_total}")
         if data.room_category:
             print(f"   Категория помещения: {data.room_category}")
+        if data.cleaning_product:
+            print(f"   Моющее средство: {data.cleaning_product}")
+        if data.disinfection_product:
+            print(f"   Дезинфицирующее средство: {data.disinfection_product}")
 
 
 def parse_checklist(file_path: str) -> ChecklistData:
