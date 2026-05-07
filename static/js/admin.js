@@ -97,6 +97,30 @@ createApp({
             }
         },
 
+        // ========== ОЧИСТКА БАЗЫ ДАННЫХ ==========
+        async clearDatabase() {
+            if (!confirm('⚠️ ВНИМАНИЕ! Все объекты и инструкции будут удалены без возможности восстановления. Продолжить?')) return;
+            if (!confirm('Точно удалить ВСЕ данные?')) return;
+
+            try {
+                // Получаем все объекты
+                const res = await fetch('/api/objects');
+                const data = await res.json();
+                const allObjects = data.objects || [];
+
+                // Удаляем каждый объект (инструкции удалятся каскадно)
+                for (const obj of allObjects) {
+                    await fetch(`/api/objects/${obj.id}`, { method: 'DELETE' });
+                }
+
+                Toastify({ text: `✅ База данных очищена (${allObjects.length} объектов)`, duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                await this.loadObjects();
+                await this.loadRoomCategories();
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка очистки БД', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
         openRoomCatForm() {
             this.editingRoomCat = null;
             this.roomCatForm.name = '';
@@ -238,11 +262,9 @@ createApp({
             });
         },
         duplicateInstruction(instr, idx) {
-            // Создаём глубокую копию инструкции
             const copy = JSON.parse(JSON.stringify(instr));
             copy.id = null;
             copy.isNew = true;
-            // Вставляем после текущей инструкции
             this.currentInstructions.splice(idx + 1, 0, copy);
             Toastify({ text: '✅ Инструкция дублирована', duration: 2000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
         },
