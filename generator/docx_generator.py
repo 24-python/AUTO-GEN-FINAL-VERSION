@@ -95,11 +95,10 @@ class TechCardGenerator:
     }
 
     CLEANING_METHOD_ORDER = {
-        "обеспыливание": 1,
-        "очистка": 2,
-        "мойка": 3,
-        "ополаскивание": 4,
-        "дезинфекция": 5,
+        "очистка (обеспыливание поверхностей)": 1,
+        "мойка": 2,
+        "ополаскивание": 3,
+        "дезинфекция": 4,
     }
 
     def __init__(self, template_path: str = None):
@@ -234,8 +233,7 @@ class TechCardGenerator:
             best = None
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
                 for instr in instrs:
-                    if (
-                            instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
+                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
                         best = instr
                         break
                 if best:
@@ -313,9 +311,6 @@ class TechCardGenerator:
                         r_pr.append(sz)
                     sz.set(qn('w:val'), '14')
 
-                    # Сохраняем szCs если был
-                    source_sz_cs = r_pr.find(qn('w:szCs')) if source_r_pr is not None else None
-
                     sz_cs = r_pr.find(qn('w:szCs'))
                     if sz_cs is None:
                         sz_cs = OxmlElement('w:szCs')
@@ -339,7 +334,6 @@ class TechCardGenerator:
             cell.add_paragraph()
         para = cell.paragraphs[0]
         if not para.runs:
-            # Создаём новый run
             run_elem = OxmlElement('w:r')
             r_pr = OxmlElement('w:rPr')
             sz = OxmlElement('w:sz')
@@ -358,21 +352,17 @@ class TechCardGenerator:
             run_elem.append(t_elem)
             para._p.append(run_elem)
         else:
-            # Run уже есть — обновляем bold
             run = para.runs[0]
             r_pr = run._r.find(qn('w:rPr'))
             if r_pr is None:
                 r_pr = OxmlElement('w:rPr')
                 run._r.insert(0, r_pr)
-            # Удаляем старый bold, если есть
             existing_b = r_pr.find(qn('w:b'))
             if existing_b is not None:
                 r_pr.remove(existing_b)
             if bold:
                 b = OxmlElement('w:b')
                 r_pr.append(b)
-
-        # Записываем текст в первый run
         run = para.runs[0]
         for t in run._r.findall(qn('w:t')):
             t.text = text
@@ -562,9 +552,9 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
-                    self._set_cell_text(row.cells[3], product_name, bold=True)
+                    self._set_cell_text(row.cells[3], product_name if product_name else "------------", bold=bool(product_name))
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration)
+                    self._set_cell_text(row.cells[5], concentration if concentration else "------------")
 
                     # Добавляем способ разведения на новую строку в колонке концентрации
                     if extra_method_text:
@@ -576,8 +566,8 @@ class TechCardGenerator:
                         run_text.font.name = 'Arial'
                         run_text.font.size = Pt(7)
 
-                    self._set_cell_text(row.cells[6], instr.temperature or "")
-                    self._set_cell_text(row.cells[7], instr.exposure_time or "")
+                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "------------")
+                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "------------")
                     self._set_cell_text(row.cells[8], instr.inventory or "")
                     self._set_cell_text(row.cells[9], instr.frequency or "")
                     self._set_cell_text(row.cells[10], instr.executor or "")

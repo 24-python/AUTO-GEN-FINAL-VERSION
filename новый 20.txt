@@ -1,0 +1,2346 @@
+================================================================================
+ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
+Дата экспорта: 2026-05-08 12:03:41
+================================================================================
+
+📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
+--------------------------------------------------------------------------------
+   app.py
+   db\__init__.py
+   db\crud.py
+   db\database.py
+   db\export_json.py
+   db\import_json.py
+   db\init_db.py
+   db\models.py
+   export_db_to_single_csv.py
+   generator\__init__.py
+   generator\docx_generator.py
+   generator\mapper.py
+   import_csv_to_db.py
+   parser\__init__.py
+   parser\models.py
+   parser\parse_products.py
+   parser\utils.py
+   parser\xml_parser.py
+   requirements.txt
+   static\css\style.css
+   static\docs\README.md
+   static\docs\Инструкция по использованию.md
+   static\js\admin.js
+   static\js\app.js
+   static\js\history.js
+   templates\admin.html
+   templates\history.html
+   templates\index.html
+   test_generator.py
+
+
+📁 СТРУКТУРА ПРОЕКТА (✅ - выбранные файлы)
+--------------------------------------------------------------------------------
+AUTO-GEN-FINAL-VERSION/
+├── ✅ app.py (25.9 KB)
+├──    check_bold.py (0.7 KB)
+├──    check_row7.py (0.9 KB)
+├──    checklists/
+
+├──    Context.py (15.8 KB)
+├── ✅ db/
+│   ├── ✅ __init__.py (0.2 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ crud.py (4.3 KB)
+│   ├── ✅ database.py (1.0 KB)
+│   ├── ✅ export_json.py (3.1 KB)
+│   ├── ✅ import_json.py (6.1 KB)
+│   ├── ✅ init_db.py (3.7 KB)
+│   └── ✅ models.py (5.5 KB)
+├──    db_export_all1111.csv (190.4 KB)
+├── ✅ export_db_to_single_csv.py (4.9 KB)
+├── ✅ generator/
+│   ├── ✅ __init__.py (0.2 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ docx_generator.py (28.6 KB)
+│   └── ✅ mapper.py (2.9 KB)
+├── ✅ import_csv_to_db.py (22.4 KB)
+├── ✅ parser/
+│   ├── ✅ __init__.py (0.2 KB)
+│   ├──    __pycache__/
+
+│   ├── ✅ models.py (3.1 KB)
+│   ├── ✅ parse_products.py (7.6 KB)
+│   ├── ✅ utils.py (0.7 KB)
+│   └── ✅ xml_parser.py (20.8 KB)
+├── ✅ requirements.txt (0.5 KB)
+├── ✅ static/
+│   ├── ✅ css/
+│   │   └── ✅ style.css (9.5 KB)
+│   ├── ✅ docs/
+│   │   ├── ✅ README.md (28.5 KB)
+│   │   └── ✅ Инструкция по использованию.md (24.1 KB)
+│   └── ✅ js/
+│       ├── ✅ admin.js (16.5 KB)
+│       ├── ✅ app.js (7.1 KB)
+│       └── ✅ history.js (3.3 KB)
+├──    tech_card_templates/
+
+├──    tech_cards/
+│   ├──    generation_history.json (4.2 KB)
+├── ✅ templates/
+│   ├── ✅ admin.html (21.1 KB)
+│   ├── ✅ history.html (7.6 KB)
+│   └── ✅ index.html (12.5 KB)
+├──    test_bold.py (3.2 KB)
+├── ✅ test_generator.py (9.5 KB)
+├──    test_set_cell.py (3.2 KB)
+├──    update_frequency_from_schedule.py (12.8 KB)
+├──    uploads/
+
+├──    Готовый код на 06.05.26.txt (252.8 KB)
+├──    Готовый код на 08.05.26.txt (0.0 KB)
+├──    Полная сводка по проекту.txt (15.4 KB)
+├──    Разное/
+│   ├──    1.py (4.1 KB)
+│   ├──    1111111.py (1.4 KB)
+│   ├──    12.py (5.4 KB)
+│   ├──    __pycache__/
+
+│   ├──    add_missing_objects.py (1.6 KB)
+│   ├──    check_cameras_now.py (1.3 KB)
+│   ├──    check_compound_objects.py (1.7 KB)
+│   ├──    check_db_structure.py (1.5 KB)
+│   ├──    check_excel_cols.py (0.4 KB)
+│   ├──    check_export.json (355.9 KB)
+│   ├──    check_refrigerator_names.py (0.8 KB)
+│   ├──    check_structure.py (0.9 KB)
+│   ├──    compare_parser_with_db.py (14.9 KB)
+│   ├──    Context.txt (101.0 KB)
+│   ├──    count_all_objects.py (9.3 KB)
+│   ├──    create_correct_template.py (7.5 KB)
+│   ├──    db_comparison.txt (30.6 KB)
+│   ├──    debug_cameras_parser.py (0.5 KB)
+│   ├──    debug_cameras_parsing.py (0.9 KB)
+│   ├──    debug_cell_content.py (1.1 KB)
+│   ├──    debug_fetch_instructions.py (5.6 KB)
+│   ├──    debug_issues.py (2.0 KB)
+│   ├──    debug_parser_cameras.py (0.8 KB)
+│   ├──    debug_search.py (0.7 KB)
+│   ├──    debug_svetilniki_parser.py (3.5 KB)
+│   ├──    debug_telezki.py (3.5 KB)
+│   ├──    deep_diagnose.py (2.4 KB)
+│   ├──    detailed_analysis.py (7.3 KB)
+│   ├──    diagnose_match.py (2.2 KB)
+│   ├──    diagnose_potolok.py (0.5 KB)
+│   ├──    diagnose_template.py (1.8 KB)
+│   ├──    docx_generator.py (9.2 KB)
+│   ├──    docx_generator_lxml.py (10.6 KB)
+│   ├──    docx_generator_new.py (14.0 KB)
+│   ├──    docx_generator_simple.py (5.3 KB)
+│   ├──    dump_parsed_objects_with_categories.py (3.7 KB)
+│   ├──    export_all_objects.py (15.5 KB)
+│   ├──    export_all_objects_txt.py (16.3 KB)
+│   ├──    find_duplicate_instructions.py (2.0 KB)
+│   ├──    find_similar_in_db.py (0.8 KB)
+│   ├──    find_svetilniki_in_xml.py (1.3 KB)
+│   ├──    fix_cameras.py (0.4 KB)
+│   ├──    fix_potolok_normalized.py (1.5 KB)
+│   ├──    fix_siz_case.py (1.2 KB)
+│   ├──    import_data.json (319.2 KB)
+│   ├──    match_schedule.py (15.9 KB)
+│   ├──    migration_db.py (0.5 KB)
+│   ├──    normalize_all_db.py (0.6 KB)
+│   ├──    normalize_all_to_lowercase.py (0.5 KB)
+│   ├──    objects_export.txt (39.3 KB)
+│   ├──    parsed_objects_with_categories.txt (6.2 KB)
+│   ├──    prepare_import_json.py (11.1 KB)
+│   ├──    profile_generator.py (2.6 KB)
+│   ├──    test_generator.py (8.1 KB)
+│   ├──    test_generator_new.py (8.1 KB)
+│   ├──    test_sdt_parser.py (7.4 KB)
+│   ├──    test_sdt_parser_debug.py (4.6 KB)
+│   ├──    update_db_normalized_names.py (9.0 KB)
+│   ├──    update_normalized_from_parser.py (1.8 KB)
+│   ├──    полный перечень всех поверхностей из чек-листа.txt (6.5 KB)
+│   ├──    сопостовление объектов для БД.csv (19.0 KB)
+└──    Файл импорта исправленный.csv (242.2 KB)
+
+📄 СОДЕРЖИМОЕ ВЫБРАННЫХ ФАЙЛОВ
+--------------------------------------------------------------------------------
+
+================================================================================
+ФАЙЛ: app.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Веб-приложение для парсинга чек-листов и генерации техкарт.
+Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
+Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
+Добавлена поддержка категорий помещений (room_categories) и maintenance_type.
+"""
+
+import os
+import uuid
+import zipfile
+import tempfile
+import time
+from pathlib import Path
+from datetime import datetime, timedelta
+
+from flask import Flask, request, render_template, jsonify, send_file
+
+from parser.xml_parser import parse_checklist
+from generator.docx_generator import TechCardGenerator
+from db.database import SessionLocal
+from db.models import Object, Instruction, Category as DBCategory, RoomCategory
+
+app = Flask(__name__)
+# Настройка MIME-типов для Markdown
+import mimetypes
+mimetypes.add_type('text/markdown', '.md')
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
+app.config['HISTORY_FILE'] = 'tech_cards/generation_history.json'
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['TECH_CARDS_FOLDER'], exist_ok=True)
+
+# Совместимость Jinja2 с Vue.js
+app.jinja_env.variable_start_string = '{?'
+app.jinja_env.variable_end_string = '?}'
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['docx', 'zip']
+
+
+def cleanup_old_files(folder: str, hours: int = 24):
+    """Удаляет файлы старше N часов"""
+    now = time.time()
+    folder_path = Path(folder)
+    if not folder_path.exists():
+        return
+    count = 0
+    for f in folder_path.glob("*"):
+        if f.is_file() and (now - f.stat().st_mtime) > hours * 3600:
+            f.unlink()
+            count += 1
+    if count > 0:
+        print(f"🧹 Очищено {count} файлов из {folder} (старше {hours} ч)")
+
+
+def load_history() -> list:
+    """Загружает историю генераций"""
+    import json
+    history_path = Path(app.config['HISTORY_FILE'])
+    if history_path.exists():
+        with open(history_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+
+def save_history(history: list):
+    """Сохраняет историю генераций (не более 1000 записей)"""
+    import json
+    history_path = Path(app.config['HISTORY_FILE'])
+    history = history[:1000]
+    with open(history_path, 'w', encoding='utf-8') as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def add_to_history(filename: str, objects_count: int, room_name: str = ""):
+    """Добавляет запись в историю"""
+    history = load_history()
+    file_path = Path(f"tech_cards/{filename}")
+    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0
+
+    history.insert(0, {
+        'filename': filename,
+        'display_name': room_name or Path(filename).stem,
+        'objects': objects_count,
+        'datetime': datetime.now().strftime('%d.%m.%Y %H:%M'),
+        'timestamp': datetime.now().isoformat(),
+        'download_url': f'/download/{filename}',
+        'size_kb': size_kb
+    })
+    save_history(history)
+
+
+def process_single_file(file, mode, generator):
+    """Обрабатывает один .docx файл"""
+    try:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"{timestamp}_{unique_id}_{file.filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        checklist_data = parse_checklist(filepath)
+        room_name = checklist_data.room_name or Path(filepath).stem
+        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        output_filename = f"{safe_name}_tech_card.docx"
+        output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
+        generator.generate(checklist_data, output_path, mode)
+
+        add_to_history(output_filename, len(checklist_data.get_checked_items()), room_name)
+
+        return {
+            'filename': file.filename,
+            'objects': len(checklist_data.get_checked_items()),
+            'download_url': f'/download/{output_filename}'
+        }
+    except Exception as e:
+        return {'filename': file.filename, 'error': str(e)}
+
+
+def process_zip_file(file, mode, generator):
+    """Обрабатывает ZIP архив"""
+    results = []
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = str(uuid.uuid4())[:8]
+    filename = f"{timestamp}_{unique_id}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            zf.extractall(tmpdir)
+
+        docx_files = list(Path(tmpdir).glob("**/*.docx"))
+        for docx_path in docx_files:
+            if docx_path.name.startswith("~"):
+                continue
+            try:
+                checklist_data = parse_checklist(str(docx_path))
+                room_name = checklist_data.room_name or docx_path.stem
+                safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
+                output_filename = f"{safe_name}_tech_card.docx"
+                output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
+                generator.generate(checklist_data, output_path, mode)
+
+                add_to_history(output_filename, len(checklist_data.get_checked_items()), room_name)
+
+                results.append({
+                    'filename': docx_path.name,
+                    'objects': len(checklist_data.get_checked_items()),
+                    'download_url': f'/download/{output_filename}'
+                })
+            except Exception as e:
+                results.append({'filename': docx_path.name, 'error': str(e)})
+
+    return results
+
+
+def create_zip_archive(files_info):
+    """Создаёт ZIP-архив из сгенерированных техкарт"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    zip_filename = f"tech_cards_{timestamp}.zip"
+    zip_path = os.path.join(app.config['TECH_CARDS_FOLDER'], zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        for f in files_info:
+            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
+            if os.path.exists(docx_path):
+                zf.write(docx_path, Path(docx_path).name)
+
+    return f'/download/{zip_filename}'
+
+
+# === АВТООЧИСТКА ПРИ ЗАПУСКЕ ===
+cleanup_old_files(app.config['UPLOAD_FOLDER'], 24)
+
+
+# === АВТОИНИЦИАЛИЗАЦИЯ БД ПРИ ПЕРВОМ ЗАПУСКЕ ===
+def initialize_database():
+    """Проверяет и инициализирует БД при запуске"""
+    from db.database import engine
+    from db.models import Base, Category as DBCategory, RoomCategory
+
+    # Создаём таблицы, если их нет
+    Base.metadata.create_all(bind=engine)
+
+    # Проверяем и заполняем категории объектов
+    session = SessionLocal()
+    try:
+        count = session.query(DBCategory).count()
+        if count == 0:
+            print("📦 Первичная инициализация категорий объектов...")
+            from db.init_db import seed_categories
+            seed_categories()
+        else:
+            print(f"✅ БД содержит {count} категорий объектов")
+
+        # Проверяем и заполняем категории помещений
+        rc_count = session.query(RoomCategory).count()
+        if rc_count == 0:
+            print("📦 Первичная инициализация категорий помещений...")
+            from db.init_db import seed_room_categories
+            seed_room_categories()
+        else:
+            print(f"✅ БД содержит {rc_count} категорий помещений")
+    finally:
+        session.close()
+
+
+initialize_database()
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/admin')
+def admin():
+    return render_template('admin.html')
+
+
+@app.route('/history')
+def history():
+    return render_template('history.html')
+
+
+# ============================================================
+# API: ГЕНЕРАЦИЯ
+# ============================================================
+
+@app.route('/api/generate', methods=['POST'])
+def api_generate():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+
+    is_multi = request.form.get('multi') == 'true'
+    mode = int(request.form.get('mode', 1))
+    generator = TechCardGenerator()
+    results = []
+
+    try:
+        if is_multi:
+            files = [request.files['file']]
+            i = 1
+            while f'file_{i}' in request.files:
+                files.append(request.files[f'file_{i}'])
+                i += 1
+
+            for file in files:
+                ext = file.filename.rsplit('.', 1)[1].lower()
+                if ext == 'zip':
+                    zip_results = process_zip_file(file, mode, generator)
+                    results.extend(zip_results)
+                else:
+                    result = process_single_file(file, mode, generator)
+                    results.append(result)
+        else:
+            file = request.files['file']
+            ext = file.filename.rsplit('.', 1)[1].lower()
+
+            if ext == 'zip':
+                results = process_zip_file(file, mode, generator)
+            else:
+                result = process_single_file(file, mode, generator)
+                results.append(result)
+
+        total_objects = sum(r.get('objects', 0) for r in results)
+        errors = [r for r in results if 'error' in r]
+        success_files = [r for r in results if 'error' not in r]
+
+        zip_url = None
+        if len(success_files) > 1:
+            zip_url = create_zip_archive(success_files)
+
+        return jsonify({
+            'success': True,
+            'total_files': len(results),
+            'total_objects': total_objects,
+            'files': results,
+            'errors': errors,
+            'zip_url': zip_url
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/download/<filename>')
+def download(filename):
+    path = f"tech_cards/{filename}"
+    if os.path.exists(path):
+        return send_file(path, as_attachment=True)
+    return jsonify({'error': 'Файл не найден'}), 404
+
+
+# ============================================================
+# API: ИСТОРИЯ
+# ============================================================
+
+@app.route('/api/history')
+def api_history():
+    page = int(request.args.get('page', 1))
+    per_page = 100
+
+    history = load_history()
+    total = len(history)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    start = (page - 1) * per_page
+    end = start + per_page
+
+    return jsonify({
+        'history': history[start:end],
+        'page': page,
+        'total_pages': total_pages,
+        'total': total
+    })
+
+
+@app.route('/api/history/delete', methods=['POST'])
+def api_delete_history():
+    data = request.get_json()
+    filenames = data.get('filenames', [])
+    before_date = data.get('before_date', None)
+
+    deleted = 0
+    history = load_history()
+
+    if before_date:
+        cutoff = datetime.strptime(before_date, '%Y-%m-%d')
+        to_delete = []
+        for item in history:
+            item_date = datetime.fromisoformat(item['timestamp'])
+            if item_date < cutoff:
+                to_delete.append(item['filename'])
+        filenames = to_delete
+
+    for filename in filenames:
+        path = os.path.join(app.config['TECH_CARDS_FOLDER'], filename)
+        if os.path.exists(path):
+            os.remove(path)
+            deleted += 1
+
+    history = [h for h in history if h['filename'] not in filenames]
+    save_history(history)
+
+    return jsonify({'success': True, 'deleted': deleted})
+
+
+# ============================================================
+# API: КАТЕГОРИИ
+# ============================================================
+
+@app.route('/api/categories')
+def api_categories():
+    session = SessionLocal()
+    cats = session.query(DBCategory).order_by(DBCategory.sort_order).all()
+    result = [{'id': c.id, 'name': c.name, 'sort_order': c.sort_order} for c in cats]
+    session.close()
+    return jsonify({'categories': result})
+
+
+# ============================================================
+# API: КАТЕГОРИИ ПОМЕЩЕНИЙ (Room Categories)
+# ============================================================
+
+@app.route('/api/room-categories')
+def api_room_categories():
+    session = SessionLocal()
+    room_cats = session.query(RoomCategory).order_by(RoomCategory.name).all()
+    result = [{'id': rc.id, 'name': rc.name} for rc in room_cats]
+    session.close()
+    return jsonify({'room_categories': result})
+
+
+@app.route('/api/room-categories', methods=['POST'])
+def api_create_room_category():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'}), 400
+
+    session = SessionLocal()
+    existing = session.query(RoomCategory).filter(RoomCategory.name == name).first()
+    if existing:
+        session.close()
+        return jsonify({'success': False, 'error': 'Такая категория уже существует'}), 400
+
+    rc = RoomCategory(name=name)
+    session.add(rc)
+    session.commit()
+    session.refresh(rc)
+    rc_id = rc.id
+    session.close()
+    return jsonify({'success': True, 'id': rc_id, 'name': name})
+
+
+@app.route('/api/room-categories/<int:rc_id>', methods=['PUT'])
+def api_update_room_category(rc_id):
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'}), 400
+
+    session = SessionLocal()
+    rc = session.query(RoomCategory).get(rc_id)
+    if rc:
+        rc.name = name
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+@app.route('/api/room-categories/<int:rc_id>', methods=['DELETE'])
+def api_delete_room_category(rc_id):
+    session = SessionLocal()
+    rc = session.query(RoomCategory).get(rc_id)
+    if rc:
+        session.delete(rc)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+# ============================================================
+# API: ОБЪЕКТЫ
+# ============================================================
+
+@app.route('/api/objects')
+def api_objects():
+    session = SessionLocal()
+    objects = session.query(Object).order_by(Object.sort_priority, Object.display_name).all()
+    cats = {c.id: c.name for c in session.query(DBCategory).all()}
+    result = [{
+        'id': o.id,
+        'category_id': o.category_id,
+        'category_name': cats.get(o.category_id, ''),
+        'display_name': o.display_name,
+        'normalized_name': o.normalized_name,
+        'base_name': o.base_name,
+        'modifier': o.modifier or '',
+        'sort_priority': o.sort_priority,
+        'instruction_count': len(o.instructions)
+    } for o in objects]
+    session.close()
+    return jsonify({'objects': result})
+
+
+@app.route('/api/objects', methods=['POST'])
+def api_create_object():
+    data = request.get_json()
+    session = SessionLocal()
+    obj = Object(
+        display_name=data.get('display_name', ''),
+        normalized_name=data.get('normalized_name', data.get('display_name', '')),
+        base_name=data.get('base_name', data.get('display_name', '')),
+        modifier=data.get('modifier'),
+        sort_priority=data.get('sort_priority', 0),
+        category_id=data.get('category_id', 1)
+    )
+    session.add(obj)
+    session.commit()
+    session.refresh(obj)
+    obj_id = obj.id
+    session.close()
+    return jsonify({'success': True, 'id': obj_id})
+
+
+@app.route('/api/objects/<int:obj_id>', methods=['PUT'])
+def api_update_object(obj_id):
+    data = request.get_json()
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        for key in ['display_name', 'normalized_name', 'base_name', 'modifier', 'sort_priority', 'category_id']:
+            if key in data:
+                setattr(obj, key, data[key])
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найден'}), 404
+
+
+@app.route('/api/objects/<int:obj_id>', methods=['DELETE'])
+def api_delete_object(obj_id):
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        session.delete(obj)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найден'}), 404
+
+
+# ============================================================
+# API: ИНСТРУКЦИИ
+# ============================================================
+
+@app.route('/api/objects/<int:obj_id>/instructions')
+def api_object_instructions(obj_id):
+    session = SessionLocal()
+    obj = session.query(Object).get(obj_id)
+    if obj:
+        room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
+        result = [{
+            'id': i.id,
+            'room_category_id': i.room_category_id,
+            'room_category_name': room_cats.get(i.room_category_id, 'Общая') if i.room_category_id else 'Общая',
+            'maintenance_type': i.maintenance_type or '',
+            'cleaning_method': i.cleaning_method or '',
+            'product_name': i.product_name or '',
+            'cleaning_technique': i.cleaning_technique or '',
+            'concentration': i.concentration or '',
+            'temperature': i.temperature or '',
+            'exposure_time': i.exposure_time or '',
+            'inventory': i.inventory or '',
+            'frequency': i.frequency or '',
+            'executor': i.executor or '',
+            'control_method': i.control_method or '',
+            'instruction_number': i.instruction_number or ''
+        } for i in obj.instructions]
+        session.close()
+        return jsonify({'instructions': result})
+    session.close()
+    return jsonify({'instructions': []})
+
+
+@app.route('/api/objects/<int:obj_id>/instructions', methods=['POST'])
+def api_create_instruction(obj_id):
+    data = request.get_json()
+    session = SessionLocal()
+
+    room_category_id = data.get('room_category_id')
+    if room_category_id is not None:
+        try:
+            room_category_id = int(room_category_id)
+        except (ValueError, TypeError):
+            room_category_id = None
+
+    maintenance_type = data.get('maintenance_type', '')
+
+    instr = Instruction(
+        object_id=obj_id,
+        room_category_id=room_category_id,
+        maintenance_type=maintenance_type,
+        cleaning_method=data.get('cleaning_method', ''),
+        product_name=data.get('product_name', ''),
+        cleaning_technique=data.get('cleaning_technique', ''),
+        concentration=data.get('concentration', ''),
+        temperature=data.get('temperature', ''),
+        exposure_time=data.get('exposure_time', ''),
+        inventory=data.get('inventory', ''),
+        frequency=data.get('frequency', ''),
+        executor=data.get('executor', ''),
+        control_method=data.get('control_method', ''),
+        instruction_number=data.get('instruction_number', '')
+    )
+    session.add(instr)
+    session.commit()
+    session.refresh(instr)
+    instr_id = instr.id
+    session.close()
+    return jsonify({'success': True, 'id': instr_id})
+
+
+@app.route('/api/instructions/<int:instr_id>', methods=['PUT'])
+def api_update_instruction(instr_id):
+    data = request.get_json()
+    session = SessionLocal()
+    instr = session.query(Instruction).get(instr_id)
+    if instr:
+        if 'room_category_id' in data:
+            rc_id = data['room_category_id']
+            if rc_id is not None:
+                try:
+                    rc_id = int(rc_id)
+                except (ValueError, TypeError):
+                    rc_id = None
+            instr.room_category_id = rc_id
+
+        fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
+                  'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency',
+                  'executor', 'control_method', 'instruction_number']
+        for key in fields:
+            if key in data:
+                setattr(instr, key, data[key])
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+@app.route('/api/instructions/<int:instr_id>', methods=['DELETE'])
+def api_delete_instruction(instr_id):
+    session = SessionLocal()
+    instr = session.query(Instruction).get(instr_id)
+    if instr:
+        session.delete(instr)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+# ============================================================
+# API: ЭКСПОРТ CSV
+# ============================================================
+
+@app.route('/api/export_csv')
+def api_export_csv():
+    import csv
+    from io import StringIO
+
+    session = SessionLocal()
+    objects = session.query(Object).order_by(Object.sort_priority, Object.display_name).all()
+    cats = {c.id: c.name for c in session.query(DBCategory).all()}
+    room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
+
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow([
+        'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
+        'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
+        'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
+        'cleaning_technique', 'concentration', 'temperature', 'exposure_time', 'inventory',
+        'frequency', 'executor', 'control_method'
+    ])
+
+    for obj in objects:
+        if obj.instructions:
+            for instr in obj.instructions:
+                room_cat_name = room_cats.get(instr.room_category_id, '') if instr.room_category_id else ''
+                writer.writerow([
+                    obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                    obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                    instr.id, room_cat_name,
+                    instr.maintenance_type or '',
+                    instr.cleaning_method or '', instr.instruction_number or '',
+                    instr.product_name or '', instr.cleaning_technique or '',
+                    instr.concentration or '', instr.temperature or '',
+                    instr.exposure_time or '', instr.inventory or '',
+                    instr.frequency or '', instr.executor or '', instr.control_method or ''
+                ])
+        else:
+            writer.writerow([
+                obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
+                obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ])
+
+    session.close()
+
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        tmp.write(output)
+        return send_file(tmp.name, as_attachment=True, download_name='db_export.csv')
+
+
+# ============================================================
+# API: ИМПОРТ CSV
+# ============================================================
+
+@app.route('/api/import_csv', methods=['POST'])
+def api_import_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+
+    file = request.files['file']
+    mode = int(request.form.get('mode', 1))
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    try:
+        from import_csv_to_db import CSVImporter
+        importer = CSVImporter(filepath, mode)
+        stats = importer.run()
+        result = stats.to_dict()
+        result['success'] = True
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+
+if __name__ == '__main__':
+    print("🚀 Запуск сервера на http://localhost:5000")
+    print(f"📂 Папка техкарт: {app.config['TECH_CARDS_FOLDER']}")
+    print(f"🧹 Автоочистка uploads: 24 часа")
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
+================================================================================
+ФАЙЛ: db\__init__.py
+================================================================================
+
+"""
+Модуль для работы с базой данных
+"""
+
+from .database import engine, SessionLocal, get_db
+from . import models
+from . import crud
+
+================================================================================
+ФАЙЛ: db\crud.py
+================================================================================
+
+"""
+CRUD операции для ручного управления данными
+"""
+
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from . import models
+
+
+# === КАТЕГОРИИ ===
+def get_categories(db: Session) -> List[models.Category]:
+    return db.query(models.Category).order_by(models.Category.sort_order).all()
+
+
+def get_category(db: Session, category_id: int) -> Optional[models.Category]:
+    return db.query(models.Category).filter(models.Category.id == category_id).first()
+
+
+def get_category_by_name(db: Session, name: str) -> Optional[models.Category]:
+    return db.query(models.Category).filter(models.Category.name == name).first()
+
+
+def create_category(db: Session, name: str, sort_order: int = 0) -> models.Category:
+    category = models.Category(name=name, sort_order=sort_order)
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+def update_category(db: Session, category_id: int, **kwargs) -> Optional[models.Category]:
+    category = get_category(db, category_id)
+    if category:
+        for key, value in kwargs.items():
+            if hasattr(category, key):
+                setattr(category, key, value)
+        db.commit()
+        db.refresh(category)
+    return category
+
+
+def delete_category(db: Session, category_id: int) -> bool:
+    category = get_category(db, category_id)
+    if category:
+        db.delete(category)
+        db.commit()
+        return True
+    return False
+
+
+# === ОБЪЕКТЫ ===
+def get_objects(db: Session, category_id: int = None) -> List[models.Object]:
+    query = db.query(models.Object)
+    if category_id:
+        query = query.filter(models.Object.category_id == category_id)
+    return query.order_by(models.Object.sort_priority).all()
+
+
+def get_object(db: Session, object_id: int) -> Optional[models.Object]:
+    return db.query(models.Object).filter(models.Object.id == object_id).first()
+
+
+def get_object_by_name(db: Session, name: str) -> Optional[models.Object]:
+    return db.query(models.Object).filter(models.Object.name == name).first()
+
+
+def create_object(db: Session, name: str, base_name: str, category_id: int,
+                  modifier: str = None, sort_priority: int = 0) -> models.Object:
+    obj = models.Object(
+        name=name,
+        base_name=base_name,
+        modifier=modifier,
+        category_id=category_id,
+        sort_priority=sort_priority
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+def update_object(db: Session, object_id: int, **kwargs) -> Optional[models.Object]:
+    obj = get_object(db, object_id)
+    if obj:
+        for key, value in kwargs.items():
+            if hasattr(obj, key):
+                setattr(obj, key, value)
+        db.commit()
+        db.refresh(obj)
+    return obj
+
+
+def delete_object(db: Session, object_id: int) -> bool:
+    obj = get_object(db, object_id)
+    if obj:
+        db.delete(obj)
+        db.commit()
+        return True
+    return False
+
+
+# === ИНСТРУКЦИИ ===
+def get_instructions(db: Session, object_id: int = None) -> List[models.Instruction]:
+    query = db.query(models.Instruction)
+    if object_id:
+        query = query.filter(models.Instruction.object_id == object_id)
+    return query.all()
+
+
+def get_instruction(db: Session, instruction_id: int) -> Optional[models.Instruction]:
+    return db.query(models.Instruction).filter(models.Instruction.id == instruction_id).first()
+
+
+def create_instruction(db: Session, object_id: int, **kwargs) -> models.Instruction:
+    instruction = models.Instruction(object_id=object_id, **kwargs)
+    db.add(instruction)
+    db.commit()
+    db.refresh(instruction)
+    return instruction
+
+
+def update_instruction(db: Session, instruction_id: int, **kwargs) -> Optional[models.Instruction]:
+    instruction = get_instruction(db, instruction_id)
+    if instruction:
+        for key, value in kwargs.items():
+            if hasattr(instruction, key):
+                setattr(instruction, key, value)
+        db.commit()
+        db.refresh(instruction)
+    return instruction
+
+
+def delete_instruction(db: Session, instruction_id: int) -> bool:
+    instruction = get_instruction(db, instruction_id)
+    if instruction:
+        db.delete(instruction)
+        db.commit()
+        return True
+    return False
+
+================================================================================
+ФАЙЛ: db\database.py
+================================================================================
+
+"""
+Подключение к базе данных SQLite
+"""
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+from pathlib import Path
+
+# Путь к файлу БД в корне проекта
+DB_PATH = Path(__file__).parent.parent / "tech_cards.db"
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# Создаем движок SQLAlchemy
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    echo=False  # True для отладки SQL
+)
+
+# Фабрика сессий
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+db_session = scoped_session(SessionLocal)
+
+
+def get_db():
+    """Генератор сессий для Flask (dependency injection)"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def init_db():
+    """Создание таблиц (импортируется из init_db.py)"""
+    from .models import Base
+    Base.metadata.create_all(bind=engine)
+
+================================================================================
+ФАЙЛ: db\export_json.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Экспорт данных из базы данных в JSON
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction
+
+
+def export_to_json(output_path: str):
+    """Экспортирует все данные из БД в JSON"""
+    session = SessionLocal()
+
+    # Получаем категории
+    categories = session.query(Category).order_by(Category.sort_order).all()
+
+    # Получаем объекты
+    objects = session.query(Object).order_by(Object.id).all()
+
+    # Получаем инструкции
+    instructions = session.query(Instruction).all()
+
+    # Словарь объектов {id: name}
+    object_names = {obj.id: obj.name for obj in objects}
+
+    # Формируем JSON
+    data = {
+        "categories": [
+            {"name": cat.name, "sort_order": cat.sort_order}
+            for cat in categories
+        ],
+        "objects": [
+            {
+                "name": obj.name,
+                "base_name": obj.base_name,
+                "modifier": obj.modifier,
+                "category": obj.category.name,
+                "sort_priority": obj.sort_priority
+            }
+            for obj in objects
+        ],
+        "instructions": [
+            {
+                "object_name": object_names[instr.object_id],
+                "category": obj.category.name,
+                "cleaning_method": instr.cleaning_method,
+                "instruction_number": instr.instruction_number,
+                "product_name": instr.product_name,
+                "cleaning_technique": instr.cleaning_technique,
+                "concentration": instr.concentration,
+                "temperature": instr.temperature,
+                "exposure_time": instr.exposure_time,
+                "inventory": instr.inventory,
+                "frequency": instr.frequency,
+                "executor": instr.executor,
+                "control_method": instr.control_method
+            }
+            for instr in instructions
+            for obj in objects if obj.id == instr.object_id
+        ]
+    }
+
+    session.close()
+
+    # Сохраняем
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Экспорт завершен: {output_path}")
+    print(f"   Категорий: {len(data['categories'])}")
+    print(f"   Объектов: {len(data['objects'])}")
+    print(f"   Инструкций: {len(data['instructions'])}")
+
+    return data
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Экспорт данных из БД в JSON")
+    parser.add_argument("--output", "-o", default="exported_data.json", help="Выходной JSON файл")
+    args = parser.parse_args()
+
+    print("🔧 ЭКСПОРТ ДАННЫХ ИЗ БАЗЫ ДАННЫХ")
+    print("=" * 50)
+
+    export_to_json(args.output)
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\import_json.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Импорт данных из JSON в базу данных
+JSON структура: {
+    "categories": [...],
+    "objects": [
+        {
+            "normalized_name": "...",
+            "display_name": "...",
+            "base_name": "...",
+            "modifier": "...",
+            "category": "...",
+            "sort_priority": 0,
+            "instructions": [...]
+        }
+    ]
+}
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction
+
+
+def import_from_json(json_path: str):
+    """Импортирует данные из JSON в БД"""
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    session = SessionLocal()
+
+    # Словарь категорий {name: id}
+    categories = {cat.name: cat.id for cat in session.query(Category).all()}
+
+    stats = {
+        "objects_created": 0,
+        "objects_updated": 0,
+        "instructions_created": 0,
+        "errors": 0
+    }
+
+    print("\n📥 ИМПОРТ ОБЪЕКТОВ")
+    print("-" * 40)
+
+    for obj_data in data["objects"]:
+        category_id = categories.get(obj_data["category"])
+        if not category_id:
+            print(f"  ❌ Категория '{obj_data['category']}' не найдена")
+            stats["errors"] += 1
+            continue
+
+        # Проверяем, существует ли объект по normalized_name
+        existing = session.query(Object).filter_by(normalized_name=obj_data["normalized_name"]).first()
+
+        if existing:
+            # Обновляем
+            existing.display_name = obj_data["display_name"]
+            existing.base_name = obj_data["base_name"]
+            existing.modifier = obj_data.get("modifier")
+            existing.category_id = category_id
+            existing.sort_priority = obj_data.get("sort_priority", 0)
+            stats["objects_updated"] += 1
+            print(f"  🔄 Обновлен: {obj_data['normalized_name']} → {obj_data['display_name']}")
+            obj_id = existing.id
+        else:
+            # Создаем
+            obj = Object(
+                normalized_name=obj_data["normalized_name"],
+                display_name=obj_data["display_name"],
+                base_name=obj_data["base_name"],
+                modifier=obj_data.get("modifier"),
+                category_id=category_id,
+                sort_priority=obj_data.get("sort_priority", 0)
+            )
+            session.add(obj)
+            session.flush()
+            stats["objects_created"] += 1
+            print(f"  ➕ Создан: {obj_data['normalized_name']} → {obj_data['display_name']}")
+            obj_id = obj.id
+
+        # Импорт инструкций для этого объекта
+        instructions = obj_data.get("instructions", [])
+        for instr_data in instructions:
+            # Проверяем, есть ли уже такая инструкция
+            existing_instr = session.query(Instruction).filter(
+                Instruction.object_id == obj_id,
+                Instruction.cleaning_method == instr_data.get("cleaning_method", ""),
+                Instruction.product_name == instr_data.get("product_name", "")
+            ).first()
+
+            if existing_instr:
+                # Обновляем существующую
+                existing_instr.cleaning_technique = instr_data.get("cleaning_technique", "")
+                existing_instr.concentration = instr_data.get("concentration", "")
+                existing_instr.temperature = instr_data.get("temperature", "")
+                existing_instr.exposure_time = instr_data.get("exposure_time", "")
+                existing_instr.inventory = instr_data.get("inventory", "")
+                existing_instr.frequency = instr_data.get("frequency", "")
+                existing_instr.executor = instr_data.get("executor", "")
+                existing_instr.control_method = instr_data.get("control_method", "")
+                existing_instr.instruction_number = instr_data.get("instruction_number", "")
+            else:
+                instruction = Instruction(
+                    object_id=obj_id,
+                    cleaning_method=instr_data.get("cleaning_method", ""),
+                    instruction_number=instr_data.get("instruction_number", ""),
+                    product_name=instr_data.get("product_name", ""),
+                    cleaning_technique=instr_data.get("cleaning_technique", ""),
+                    concentration=instr_data.get("concentration", ""),
+                    temperature=instr_data.get("temperature", ""),
+                    exposure_time=instr_data.get("exposure_time", ""),
+                    inventory=instr_data.get("inventory", ""),
+                    frequency=instr_data.get("frequency", ""),
+                    executor=instr_data.get("executor", ""),
+                    control_method=instr_data.get("control_method", "")
+                )
+                session.add(instruction)
+                stats["instructions_created"] += 1
+
+    session.commit()
+    session.close()
+
+    print("\n📊 СТАТИСТИКА ИМПОРТА")
+    print("-" * 40)
+    print(f"  Создано объектов: {stats['objects_created']}")
+    print(f"  Обновлено объектов: {stats['objects_updated']}")
+    print(f"  Создано инструкций: {stats['instructions_created']}")
+    print(f"  Ошибок: {stats['errors']}")
+
+    return stats
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Импорт данных из JSON в БД")
+    parser.add_argument("json_file", help="Путь к JSON файлу")
+    args = parser.parse_args()
+
+    json_path = Path(args.json_file)
+    if not json_path.exists():
+        print(f"❌ Файл не найден: {json_path}")
+        return
+
+    print(f"🔧 ИМПОРТ ИЗ {json_path}")
+    print("=" * 50)
+
+    import_from_json(json_path)
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\init_db.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Инициализация базы данных: создание таблиц и категорий
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from db.database import engine, SessionLocal
+from db.models import Base, Category, RoomCategory
+
+
+def create_tables():
+    """Создание таблиц (без удаления существующих)"""
+    print("🔄 Создание таблиц (если не существуют)...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ Таблицы проверены/созданы")
+
+
+def seed_categories():
+    """Заполнение категорий объектов (15 штук)"""
+    print("🔄 Проверка категорий объектов...")
+
+    session = SessionLocal()
+
+    existing_count = session.query(Category).count()
+    if existing_count > 0:
+        print(f"✅ Категории объектов уже существуют ({existing_count} шт.), пропускаем")
+        session.close()
+        return
+
+    categories_data = [
+        ("Поверхности", 1),
+        ("Сантехническое оборудование", 2),
+        ("Санитарный пост", 3),
+        ("Мебель", 4),
+        ("Офисная техника", 5),
+        ("Многоразовые резиновые СИЗ", 6),
+        ("Бытовая техника", 7),
+        ("Инвентарь, посуда и т.д.", 8),
+        ("Моечный, уборочный инвентарь и оборудование", 9),
+        ("Посудомоечное оборудование", 10),
+        ("Холодильное оборудование", 11),
+        ("Дозирующее оборудование", 12),
+        ("Тепловое оборудование", 13),
+        ("Технологическое оборудование", 14),
+        ("Упаковочное оборудование", 15),
+    ]
+
+    for name, sort_order in categories_data:
+        category = Category(name=name, sort_order=sort_order)
+        session.add(category)
+        print(f"  ➕ {name}")
+
+    session.commit()
+    session.close()
+    print(f"✅ Добавлено {len(categories_data)} категорий")
+
+
+def seed_room_categories():
+    """Заполнение категорий помещений (актуальный список)"""
+    print("🔄 Проверка категорий помещений...")
+
+    session = SessionLocal()
+
+    existing_count = session.query(RoomCategory).count()
+    if existing_count > 0:
+        print(f"✅ Категории помещений уже существуют ({existing_count} шт.), пропускаем")
+        session.close()
+        return
+
+    room_categories = [
+        "Общего назначения",
+        "Производственное",
+        "Бытовое",
+        "Складское",
+        "Санитарное",
+        "Вспомогательное",
+        "Моечное",
+        "Техническое",
+        "Офисное",
+    ]
+
+    for name in room_categories:
+        rc = RoomCategory(name=name)
+        session.add(rc)
+        print(f"  ➕ {name}")
+
+    session.commit()
+    session.close()
+    print(f"✅ Добавлено {len(room_categories)} категорий помещений")
+
+
+def main():
+    print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
+    print("=" * 50)
+
+    create_tables()
+    seed_categories()
+    seed_room_categories()
+
+    print(f"\n📁 Файл БД: {engine.url.database}")
+    print("🎉 Готово!")
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: db\models.py
+================================================================================
+
+"""
+Модели данных для базы данных технологических карт
+"""
+
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+Base = declarative_base()
+
+
+class Category(Base):
+    """Категории объектов (15 штук, порядок сортировки задает умный маппинг)"""
+    __tablename__ = 'categories'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    sort_order = Column(Integer, default=0)
+
+    objects = relationship("Object", back_populates="category", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Category(id={self.id}, name='{self.name}')>"
+
+
+class RoomCategory(Base):
+    """Категории помещений (производственное, складское, инженерное, вспомогательное)"""
+    __tablename__ = 'room_categories'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+
+    instructions = relationship("Instruction", back_populates="room_category")
+
+    def __repr__(self):
+        return f"<RoomCategory(id={self.id}, name='{self.name}')>"
+
+
+class Object(Base):
+    """Объекты обработки из чек-листа"""
+    __tablename__ = 'objects'
+
+    id = Column(Integer, primary_key=True)
+    category_id = Column(Integer, ForeignKey('categories.id'), nullable=False)
+
+    # Основные поля
+    normalized_name = Column(String(250), nullable=False, unique=True)  # для поиска (из чек-листа)
+    display_name = Column(String(250), nullable=False)                  # для вывода в техкарту
+    base_name = Column(String(200), nullable=False)                    # базовая часть
+    modifier = Column(String(50), nullable=True)                       # модификатор
+    sort_priority = Column(Integer, default=0)                         # приоритет сортировки
+
+    # Служебные поля
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Связи
+    category = relationship("Category", back_populates="objects")
+    instructions = relationship("Instruction", back_populates="object", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Object(id={self.id}, normalized_name='{self.normalized_name}', display_name='{self.display_name}')>"
+
+
+class Instruction(Base):
+    """Инструкции по обработке объектов"""
+    __tablename__ = 'instructions'
+
+    id = Column(Integer, primary_key=True)
+    object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
+    room_category_id = Column(Integer, ForeignKey('room_categories.id'), nullable=True)  # NULL = общая инструкция
+
+    # Поля из Excel
+    maintenance_type = Column(String(50), nullable=True)          # основная / поддерживающая / генеральная
+    cleaning_method = Column(String(100), nullable=True)          # мойка/дезинфекция/очистка
+    instruction_number = Column(String(50), nullable=True)        # № инструкции
+    product_name = Column(String(200), nullable=True)             # наименование средства
+    cleaning_technique = Column(String(200), nullable=True)       # метод уборки
+    concentration = Column(String(200), nullable=True)            # концентрация
+    temperature = Column(String(50), nullable=True)               # температура раствора
+    exposure_time = Column(String(50), nullable=True)             # время выдержки
+    inventory = Column(String(100), nullable=True)                # инвентарь
+    frequency = Column(String(100), nullable=True)                # периодичность
+    executor = Column(String(200), nullable=True)                 # исполнитель
+    control_method = Column(String(200), nullable=True)           # метод контроля
+
+    created_at = Column(DateTime, default=datetime.now)
+
+    # Связи
+    object = relationship("Object", back_populates="instructions")
+    room_category = relationship("RoomCategory", back_populates="instructions")
+
+    def __repr__(self):
+        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}', room_cat='{self.room_category.name if self.room_category else 'общая'}')>"
+
+    def is_empty(self) -> bool:
+        """Проверяет, пустая ли инструкция (нет данных)"""
+        fields = [
+            self.maintenance_type, self.cleaning_method, self.product_name, self.concentration,
+            self.temperature, self.exposure_time, self.frequency,
+            self.executor, self.control_method
+        ]
+        return not any(field for field in fields if field and field.strip())
+
+
+# Индексы для ускорения поиска
+Index('idx_object_normalized_name', Object.normalized_name)
+Index('idx_object_category', Object.category_id)
+Index('idx_instruction_object', Instruction.object_id)
+Index('idx_instruction_room_category', Instruction.room_category_id)
+
+================================================================================
+ФАЙЛ: export_db_to_single_csv.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+export_db_to_single_csv.py
+
+Экспортирует все данные из БД в один CSV файл.
+Каждая строка = один объект со всеми его инструкциями.
+Добавлены колонки: room_category_name, maintenance_type.
+"""
+
+import csv
+import sys
+from pathlib import Path
+from collections import defaultdict
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from db.database import SessionLocal
+from db.models import Category, Object, Instruction, RoomCategory
+
+
+def export_all_to_single_csv(output_path: str = "db_export_all1111.csv"):
+    """Экспортирует все данные в один CSV"""
+
+    session = SessionLocal()
+
+    # Получаем все данные
+    categories = {cat.id: cat for cat in session.query(Category).all()}
+    room_categories = {rc.id: rc for rc in session.query(RoomCategory).all()}
+    objects = session.query(Object).order_by(Object.category_id, Object.display_name).all()
+    instructions = session.query(Instruction).all()
+
+    # Группируем инструкции по object_id
+    instr_by_object = defaultdict(list)
+    for instr in instructions:
+        instr_by_object[instr.object_id].append(instr)
+
+    # Создаём CSV
+    with open(output_path, 'w', encoding='utf-8-sig', newline='') as f:
+        writer = csv.writer(f, delimiter=';')
+
+        # Заголовок
+        writer.writerow([
+            'object_id',
+            'category_name',
+            'normalized_name',
+            'display_name',
+            'base_name',
+            'modifier',
+            'sort_priority',
+            'instruction_id',
+            'room_category_name',
+            'maintenance_type',
+            'cleaning_method',
+            'instruction_number',
+            'product_name',
+            'cleaning_technique',
+            'concentration',
+            'temperature',
+            'exposure_time',
+            'inventory',
+            'frequency',
+            'executor',
+            'control_method',
+        ])
+
+        # Данные
+        total_rows = 0
+        for obj in objects:
+            cat = categories.get(obj.category_id)
+            cat_name = cat.name if cat else ''
+
+            obj_instrs = instr_by_object.get(obj.id, [])
+
+            if obj_instrs:
+                for instr in obj_instrs:
+                    rc = room_categories.get(instr.room_category_id) if instr.room_category_id else None
+                    room_cat_name = rc.name if rc else ''
+
+                    writer.writerow([
+                        obj.id,
+                        cat_name,
+                        obj.normalized_name,
+                        obj.display_name,
+                        obj.base_name,
+                        obj.modifier or '',
+                        obj.sort_priority,
+                        instr.id,
+                        room_cat_name,
+                        instr.maintenance_type or '',
+                        instr.cleaning_method or '',
+                        instr.instruction_number or '',
+                        instr.product_name or '',
+                        instr.cleaning_technique or '',
+                        instr.concentration or '',
+                        instr.temperature or '',
+                        instr.exposure_time or '',
+                        instr.inventory or '',
+                        instr.frequency or '',
+                        instr.executor or '',
+                        instr.control_method or '',
+                    ])
+                    total_rows += 1
+            else:
+                writer.writerow([
+                    obj.id,
+                    cat_name,
+                    obj.normalized_name,
+                    obj.display_name,
+                    obj.base_name,
+                    obj.modifier or '',
+                    obj.sort_priority,
+                    '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                ])
+                total_rows += 1
+
+    session.close()
+
+    print("=" * 80)
+    print("📊 ЭКСПОРТ БАЗЫ ДАННЫХ В CSV")
+    print("=" * 80)
+    print(f"📁 Файл: {output_path}")
+    print(f"📋 Объектов: {len(objects)}")
+    print(f"📋 Инструкций: {len(instructions)}")
+    print(f"📋 Строк в CSV: {total_rows}")
+    print(f"📋 Категорий помещений: {len(room_categories)}")
+    print("=" * 80)
+
+    return output_path
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Экспорт БД в один CSV")
+    parser.add_argument("--output", "-o", default="db_export_all1111.csv", help="Выходной CSV файл")
+    args = parser.parse_args()
+
+    export_all_to_single_csv(args.output)
+    print("\n✅ Готово!")
+
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+ФАЙЛ: generator\__init__.py
+================================================================================
+
+"""
+Модуль для генерации технологических карт
+"""
+
+from generator.mapper import (
+    CategoryMapper,
+    find_object_and_instructions,
+    get_instructions_for_object,
+    get_object_by_normalized_name
+)
+
+================================================================================
+ФАЙЛ: generator\docx_generator.py
+================================================================================
+
+# generator/docx_generator.py
+
+from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt
+from pathlib import Path
+from parser.models import ChecklistData
+from db.models import Instruction, Category as DBCategory, Object as DBObject, RoomCategory
+from db.database import SessionLocal
+from collections import defaultdict
+import re
+import copy
+
+
+class TechCardGenerator:
+    TEMPLATES_DIR = Path("tech_card_templates")
+    DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
+
+    PRODUCT_COLORS = {
+        # Дезинфицирующие средства (жёлтый)
+        "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
+        "ХИМИТЕК ПОЛИДЕЗ®-ЭКСПРЕСС": "FFFFCC",
+        "ХИМИТЕК ПОЛИДЕЗ®": "FFFFCC",
+        "ПОЛИДЕЗ®": "FFFFCC",
+        "ХИМИТЕК УНИВЕРСАЛ-ДЕЗ": "FFFFCC",
+        "ХИМИТЕК СВЕЖЕСТЬ-АНТИСЕПТИК": "FFFFCC",
+
+        # Нейтральные моющие (зелёный)
+        "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
+        "ХИМИТЕК УНИВЕРСАЛ-ПД": "99FF99",
+        "ХИМИТЕК УНИВЕРСАЛ-ПД для дозирующих систем": "99FF99",
+        "ХИМИТЕК ИЗУМРУД 100": "99FF99",
+        "ХИМИТЕК ИЗУМРУД 110": "99FF99",
+        "ХИМИТЕК ИЗУМРУД 300": "99FF99",
+        "ХИМИТЕК ИЗУМРУД 310": "99FF99",
+        "ХИМИТЕК ИНТЕРЬЕР-ОФИС": "99FF99",
+        "ХИМИТЕК ИНТЕРЬЕР-ОФИС-СПРЕЙ": "99FF99",
+        "ХИМИТЕК КУХМАСТЕР-ГЕЛЬ": "99FF99",
+        "ХИМИТЕК КУХМАСТЕР": "99FF99",
+        "ХИМИТЕК КУХМАСТЕР для дозирующих систем": "99FF99",
+        "ХИМИТЕК КУХМАСТЕР-ФОРТЕ": "99FF99",
+        "ХИМИТЕК КУХМАСТЕР-ФОРТЕ для дозирующих систем": "99FF99",
+        "ХИМИТЕК ПЕКАРЬ-АКТИВАТОР": "99FF99",
+        "ХИМИТЕК СТИРАЛЬ-02": "99FF99",
+        "ХИМИТЕК ЧАРОИТ®": "99FF99",
+        "ХИМИТЕК ЧАРОЙТ®-СПРЕЙ": "99FF99",
+
+        # Щелочные и специальные моющие (голубой)
+        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ПЕНАКТИВ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-CIP": "99CCFF",
+        "ХИМИТЕК ИЗУМРУД 400": "99CCFF",
+        "ХИМИТЕК ИЗУМРУД 420": "99CCFF",
+        "ХИМИТЕК КЕРАМИК-БЕЛИЗНА": "99CCFF",
+        "ХИМИТЕК КЕРАМИК-БЛЕСК": "99CCFF",
+        "ХИМИТЕК КЕРАМИК-РЕЛЬЕФ": "99CCFF",
+        "ХИМИТЕК КУХМАСТЕР-ПРОФИ": "99CCFF",
+        "ХИМИТЕК КУХМАСТЕР-ПРОФИ 12°Ж": "99CCFF",
+        "ХИМИТЕК ПЕКАРЬ-АНТИНАГАР": "99CCFF",
+        "ХИМИТЕК ПЕНАПОЛ-ПРОФИ": "99CCFF",
+        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ-ЦВМ": "99CCFF",
+        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ": "99CCFF",
+        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ 220002": "99CCFF",
+        "ХИМИТЕК СТИРАЛЬ-ПРОФИ": "99CCFF",
+        "ХИМИТЕК СТИРАЛЬ-03": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ® модификация 190025": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ГЕЛЬ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ПЕНАКТИВ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ПЕНАКТИВ 210014": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ЦВМ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-ПОЛИПРОМ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-ПОЛИПРОМ 190022": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-ФОРТЕ": "99CCFF",
+        "ХИМИТЕК ЧУДОДЕЙ®-ЭКСПРЕСС": "99CCFF",
+        "ХИМИТЕК ШУНГИТ 100": "99CCFF",
+        "ХИМИТЕК ШУНГИТ 200": "99CCFF",
+
+        # Кислотные моющие (розовый)
+        "ХИМИТЕК ПОЛИКОР®": "FFCCCC",
+        "ХИМИТЕК АНТИМИНЕРАЛ-ЛАКТО-ПЕНАКТИВ": "FFCCCC",
+        "ХИМИТЕК АНТИМИНЕРАЛ-ЛАКТО": "FFCCCC",
+        "ХИМИТЕК АНТИМИНИРАЛ-ФОРТЕ": "FFCCCC",
+        "ХИМИТЕК АНТИЗАПАХ-ФОРТЕ": "FFCCCC",
+        "ХИМИТЕК АНТИМИНЕРАЛ-CIP": "FFCCCC",
+        "ХИМИТЕК ИНТЕРЬЕР": "FFCCCC",
+        "ХИМИТЕК ИЗУМРУД 500": "FFCCCC",
+        "ХИМИТЕК КУХМАСТЕР-ОПОЛАСКИВАТЕЛЬ": "FFCCCC",
+        "ХИМИТЕК ПОЛИКОР®-ГЕЛЬ": "FFCCCC",
+        "ХИМИТЕК ПОЛИКОР®-ГЕЛЬ ДДС": "FFCCCC",
+        "ХИМИТЕК ПОЛИКОР-ГЕЛЬ® ДДС 180022": "FFCCCC",
+        "ХИМИТЕК ПОЛИКОР® ДДС": "FFCCCC",
+    }
+
+    CLEANING_METHOD_ORDER = {
+        "очистка (обеспыливание поверхностей)": 1,
+        "мойка": 2,
+        "ополаскивание": 3,
+        "дезинфекция": 4,
+    }
+
+    def __init__(self, template_path: str = None):
+        self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
+
+    def _normalize_product_name(self, name: str) -> str:
+        if not name:
+            return ""
+        normalized = re.sub(r'[^\w\s\-]', '', name)
+        normalized = normalized.lower()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized.strip()
+
+    def _get_color_for_product(self, product_name: str) -> str:
+        if not product_name:
+            return None
+        normalized_input = self._normalize_product_name(product_name)
+        for key, color in self.PRODUCT_COLORS.items():
+            if self._normalize_product_name(key) == normalized_input:
+                return color
+        return None
+
+    def _set_cell_background(self, cell, hex_color: str):
+        shading = OxmlElement('w:shd')
+        shading.set(qn('w:val'), 'clear')
+        shading.set(qn('w:color'), 'auto')
+        shading.set(qn('w:fill'), hex_color)
+        cell._tc.get_or_add_tcPr().append(shading)
+
+    def _merge_cells_horizontal(self, row, start_col: int, end_col: int):
+        if start_col >= end_col:
+            return
+        start_cell = row.cells[start_col]
+        for col in range(start_col + 1, end_col + 1):
+            start_cell.merge(row.cells[col])
+
+    def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
+        if start_row >= end_row:
+            return
+        start_cell = table.cell(start_row, col)
+        for row in range(start_row + 1, end_row + 1):
+            start_cell.merge(table.cell(row, col))
+
+    def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
+        first_text = table.cell(start_row, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            if table.cell(row, col).text.strip() != first_text:
+                return False
+        return True
+
+    def _merge_adjacent_equal_cells(self, table, col: int, start_row: int, end_row: int):
+        if start_row >= end_row:
+            return
+        range_start = start_row
+        range_value = table.cell(range_start, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            current_value = table.cell(row, col).text.strip()
+            if current_value == range_value:
+                continue
+            else:
+                if row - 1 > range_start:
+                    for r in range(range_start + 1, row):
+                        table.cell(r, col).text = ""
+                    self._merge_cells_vertical(table, col, range_start, row - 1)
+                range_start = row
+                range_value = current_value
+        if end_row > range_start:
+            for r in range(range_start + 1, end_row + 1):
+                table.cell(r, col).text = ""
+            self._merge_cells_vertical(table, col, range_start, end_row)
+
+    def _get_category_priority(self, session) -> dict:
+        categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
+        return {cat.name: cat.sort_order for cat in categories}
+
+    def _get_room_category_id(self, session, room_category_name: str) -> int:
+        if not room_category_name:
+            return None
+        rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
+        return rc.id if rc else None
+
+    def _get_instruction_signature(self, instructions: list) -> tuple:
+        if not instructions:
+            return (("empty",),)
+        signatures = []
+        sorted_instructions = sorted(
+            instructions,
+            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        for instr in sorted_instructions:
+            sig = (
+                instr.maintenance_type or "",
+                instr.cleaning_method or "",
+                instr.instruction_number or "",
+                instr.product_name or "",
+                instr.cleaning_technique or "",
+                instr.concentration or "",
+                instr.temperature or "",
+                instr.exposure_time or "",
+                instr.inventory or "",
+                instr.frequency or "",
+                instr.executor or "",
+                instr.control_method or "",
+            )
+            signatures.append(sig)
+        return tuple(signatures)
+
+    def _group_by_full_instructions(self, object_instructions: list) -> list:
+        groups = {}
+        for obj_name, instructions in object_instructions:
+            signature = self._get_instruction_signature(instructions)
+            if signature not in groups:
+                groups[signature] = {"names": [], "instructions": instructions}
+            groups[signature]["names"].append(obj_name)
+        result = []
+        for signature, data in groups.items():
+            merged_name = ", ".join(sorted(data["names"]))
+            result.append((merged_name, data["instructions"]))
+        return result
+
+    def _select_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
+        if not all_instructions:
+            return []
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            method = instr.cleaning_method or ""
+            by_method[method].append(instr)
+        selected = []
+        for method, instrs in by_method.items():
+            best = None
+            for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                for instr in instrs:
+                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
+                        best = instr
+                        break
+                if best:
+                    break
+            if not best:
+                for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                    for instr in instrs:
+                        if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
+                            best = instr
+                            break
+                    if best:
+                        break
+            if best:
+                selected.append(best)
+        selected.sort(
+            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        return selected
+
+    def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
+        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонки 4)"""
+        source_row = table.rows[source_row_idx]
+        target_row = table.rows[target_row_idx]
+        for col_idx, source_cell in enumerate(source_row.cells):
+            if col_idx >= len(target_row.cells):
+                break
+            target_cell = target_row.cells[col_idx]
+            source_tc_pr = source_cell._tc.find(qn('w:tcPr'))
+            if source_tc_pr is not None:
+                target_tc_pr = target_cell._tc.find(qn('w:tcPr'))
+                if target_tc_pr is not None:
+                    target_cell._tc.remove(target_tc_pr)
+                target_cell._tc.insert(0, copy.deepcopy(source_tc_pr))
+            for p_idx, source_para in enumerate(source_cell.paragraphs):
+                if p_idx >= len(target_cell.paragraphs):
+                    target_para = target_cell.add_paragraph()
+                else:
+                    target_para = target_cell.paragraphs[p_idx]
+                source_p_pr = source_para._p.find(qn('w:pPr'))
+                if source_p_pr is not None:
+                    target_p_pr = target_para._p.find(qn('w:pPr'))
+                    if target_p_pr is not None:
+                        target_para._p.remove(target_p_pr)
+                    target_para._p.insert(0, copy.deepcopy(source_p_pr))
+                for run in target_para.runs:
+                    target_para._p.remove(run._r)
+                for source_run in source_para.runs:
+                    new_run = copy.deepcopy(source_run._r)
+                    r_pr = new_run.find(qn('w:rPr'))
+                    if r_pr is None:
+                        r_pr = OxmlElement('w:rPr')
+                        new_run.insert(0, r_pr)
+
+                    # Сохраняем жирность из исходного run'а
+                    source_r_pr = source_run._r.find(qn('w:rPr'))
+                    if source_r_pr is not None:
+                        source_b = source_r_pr.find(qn('w:b'))
+                        if source_b is not None:
+                            existing_b = r_pr.find(qn('w:b'))
+                            if existing_b is None:
+                                r_pr.append(copy.deepcopy(source_b))
+
+                    # Принудительно добавляем bold для колонки 4 (индекс 3)
+                    if col_idx == 3:
+                        existing_b = r_pr.find(qn('w:b'))
+                        if existing_b is None:
+                            b = OxmlElement('w:b')
+                            r_pr.append(b)
+
+                    sz = r_pr.find(qn('w:sz'))
+                    if sz is None:
+                        sz = OxmlElement('w:sz')
+                        r_pr.append(sz)
+                    sz.set(qn('w:val'), '14')
+
+                    sz_cs = r_pr.find(qn('w:szCs'))
+                    if sz_cs is None:
+                        sz_cs = OxmlElement('w:szCs')
+                        r_pr.append(sz_cs)
+                    sz_cs.set(qn('w:val'), '14')
+
+                    r_fonts = r_pr.find(qn('w:rFonts'))
+                    if r_fonts is None:
+                        r_fonts = OxmlElement('w:rFonts')
+                        r_pr.append(r_fonts)
+                    r_fonts.set(qn('w:ascii'), 'Arial')
+                    r_fonts.set(qn('w:hAnsi'), 'Arial')
+                    r_fonts.set(qn('w:cs'), 'Arial')
+                    for t in new_run.findall(qn('w:t')):
+                        t.text = ''
+                    target_para._p.append(new_run)
+
+    def _set_cell_text(self, cell, text: str, bold: bool = False):
+        """Устанавливает текст в ячейку. Если bold=True, делает шрифт жирным."""
+        if not cell.paragraphs:
+            cell.add_paragraph()
+        para = cell.paragraphs[0]
+        if not para.runs:
+            run_elem = OxmlElement('w:r')
+            r_pr = OxmlElement('w:rPr')
+            sz = OxmlElement('w:sz')
+            sz.set(qn('w:val'), '14')
+            r_pr.append(sz)
+            r_fonts = OxmlElement('w:rFonts')
+            r_fonts.set(qn('w:ascii'), 'Arial')
+            r_fonts.set(qn('w:hAnsi'), 'Arial')
+            r_pr.append(r_fonts)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
+            run_elem.append(r_pr)
+            t_elem = OxmlElement('w:t')
+            t_elem.set(qn('xml:space'), 'preserve')
+            run_elem.append(t_elem)
+            para._p.append(run_elem)
+        else:
+            run = para.runs[0]
+            r_pr = run._r.find(qn('w:rPr'))
+            if r_pr is None:
+                r_pr = OxmlElement('w:rPr')
+                run._r.insert(0, r_pr)
+            existing_b = r_pr.find(qn('w:b'))
+            if existing_b is not None:
+                r_pr.remove(existing_b)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
+        run = para.runs[0]
+        for t in run._r.findall(qn('w:t')):
+            t.text = text
+            break
+
+    def _clear_cell_text(self, cell):
+        """Очищает текст в ячейке"""
+        for para in cell.paragraphs:
+            for run in para.runs:
+                for t in run._r.findall(qn('w:t')):
+                    t.text = ''
+
+    def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1,
+                 enterprise_products_path: str = None) -> str:
+        doc = Document(self.template_path)
+        main_table = doc.tables[1]
+
+        # Заполняем помещение
+        room_cell = main_table.cell(1, 0)
+        if "Помещение:" in room_cell.text:
+            room_cell.text = f"Помещение: {checklist_data.room_name or '______________'}"
+            for para in room_cell.paragraphs:
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(9)
+                    run.font.bold = True
+
+        # === ОБРАБОТКА 4-Й СТРОКИ (предупреждение об удалении сырья) ===
+        warning_row = main_table.rows[3]
+        if checklist_data.room_category not in ["Производственное", "Складское"]:
+            self._clear_cell_text(warning_row.cells[0])
+
+        session = SessionLocal()
+        category_priority = self._get_category_priority(session)
+
+        room_category_id = None
+        if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
+            room_category_id = self._get_room_category_id(session, checklist_data.room_category)
+            if room_category_id:
+                print(f"🔍 Категория помещения: {checklist_data.room_category} (id={room_category_id})")
+
+        if enterprise_products_path and Path(enterprise_products_path).exists():
+            print(f"📦 Парсинг средств предприятия: {Path(enterprise_products_path).name}")
+
+        checked_items = checklist_data.get_checked_items()
+        all_names = [item.name for item in checked_items]
+
+        db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
+        objects_dict = {obj.normalized_name: obj for obj in db_objects}
+
+        object_ids = [obj.id for obj in db_objects]
+        db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
+
+        instructions_dict = defaultdict(list)
+        for instr in db_instructions:
+            instructions_dict[instr.object_id].append(instr)
+
+        category_object_instructions = defaultdict(list)
+        all_object_instructions = []
+        category_order = {}
+        unmatched_objects = []
+
+        for item in checked_items:
+            obj = objects_dict.get(item.name)
+            cat_name = item.category.value
+            priority = category_priority.get(cat_name, 999)
+            category_order[cat_name] = priority
+
+            display_name = obj.display_name if obj else item.name
+            sort_priority = obj.sort_priority if obj else 999
+
+            if obj and obj.id in instructions_dict:
+                all_instrs = instructions_dict[obj.id]
+                instructions = self._select_instructions_for_room(all_instrs, room_category_id)
+
+                if instructions:
+                    category_object_instructions[cat_name].append((display_name, instructions))
+                    all_object_instructions.append((display_name, instructions, sort_priority))
+                else:
+                    unmatched_objects.append(display_name)
+            elif obj:
+                unmatched_objects.append(display_name)
+            else:
+                unmatched_objects.append(item.name)
+
+        session.close()
+
+        rows_data = []
+        merge_info = []
+
+        if mode == 1:
+            sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
+            for cat_name in sorted_categories:
+                items = category_object_instructions[cat_name]
+                if not items:
+                    continue
+                items.sort(key=lambda x: x[0])
+                grouped = self._group_by_full_instructions(items)
+                rows_data.append(('category', cat_name, None))
+                for obj_name, instructions in grouped:
+                    group_start_row = len(rows_data)
+                    if instructions:
+                        for i, instr in enumerate(instructions):
+                            display_name = obj_name if i == 0 else ""
+                            rows_data.append(('object', display_name, instr))
+                    else:
+                        rows_data.append(('object', obj_name, None))
+                    group_end_row = len(rows_data) - 1
+                    if group_end_row > group_start_row:
+                        merge_info.append((group_start_row, group_end_row))
+        else:
+            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+            items_for_grouping = [(name, instrs) for name, instrs, _ in all_object_instructions]
+            grouped = self._group_by_full_instructions(items_for_grouping)
+            for obj_name, instructions in grouped:
+                group_start_row = len(rows_data)
+                if instructions:
+                    for i, instr in enumerate(instructions):
+                        display_name = obj_name if i == 0 else ""
+                        rows_data.append(('object', display_name, instr))
+                else:
+                    rows_data.append(('object', obj_name, None))
+                group_end_row = len(rows_data) - 1
+                if group_end_row > group_start_row:
+                    merge_info.append((group_start_row, group_end_row))
+
+        if unmatched_objects:
+            rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
+            for name in sorted(unmatched_objects):
+                rows_data.append(('object', name, None))
+
+        # === ОЧИСТКА ТАБЛИЦЫ ===
+        start_row = 7
+        tbl = main_table._tbl
+        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+        tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+        while len(tr_elements) > start_row + 1:
+            tbl.remove(tr_elements[-1])
+            tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+
+        # === ДОБАВЛЕНИЕ СТРОК С КЛОНИРОВАНИЕМ ===
+        for _ in range(len(rows_data)):
+            main_table.add_row()
+            self._clone_row_formatting(main_table, start_row, len(main_table.rows) - 1)
+
+        # Удаляем эталонную строку
+        row_to_remove = main_table.rows[start_row]
+        tbl.remove(row_to_remove._tr)
+
+        # === ЗАПОЛНЕНИЕ С ПОДСТАНОВКОЙ СРЕДСТВ ИЗ ЧЕК-ЛИСТА ===
+        current_row = start_row
+        for row_info in rows_data:
+            row = main_table.rows[current_row]
+
+            if row_info[0] == 'category':
+                self._merge_cells_horizontal(row, 0, 11)
+                self._set_cell_text(row.cells[0], row_info[1])
+                if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
+                    row.cells[0].paragraphs[0].runs[0].font.bold = True
+
+            elif row_info[0] == 'object':
+                obj_name, instr = row_info[1], row_info[2]
+                self._set_cell_text(row.cells[0], obj_name)
+
+                if instr:
+                    cleaning_method = instr.cleaning_method or ""
+                    product_name = instr.product_name or ""
+                    concentration = instr.concentration or ""
+                    cleaning_technique = instr.cleaning_technique or ""
+                    extra_method_text = None
+
+                    # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
+                    if cleaning_method == "мойка":
+                        if checklist_data.cleaning_product:
+                            product_name = checklist_data.cleaning_product
+                        if checklist_data.cleaning_concentration:
+                            concentration = checklist_data.cleaning_concentration
+                        if checklist_data.cleaning_method_text:
+                            extra_method_text = checklist_data.cleaning_method_text
+                    elif cleaning_method == "дезинфекция":
+                        if checklist_data.disinfection_product:
+                            product_name = checklist_data.disinfection_product
+                        if checklist_data.disinfection_concentration:
+                            concentration = checklist_data.disinfection_concentration
+                        if checklist_data.disinfection_method_text:
+                            extra_method_text = checklist_data.disinfection_method_text
+
+                    self._set_cell_text(row.cells[1], cleaning_method)
+                    self._set_cell_text(row.cells[2], instr.instruction_number or "")
+                    self._set_cell_text(row.cells[3], product_name, bold=True)
+                    self._set_cell_text(row.cells[4], cleaning_technique)
+                    self._set_cell_text(row.cells[5], concentration)
+
+                    # Добавляем способ разведения на новую строку в колонке концентрации
+                    if extra_method_text:
+                        para = row.cells[5].paragraphs[0]
+                        run_br = para.add_run()
+                        br = OxmlElement('w:br')
+                        run_br._r.append(br)
+                        run_text = para.add_run(extra_method_text)
+                        run_text.font.name = 'Arial'
+                        run_text.font.size = Pt(7)
+
+                    self._set_cell_text(row.cells[6], instr.temperature or "")
+                    self._set_cell_text(row.cells[7], instr.exposure_time or "")
+                    self._set_cell_text(row.cells[8], instr.inventory or "")
+                    self._set_cell_text(row.cells[9], instr.frequency or "")
+                    self._set_cell_text(row.cells[10], instr.executor or "")
+                    self._set_cell_text(row.cells[11], instr.control_method or "")
+
+                    if product_name:
+                        color = self._get_color_for_product(product_name)
+                        if color:
+                            self._set_cell_background(row.cells[3], color)
+
+            current_row += 1
+
+        # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
+        for group_start, group_end in merge_info:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+            if actual_end > actual_start:
+                for row in range(actual_start + 1, actual_end + 1):
+                    main_table.cell(row, 0).text = ""
+                self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+                for col in [8, 9, 10, 11]:
+                    self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        if output_file.exists():
+            output_file.unlink()
+        doc.save(str(output_file))
+        return str(output_file)
