@@ -234,7 +234,8 @@ class TechCardGenerator:
             best = None
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
                 for instr in instrs:
-                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
+                    if (
+                            instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
                         best = instr
                         break
                 if best:
@@ -257,7 +258,7 @@ class TechCardGenerator:
         return selected
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
-        """Клонирует форматирование строки (шрифт, размер, границы)"""
+        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонки 4)"""
         source_row = table.rows[source_row_idx]
         target_row = table.rows[target_row_idx]
         for col_idx, source_cell in enumerate(source_row.cells):
@@ -289,16 +290,38 @@ class TechCardGenerator:
                     if r_pr is None:
                         r_pr = OxmlElement('w:rPr')
                         new_run.insert(0, r_pr)
+
+                    # Сохраняем жирность из исходного run'а
+                    source_r_pr = source_run._r.find(qn('w:rPr'))
+                    if source_r_pr is not None:
+                        source_b = source_r_pr.find(qn('w:b'))
+                        if source_b is not None:
+                            existing_b = r_pr.find(qn('w:b'))
+                            if existing_b is None:
+                                r_pr.append(copy.deepcopy(source_b))
+
+                    # Принудительно добавляем bold для колонки 4 (индекс 3)
+                    if col_idx == 3:
+                        existing_b = r_pr.find(qn('w:b'))
+                        if existing_b is None:
+                            b = OxmlElement('w:b')
+                            r_pr.append(b)
+
                     sz = r_pr.find(qn('w:sz'))
                     if sz is None:
                         sz = OxmlElement('w:sz')
                         r_pr.append(sz)
                     sz.set(qn('w:val'), '14')
+
+                    # Сохраняем szCs если был
+                    source_sz_cs = r_pr.find(qn('w:szCs')) if source_r_pr is not None else None
+
                     sz_cs = r_pr.find(qn('w:szCs'))
                     if sz_cs is None:
                         sz_cs = OxmlElement('w:szCs')
                         r_pr.append(sz_cs)
                     sz_cs.set(qn('w:val'), '14')
+
                     r_fonts = r_pr.find(qn('w:rFonts'))
                     if r_fonts is None:
                         r_fonts = OxmlElement('w:rFonts')
@@ -310,12 +333,13 @@ class TechCardGenerator:
                         t.text = ''
                     target_para._p.append(new_run)
 
-    def _set_cell_text(self, cell, text: str):
-        """Устанавливает текст в ячейку через первый абзац"""
+    def _set_cell_text(self, cell, text: str, bold: bool = False):
+        """Устанавливает текст в ячейку. Если bold=True, делает шрифт жирным."""
         if not cell.paragraphs:
             cell.add_paragraph()
         para = cell.paragraphs[0]
         if not para.runs:
+            # Создаём новый run
             run_elem = OxmlElement('w:r')
             r_pr = OxmlElement('w:rPr')
             sz = OxmlElement('w:sz')
@@ -325,11 +349,30 @@ class TechCardGenerator:
             r_fonts.set(qn('w:ascii'), 'Arial')
             r_fonts.set(qn('w:hAnsi'), 'Arial')
             r_pr.append(r_fonts)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
             run_elem.append(r_pr)
             t_elem = OxmlElement('w:t')
             t_elem.set(qn('xml:space'), 'preserve')
             run_elem.append(t_elem)
             para._p.append(run_elem)
+        else:
+            # Run уже есть — обновляем bold
+            run = para.runs[0]
+            r_pr = run._r.find(qn('w:rPr'))
+            if r_pr is None:
+                r_pr = OxmlElement('w:rPr')
+                run._r.insert(0, r_pr)
+            # Удаляем старый bold, если есть
+            existing_b = r_pr.find(qn('w:b'))
+            if existing_b is not None:
+                r_pr.remove(existing_b)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
+
+        # Записываем текст в первый run
         run = para.runs[0]
         for t in run._r.findall(qn('w:t')):
             t.text = text
@@ -519,18 +562,16 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
-                    self._set_cell_text(row.cells[3], product_name)
+                    self._set_cell_text(row.cells[3], product_name, bold=True)
                     self._set_cell_text(row.cells[4], cleaning_technique)
                     self._set_cell_text(row.cells[5], concentration)
 
                     # Добавляем способ разведения на новую строку в колонке концентрации
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
-                        # Добавляем разрыв строки
                         run_br = para.add_run()
                         br = OxmlElement('w:br')
                         run_br._r.append(br)
-                        # Добавляем текст способа разведения
                         run_text = para.add_run(extra_method_text)
                         run_text.font.name = 'Arial'
                         run_text.font.size = Pt(7)
