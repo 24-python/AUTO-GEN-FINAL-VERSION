@@ -2,7 +2,7 @@
 """
 test_generator.py - Пакетная генерация технологических карт
 Поддерживает .docx и .zip
-Режимы: 1 - по категориям, 2 - по приоритету (без категорий)
+Режимы: 1 - по категориям, 2 - по приоритету (без категорий), 3 - по приоритету с группировкой
 """
 
 import sys
@@ -57,7 +57,12 @@ def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path
         safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
         output_path = output_dir / f"{safe_name}_tech_card.docx"
 
-        mode_str = "по категориям" if mode == 1 else "по приоритету"
+        if mode == 1:
+            mode_str = "по категориям"
+        elif mode == 2:
+            mode_str = "по приоритету"
+        else:
+            mode_str = "по приоритету с группировкой"
         print(f"   📝 Генерация техкарты (режим {mode}: {mode_str})...")
         gen_start = time.time()
         generator.generate(checklist_data, str(output_path), mode)
@@ -106,7 +111,12 @@ def print_report(results: list, mode: int):
     total_objects = sum(r.get("objects", 0) for r in results if r["status"] == "success")
     total_time = sum(r.get("total_time", 0) for r in results if r["status"] == "success")
 
-    mode_str = "по категориям" if mode == 1 else "по приоритету"
+    if mode == 1:
+        mode_str = "по категориям"
+    elif mode == 2:
+        mode_str = "по приоритету"
+    else:
+        mode_str = "по приоритету с группировкой"
     print("\n" + "=" * 70)
     print(f"📊 ОТЧЁТ О ГЕНЕРАЦИИ (режим {mode}: {mode_str})")
     print("=" * 70)
@@ -133,12 +143,13 @@ def select_mode() -> int:
     print("\nВыберите режим генерации:")
     print("   1. По категориям (с заголовками, по алфавиту)")
     print("   2. По приоритету (единый список, сверху вниз)")
+    print("   3. По приоритету с группировкой (объединение одинаковых инструкций в пределах приоритета)")
 
     while True:
-        choice = input("\n🔢 Ваш выбор (1 или 2): ").strip()
-        if choice in ['1', '2']:
+        choice = input("\n🔢 Ваш выбор (1, 2 или 3): ").strip()
+        if choice in ['1', '2', '3']:
             return int(choice)
-        print("❌ Введите 1 или 2")
+        print("❌ Введите 1, 2 или 3")
 
 
 def process_single_file(file_path: str, output_dir: str = "tech_cards", mode: int = None):
@@ -172,7 +183,7 @@ def main():
     parser.add_argument("--input", "-i", default="checklists", help="Папка с чек-листами")
     parser.add_argument("--output", "-o", default="tech_cards", help="Папка для сохранения")
     parser.add_argument("--single", "-s", help="Обработать один файл (для тестирования)")
-    parser.add_argument("--mode", "-m", type=int, choices=[1, 2], help="Режим: 1 - по категориям, 2 - по приоритету")
+    parser.add_argument("--mode", "-m", type=int, choices=[1, 2, 3], help="Режим: 1 - по категориям, 2 - по приоритету, 3 - по приоритету с группировкой")
     args = parser.parse_args()
 
     # Определяем режим
@@ -185,7 +196,12 @@ def main():
 
     # Режим обработки одного файла
     if args.single:
-        mode_str = "по категориям" if mode == 1 else "по приоритету"
+        if mode == 1:
+            mode_str = "по категориям"
+        elif mode == 2:
+            mode_str = "по приоритету"
+        else:
+            mode_str = "по приоритету с группировкой"
         print(f"🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (режим {mode}: {mode_str})")
         print("=" * 60)
         result = process_single_file(args.single, args.output, mode)
@@ -202,7 +218,12 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    mode_str = "по категориям" if mode == 1 else "по приоритету"
+    if mode == 1:
+        mode_str = "по категориям"
+    elif mode == 2:
+        mode_str = "по приоритету"
+    else:
+        mode_str = "по приоритету с группировкой"
     print(f"🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ (режим {mode}: {mode_str})")
     print("=" * 60)
     print(f"📂 Входная папка: {input_dir}")

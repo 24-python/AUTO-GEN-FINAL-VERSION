@@ -476,7 +476,7 @@ class TechCardGenerator:
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info.append((group_start_row, group_end_row))
-        else:
+        elif mode == 2:
             # Режим 2 – без группировки объектов: каждый объект отдельно,
             # сортировка по приоритету, затем по алфавиту
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
@@ -491,6 +491,30 @@ class TechCardGenerator:
                 group_end_row = len(rows_data) - 1
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
+        elif mode == 3:
+            # Режим 3 – группировка объектов с одинаковыми инструкциями
+            # в пределах одного приоритета
+            # Группируем объекты по sort_priority
+            priority_groups = defaultdict(list)
+            for display_name, instructions, sort_priority in all_object_instructions:
+                priority_groups[sort_priority].append((display_name, instructions))
+
+            # Проходим по приоритетам в порядке возрастания
+            for priority in sorted(priority_groups.keys()):
+                items = priority_groups[priority]
+                # Внутри приоритета группируем по полному совпадению инструкций
+                grouped = self._group_by_full_instructions(items)
+                for obj_name, instructions in grouped:
+                    group_start_row = len(rows_data)
+                    if instructions:
+                        for i, instr in enumerate(instructions):
+                            cell_text = obj_name if i == 0 else ""
+                            rows_data.append(('object', cell_text, instr))
+                    else:
+                        rows_data.append(('object', obj_name, None))
+                    group_end_row = len(rows_data) - 1
+                    if group_end_row > group_start_row:
+                        merge_info.append((group_start_row, group_end_row))
 
         if unmatched_objects:
             rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))

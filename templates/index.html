@@ -50,6 +50,10 @@
             font-size: 0.9rem;
             margin-left: auto;
         }
+        /* Расширение сетки для трёх режимов */
+        .mode-selector {
+            grid-template-columns: repeat(3, 1fr);
+        }
     </style>
 </head>
 <body>
@@ -116,6 +120,11 @@
                                     <div class="mode-icon"><i class="bi bi-arrow-down-up"></i></div>
                                     <div class="mode-title">По приоритету</div>
                                     <div class="mode-desc">Единый список, сверху вниз</div>
+                                </div>
+                                <div class="mode-option" :class="{selected: mode === 3}" @click="mode = 3">
+                                    <div class="mode-icon"><i class="bi bi-collection"></i></div>
+                                    <div class="mode-title">По приоритету с группировкой</div>
+                                    <div class="mode-desc">Объединение одинаковых инструкций в пределах приоритета</div>
                                 </div>
                             </div>
                         </div>
