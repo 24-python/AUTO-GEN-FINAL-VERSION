@@ -6,12 +6,11 @@
 
 import sys
 import csv
-import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from update_frequency_from_schedule import (
+from Разное.update_frequency_from_schedule import (
     parse_schedule,
     extract_category_name,
     normalize_object_name,
@@ -23,8 +22,8 @@ from lxml import etree
 NAMESPACES = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 
 # Конфигурация
-DOCX_FILE = "../производственных помещений.docx"
-CSV_FILE = "../db_export_all1111.csv"
+DOCX_FILE = "производственных помещений.docx"
+CSV_FILE = "db_export_all1111.csv"
 
 
 def main():

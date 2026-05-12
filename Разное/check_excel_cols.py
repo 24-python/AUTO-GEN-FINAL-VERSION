@@ -1,7 +1,7 @@
 # check_excel_cols.py
 import openpyxl
 
-wb = openpyxl.load_workbook("../периодичность обработки всех помещений.xlsx", data_only=True)
+wb = openpyxl.load_workbook("периодичность обработки всех помещений.xlsx", data_only=True)
 ws = wb.active
 
 print(f"Строк: {ws.max_row}, Колонок: {ws.max_column}")

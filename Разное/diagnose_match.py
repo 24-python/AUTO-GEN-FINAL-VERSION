@@ -15,7 +15,7 @@ from db.models import Object
 
 
 def main():
-    excel_file = "../периодичность обработки всех помещений.xlsx"
+    excel_file = "периодичность обработки всех помещений.xlsx"
 
     print(f"📖 Чтение Excel: {excel_file}")
     data = read_excel(excel_file)

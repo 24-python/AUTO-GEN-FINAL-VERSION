@@ -1,8 +1,8 @@
-# test_set_cell.py
+# test_bold.py
 import sys
 from pathlib import Path
 
-sys.path.insert(0, '.')
+sys.path.insert(0, '..')
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -10,15 +10,18 @@ from docx.shared import Pt
 import copy
 from docx.oxml import OxmlElement
 
+# Тест: создаём документ из шаблона, добавляем строку, клонируем, заполняем
 doc = Document("tech_card_templates/шаблон.docx")
 table = doc.tables[1]
 
+# Клонируем строку 7 в новую
 source_row = table.rows[7]
 new_row = table.add_row()
 
-# Клонируем + bold для колонки 4
 for col_idx, source_cell in enumerate(source_row.cells):
     target_cell = new_row.cells[col_idx]
+
+    # Копируем tcPr
     source_tc_pr = source_cell._tc.find(qn('w:tcPr'))
     if source_tc_pr is not None:
         target_tc_pr = target_cell._tc.find(qn('w:tcPr'))
@@ -26,6 +29,7 @@ for col_idx, source_cell in enumerate(source_row.cells):
             target_cell._tc.remove(target_tc_pr)
         target_cell._tc.insert(0, copy.deepcopy(source_tc_pr))
 
+    # Копируем параграфы
     for p_idx, source_para in enumerate(source_cell.paragraphs):
         if p_idx >= len(target_cell.paragraphs):
             target_para = target_cell.add_paragraph()
@@ -49,10 +53,15 @@ for col_idx, source_cell in enumerate(source_row.cells):
                 r_pr = OxmlElement('w:rPr')
                 new_run.insert(0, r_pr)
 
+            # Принудительный bold для колонки 4
             if col_idx == 3:
+                existing_b = r_pr.find(qn('w:b'))
+                if existing_b is not None:
+                    r_pr.remove(existing_b)
                 b = OxmlElement('w:b')
                 r_pr.append(b)
 
+            # Шрифт
             sz = r_pr.find(qn('w:sz'))
             if sz is None:
                 sz = OxmlElement('w:sz')
@@ -67,30 +76,18 @@ for col_idx, source_cell in enumerate(source_row.cells):
             r_fonts.set(qn('w:hAnsi'), 'Arial')
 
             for t in new_run.findall(qn('w:t')):
-                t.text = ''
+                t.text = 'TEST'
                 break
 
             target_para._p.append(new_run)
 
-# Проверяем bold ДО _set_cell_text
+# Проверяем XML
 cell = new_row.cells[3]
-run_before = cell.paragraphs[0].runs[0]
-r_pr_before = run_before._r.find(qn('w:rPr'))
-bold_before = r_pr_before.find(qn('w:b')) if r_pr_before is not None else None
-print(f"ДО: bold={'✅' if bold_before is not None else '❌'}")
+for run in cell.paragraphs[0].runs:
+    r_pr = run._r.find(qn('w:rPr'))
+    bold = r_pr.find(qn('w:b')) if r_pr is not None else None
+    print(f"Run text='{run.text}', bold={'✅' if bold is not None else '❌'}")
 
-# Эмулируем _set_cell_text
-para = cell.paragraphs[0]
-run = para.runs[0]
-for t in run._r.findall(qn('w:t')):
-    t.text = 'ХИМИТЕК ИЗУМРУД 310'
-    break
-
-# Проверяем bold ПОСЛЕ
-run_after = cell.paragraphs[0].runs[0]
-r_pr_after = run_after._r.find(qn('w:rPr'))
-bold_after = r_pr_after.find(qn('w:b')) if r_pr_after is not None else None
-print(f"ПОСЛЕ: text='{run_after.text}', bold={'✅' if bold_after is not None else '❌'}")
-
-doc.save("test_set_cell_output.docx")
-print("\n✅ Сохранено: test_set_cell_output.docx")
+# Сохраняем для проверки
+doc.save("test_bold_output.docx")
+print("\n✅ Сохранено: test_bold_output.docx")

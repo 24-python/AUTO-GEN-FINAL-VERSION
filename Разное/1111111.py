@@ -1,7 +1,7 @@
 import zipfile
 from lxml import etree
 
-docx_path = '../используемые_средства_новая_таблица.docx'
+docx_path = 'используемые_средства_новая_таблица.docx'
 
 with zipfile.ZipFile(docx_path, 'r') as z:
     with z.open('word/document.xml') as f:
