@@ -87,6 +87,13 @@ class SDTChecklistParser:
         "Упаковочное оборудование": Category.PACKAGING_EQUIPMENT,
     }
 
+    # Категории помещений (в нижнем регистре для единообразия)
+    ROOM_CATEGORIES = [
+        'производственное', 'бытовое', 'складское', 'санитарное',
+        'вспомогательное', 'моечное', 'техническое', 'офисное',
+        'общего назначения'
+    ]
+
     def __init__(self):
         self._category_cache = {}
 
@@ -335,14 +342,12 @@ class SDTChecklistParser:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
                 if value:
-                    # Проверяем, не является ли это средством (не категорией помещения)
-                    if value not in ['Производственное', 'Бытовое', 'Складское', 'Санитарное',
-                                     'Вспомогательное', 'Моечное', 'Техническое', 'Офисное',
-                                     'Общего назначения']:
-                        continue
-                    data.room_category = value
-                    print(f"  📋 Категория помещения (из выпадающего списка): «{value}»")
-                    return
+                    # Приводим к нижнему регистру
+                    value_lower = value.lower()
+                    if value_lower in self.ROOM_CATEGORIES:
+                        data.room_category = value_lower
+                        print(f"  📋 Категория помещения (из выпадающего списка): «{value_lower}»")
+                        return
 
         print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
 
@@ -373,10 +378,8 @@ class SDTChecklistParser:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
                 if value:
-                    # Пропускаем категории помещений
-                    if value in ['Производственное', 'Бытовое', 'Складское', 'Санитарное',
-                                 'Вспомогательное', 'Моечное', 'Техническое', 'Офисное',
-                                 'Общего назначения']:
+                    # Пропускаем категории помещений (в любом регистре)
+                    if value.lower() in self.ROOM_CATEGORIES:
                         continue
                     dropdown_values.append(value)
 

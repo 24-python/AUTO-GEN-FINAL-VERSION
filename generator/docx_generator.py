@@ -175,6 +175,7 @@ class TechCardGenerator:
         return {cat.name: cat.sort_order for cat in categories}
 
     def _get_room_category_id(self, session, room_category_name: str) -> int:
+        """Ищет категорию помещения по точному совпадению (в БД все в нижнем регистре)."""
         if not room_category_name:
             return None
         rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
@@ -392,7 +393,8 @@ class TechCardGenerator:
 
         # === ОБРАБОТКА 4-Й СТРОКИ (предупреждение об удалении сырья) ===
         warning_row = main_table.rows[3]
-        if checklist_data.room_category not in ["Производственное", "Складское"]:
+        # Категории теперь в нижнем регистре
+        if checklist_data.room_category not in ["производственное", "складское"]:
             self._clear_cell_text(warning_row.cells[0])
 
         session = SessionLocal()

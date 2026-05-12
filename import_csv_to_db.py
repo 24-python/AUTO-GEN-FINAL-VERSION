@@ -179,14 +179,14 @@ class CSVImporter:
 
         unique_room_cats = set()
         for row in rows:
-            rc_name = row.get('room_category_name', '').strip()
+            rc_name = row.get('room_category_name', '').strip().lower()
             if rc_name:
                 unique_room_cats.add(rc_name)
 
-        # Стандартный набор категорий для справки
+        # Стандартный набор категорий для справки (в нижнем регистре)
         default_cats = [
-            "Бытовое", "Производственное", "Складское", "Санитарное",
-            "Вспомогательное", "Моечное", "Техническое", "Офисное", "Общего назначения"
+            "бытовое", "производственное", "складское", "санитарное",
+            "вспомогательное", "моечное", "техническое", "офисное", "общего назначения"
         ]
         for dc in default_cats:
             unique_room_cats.add(dc)
@@ -198,7 +198,8 @@ class CSVImporter:
                 room_cat_ids[rc_name] = existing.id
                 self.stats.room_categories_updated += 1
             else:
-                rc = RoomCategory(name=rc_name)
+                # Принудительно приводим к нижнему регистру
+                rc = RoomCategory(name=rc_name.lower())
                 self.session.add(rc)
                 self.session.flush()
                 room_cat_ids[rc_name] = rc.id
@@ -213,15 +214,17 @@ class CSVImporter:
     def _get_room_category_id(self, room_cat_name: str, room_cat_ids: Dict[str, int]) -> Optional[int]:
         if not room_cat_name:
             return None
-        if room_cat_name in self.room_category_cache:
-            return self.room_category_cache[room_cat_name]
-        if room_cat_name in room_cat_ids:
-            rc_id = room_cat_ids[room_cat_name]
-            self.room_category_cache[room_cat_name] = rc_id
+        # Приводим к нижнему регистру для поиска
+        room_cat_name_lower = room_cat_name.strip().lower()
+        if room_cat_name_lower in self.room_category_cache:
+            return self.room_category_cache[room_cat_name_lower]
+        if room_cat_name_lower in room_cat_ids:
+            rc_id = room_cat_ids[room_cat_name_lower]
+            self.room_category_cache[room_cat_name_lower] = rc_id
             return rc_id
-        rc = self.session.query(RoomCategory).filter(RoomCategory.name == room_cat_name).first()
+        rc = self.session.query(RoomCategory).filter(RoomCategory.name == room_cat_name_lower).first()
         if rc:
-            self.room_category_cache[room_cat_name] = rc.id
+            self.room_category_cache[room_cat_name_lower] = rc.id
             return rc.id
         return None
 
