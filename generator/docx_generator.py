@@ -393,7 +393,6 @@ class TechCardGenerator:
 
         # === ОБРАБОТКА 4-Й СТРОКИ (предупреждение об удалении сырья) ===
         warning_row = main_table.rows[3]
-        # Категории теперь в нижнем регистре
         if checklist_data.room_category not in ["производственное", "складское"]:
             self._clear_cell_text(warning_row.cells[0])
 
@@ -461,32 +460,34 @@ class TechCardGenerator:
                 items = category_object_instructions[cat_name]
                 if not items:
                     continue
+                # Сортировка объектов по алфавиту (по display_name)
                 items.sort(key=lambda x: x[0])
-                grouped = self._group_by_full_instructions(items)
                 rows_data.append(('category', cat_name, None))
-                for obj_name, instructions in grouped:
+                # Для каждого объекта – отдельный блок строк с объединением первой ячейки
+                for display_name, instructions in items:
                     group_start_row = len(rows_data)
                     if instructions:
                         for i, instr in enumerate(instructions):
-                            display_name = obj_name if i == 0 else ""
-                            rows_data.append(('object', display_name, instr))
+                            # В первой строке – имя объекта, в остальных – пусто
+                            cell_text = display_name if i == 0 else ""
+                            rows_data.append(('object', cell_text, instr))
                     else:
-                        rows_data.append(('object', obj_name, None))
+                        rows_data.append(('object', display_name, None))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info.append((group_start_row, group_end_row))
         else:
+            # Режим 2 – без группировки объектов: каждый объект отдельно,
+            # сортировка по приоритету, затем по алфавиту
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-            items_for_grouping = [(name, instrs) for name, instrs, _ in all_object_instructions]
-            grouped = self._group_by_full_instructions(items_for_grouping)
-            for obj_name, instructions in grouped:
+            for display_name, instructions, sort_priority in all_object_instructions:
                 group_start_row = len(rows_data)
                 if instructions:
                     for i, instr in enumerate(instructions):
-                        display_name = obj_name if i == 0 else ""
-                        rows_data.append(('object', display_name, instr))
+                        cell_text = display_name if i == 0 else ""
+                        rows_data.append(('object', cell_text, instr))
                 else:
-                    rows_data.append(('object', obj_name, None))
+                    rows_data.append(('object', display_name, None))
                 group_end_row = len(rows_data) - 1
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
