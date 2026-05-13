@@ -11,6 +11,7 @@
 
 Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
 Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
+Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
 """
 
 import zipfile
@@ -355,9 +356,12 @@ class SDTChecklistParser:
         """
         Извлекает моющие и дезинфицирующие средства из раздела "Дополнительная информация".
         Ищет все выпадающие списки (SDT dropDownList), которые не являются категорией помещения.
-        Собирает их последовательно:
-        - Первые три: моющее средство (название, концентрация, способ разведения)
-        - Вторые три: дезинфицирующее средство
+        Порядок:
+          - Первые три: общее моющее средство (название, концентрация, способ разведения)
+          - Следующие три: общее дезинфицирующее средство
+          - Далее три: моющее для пола/трапов
+          - Далее три: моющее для теплового оборудования
+          - Далее три: моющее для стеклянных/зеркальных поверхностей (зеркала, окна, мониторы)
         """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
@@ -385,23 +389,50 @@ class SDTChecklistParser:
 
         print(f"  📦 Найдено выпадающих списков со средствами: {len(dropdown_values)}")
 
-        # Первые три значения — моющее средство
+        # Первые три значения — общее моющее средство
         if len(dropdown_values) >= 3:
             data.cleaning_product = dropdown_values[0]
             data.cleaning_concentration = dropdown_values[1]
             data.cleaning_method_text = dropdown_values[2]
-            print(f"  🧴 Моющее средство: {data.cleaning_product}")
+            print(f"  🧴 Общее моющее средство: {data.cleaning_product}")
             print(f"     Концентрация: {data.cleaning_concentration}")
             print(f"     Способ разведения: {data.cleaning_method_text}")
 
-        # Следующие три — дезинфицирующее
+        # Следующие три — общее дезинфицирующее
         if len(dropdown_values) >= 6:
             data.disinfection_product = dropdown_values[3]
             data.disinfection_concentration = dropdown_values[4]
             data.disinfection_method_text = dropdown_values[5]
-            print(f"  🦠 Дезинфицирующее средство: {data.disinfection_product}")
+            print(f"  🦠 Общее дезинфицирующее средство: {data.disinfection_product}")
             print(f"     Концентрация: {data.disinfection_concentration}")
             print(f"     Способ разведения: {data.disinfection_method_text}")
+
+        # Следующие три — моющее для пола и трапов
+        if len(dropdown_values) >= 9:
+            data.floor_cleaning_product = dropdown_values[6]
+            data.floor_cleaning_concentration = dropdown_values[7]
+            data.floor_cleaning_method_text = dropdown_values[8]
+            print(f"  🧽 Моющее для пола/трапов: {data.floor_cleaning_product}")
+            print(f"     Концентрация: {data.floor_cleaning_concentration}")
+            print(f"     Способ разведения: {data.floor_cleaning_method_text}")
+
+        # Следующие три — моющее для теплового оборудования
+        if len(dropdown_values) >= 12:
+            data.thermal_cleaning_product = dropdown_values[9]
+            data.thermal_cleaning_concentration = dropdown_values[10]
+            data.thermal_cleaning_method_text = dropdown_values[11]
+            print(f"  🔥 Моющее для теплового оборудования: {data.thermal_cleaning_product}")
+            print(f"     Концентрация: {data.thermal_cleaning_concentration}")
+            print(f"     Способ разведения: {data.thermal_cleaning_method_text}")
+
+        # Следующие три — моющее для стеклянных/зеркальных поверхностей
+        if len(dropdown_values) >= 15:
+            data.glass_cleaning_product = dropdown_values[12]
+            data.glass_cleaning_concentration = dropdown_values[13]
+            data.glass_cleaning_method_text = dropdown_values[14]
+            print(f"  🪞 Моющее для стекол/зеркал/мониторов: {data.glass_cleaning_product}")
+            print(f"     Концентрация: {data.glass_cleaning_concentration}")
+            print(f"     Способ разведения: {data.glass_cleaning_method_text}")
 
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
@@ -459,9 +490,15 @@ class SDTChecklistParser:
         if data.room_category:
             print(f"   Категория помещения: {data.room_category}")
         if data.cleaning_product:
-            print(f"   Моющее средство: {data.cleaning_product}")
+            print(f"   Общее моющее средство: {data.cleaning_product}")
         if data.disinfection_product:
-            print(f"   Дезинфицирующее средство: {data.disinfection_product}")
+            print(f"   Общее дезинфицирующее средство: {data.disinfection_product}")
+        if data.floor_cleaning_product:
+            print(f"   Моющее для пола/трапов: {data.floor_cleaning_product}")
+        if data.thermal_cleaning_product:
+            print(f"   Моющее для теплового оборудования: {data.thermal_cleaning_product}")
+        if data.glass_cleaning_product:
+            print(f"   Моющее для стекол/зеркал: {data.glass_cleaning_product}")
 
 
 def parse_checklist(file_path: str) -> ChecklistData:

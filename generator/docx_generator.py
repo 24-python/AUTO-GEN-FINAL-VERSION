@@ -101,6 +101,16 @@ class TechCardGenerator:
         "дезинфекция": 4,
     }
 
+    # Нормализованные имена объектов для специальных моющих средств
+    FLOOR_OBJECTS = {"пол", "трапы"}
+    GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
+    THERMAL_OBJECTS = {
+        "плиты индук", "плиты элек", "плиты газ",
+        "варочные котлы", "сковороды", "фритюры", "грили",
+        "пароконвектоматы", "печи подовые", "печи ротационные",
+        "расстоечные шкафы", "вафельницы"
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
@@ -257,7 +267,7 @@ class TechCardGenerator:
         return selected
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
-        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонки 4)"""
+        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонок 4 и 9)"""
         source_row = table.rows[source_row_idx]
         target_row = table.rows[target_row_idx]
         for col_idx, source_cell in enumerate(source_row.cells):
@@ -305,6 +315,7 @@ class TechCardGenerator:
                         if existing_b is None:
                             b = OxmlElement('w:b')
                             r_pr.append(b)
+                    # Принудительно добавляем bold для колонки 9 (индекс 8)
                     if col_idx == 8:
                         existing_b = r_pr.find(qn('w:b'))
                         if existing_b is None:
@@ -389,7 +400,7 @@ class TechCardGenerator:
         # Заполняем помещение
         room_cell = main_table.cell(1, 0)
         if "Помещение:" in room_cell.text:
-            room_cell.text = f"Помещение: {checklist_data.room_name or '_____________'}"
+            room_cell.text = f"Помещение: {checklist_data.room_name or '______________'}"
             for para in room_cell.paragraphs:
                 for run in para.runs:
                     run.font.name = 'Arial'
@@ -439,14 +450,15 @@ class TechCardGenerator:
 
             display_name = obj.display_name if obj else item.name
             sort_priority = obj.sort_priority if obj else 999
+            normalized_name = item.name  # уникальный ключ из чек-листа
 
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
                 instructions = self._select_instructions_for_room(all_instrs, room_category_id)
 
                 if instructions:
-                    category_object_instructions[cat_name].append((display_name, instructions))
-                    all_object_instructions.append((display_name, instructions, sort_priority))
+                    category_object_instructions[cat_name].append((display_name, instructions, normalized_name))
+                    all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
                 else:
                     unmatched_objects.append(display_name)
             elif obj:
@@ -465,58 +477,56 @@ class TechCardGenerator:
                 items = category_object_instructions[cat_name]
                 if not items:
                     continue
-                # Сортировка объектов по алфавиту (по display_name)
-                items.sort(key=lambda x: x[0])
+                items.sort(key=lambda x: x[0])  # сортировка по display_name
                 rows_data.append(('category', cat_name, None))
-                # Для каждого объекта – отдельный блок строк с объединением первой ячейки
-                for display_name, instructions in items:
+                for display_name, instructions, normalized_name in items:
                     group_start_row = len(rows_data)
                     if instructions:
                         for i, instr in enumerate(instructions):
-                            # В первой строке – имя объекта, в остальных – пусто
                             cell_text = display_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr))
+                            rows_data.append(('object', cell_text, instr, normalized_name))
                     else:
-                        rows_data.append(('object', display_name, None))
+                        rows_data.append(('object', display_name, None, normalized_name))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info.append((group_start_row, group_end_row))
         elif mode == 2:
-            # Режим 2 – без группировки объектов: каждый объект отдельно,
-            # сортировка по приоритету, затем по алфавиту
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-            for display_name, instructions, sort_priority in all_object_instructions:
+            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
                 group_start_row = len(rows_data)
                 if instructions:
                     for i, instr in enumerate(instructions):
                         cell_text = display_name if i == 0 else ""
-                        rows_data.append(('object', cell_text, instr))
+                        rows_data.append(('object', cell_text, instr, normalized_name))
                 else:
-                    rows_data.append(('object', display_name, None))
+                    rows_data.append(('object', display_name, None, normalized_name))
                 group_end_row = len(rows_data) - 1
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
         elif mode == 3:
-            # Режим 3 – группировка объектов с одинаковыми инструкциями
-            # в пределах одного приоритета
-            # Группируем объекты по sort_priority
             priority_groups = defaultdict(list)
-            for display_name, instructions, sort_priority in all_object_instructions:
-                priority_groups[sort_priority].append((display_name, instructions))
+            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
+                priority_groups[sort_priority].append((display_name, instructions, normalized_name))
 
-            # Проходим по приоритетам в порядке возрастания
             for priority in sorted(priority_groups.keys()):
                 items = priority_groups[priority]
-                # Внутри приоритета группируем по полному совпадению инструкций
-                grouped = self._group_by_full_instructions(items)
-                for obj_name, instructions in grouped:
+                # Группируем по инструкциям, сохраняя normalized_name первого объекта в группе
+                groups = {}
+                for dn, instr, nn in items:
+                    signature = self._get_instruction_signature(instr)
+                    if signature not in groups:
+                        groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn}
+                    groups[signature]["names"].append(dn)
+
+                for sig, data in groups.items():
+                    merged_name = ", ".join(sorted(data["names"]))
                     group_start_row = len(rows_data)
-                    if instructions:
-                        for i, instr in enumerate(instructions):
-                            cell_text = obj_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr))
+                    if data["instructions"]:
+                        for i, instr in enumerate(data["instructions"]):
+                            cell_text = merged_name if i == 0 else ""
+                            rows_data.append(('object', cell_text, instr, data["normalized_name"]))
                     else:
-                        rows_data.append(('object', obj_name, None))
+                        rows_data.append(('object', merged_name, None, data["normalized_name"]))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info.append((group_start_row, group_end_row))
@@ -524,10 +534,10 @@ class TechCardGenerator:
         if unmatched_objects:
             rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
             for name in sorted(unmatched_objects):
-                rows_data.append(('object', name, None))
+                rows_data.append(('object', name, None, None))
 
         # === ОЧИСТКА ТАБЛИЦЫ ===
-        start_row = 7
+        start_row = 8
         tbl = main_table._tbl
         ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
         tr_elements = tbl.findall('.//w:tr', namespaces=ns)
@@ -557,6 +567,7 @@ class TechCardGenerator:
 
             elif row_info[0] == 'object':
                 obj_name, instr = row_info[1], row_info[2]
+                normalized_name = row_info[3] if len(row_info) > 3 else None
                 self._set_cell_text(row.cells[0], obj_name)
 
                 if instr:
@@ -568,12 +579,29 @@ class TechCardGenerator:
 
                     # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
                     if cleaning_method == "мойка":
-                        if checklist_data.cleaning_product:
-                            product_name = checklist_data.cleaning_product
-                        if checklist_data.cleaning_concentration:
-                            concentration = checklist_data.cleaning_concentration
-                        if checklist_data.cleaning_method_text:
-                            extra_method_text = checklist_data.cleaning_method_text
+                        if normalized_name and normalized_name in self.FLOOR_OBJECTS:
+                            if checklist_data.floor_cleaning_product:
+                                product_name = checklist_data.floor_cleaning_product
+                                concentration = checklist_data.floor_cleaning_concentration
+                                extra_method_text = checklist_data.floor_cleaning_method_text
+                        elif normalized_name and normalized_name in self.THERMAL_OBJECTS:
+                            if checklist_data.thermal_cleaning_product:
+                                product_name = checklist_data.thermal_cleaning_product
+                                concentration = checklist_data.thermal_cleaning_concentration
+                                extra_method_text = checklist_data.thermal_cleaning_method_text
+                        elif normalized_name and normalized_name in self.GLASS_OBJECTS:
+                            if checklist_data.glass_cleaning_product:
+                                product_name = checklist_data.glass_cleaning_product
+                                concentration = checklist_data.glass_cleaning_concentration
+                                extra_method_text = checklist_data.glass_cleaning_method_text
+                        else:
+                            # Общее моющее средство
+                            if checklist_data.cleaning_product:
+                                product_name = checklist_data.cleaning_product
+                            if checklist_data.cleaning_concentration:
+                                concentration = checklist_data.cleaning_concentration
+                            if checklist_data.cleaning_method_text:
+                                extra_method_text = checklist_data.cleaning_method_text
                     elif cleaning_method == "дезинфекция":
                         if checklist_data.disinfection_product:
                             product_name = checklist_data.disinfection_product
@@ -588,7 +616,6 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[4], cleaning_technique)
                     self._set_cell_text(row.cells[5], concentration if concentration else "_____________")
 
-                    # Добавляем способ разведения на новую строку в колонке концентрации
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
                         run_br = para.add_run()

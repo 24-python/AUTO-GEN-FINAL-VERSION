@@ -45,14 +45,31 @@ class ChecklistData:
     enterprise: Optional[str] = None
     room_category: Optional[str] = None
 
-    # Средства из раздела "Дополнительная информация"
-    cleaning_product: Optional[str] = None  # название моющего средства
-    cleaning_concentration: Optional[str] = None  # концентрация моющего
-    cleaning_method_text: Optional[str] = None  # способ разведения моющего
+    # Общие моющие средства (из раздела "Дополнительная информация")
+    cleaning_product: Optional[str] = None
+    cleaning_concentration: Optional[str] = None
+    cleaning_method_text: Optional[str] = None
 
-    disinfection_product: Optional[str] = None  # название дезинфицирующего
-    disinfection_concentration: Optional[str] = None  # концентрация дезинфицирующего
-    disinfection_method_text: Optional[str] = None  # способ разведения дезинфицирующего
+    # Общее дезинфицирующее средство
+    disinfection_product: Optional[str] = None
+    disinfection_concentration: Optional[str] = None
+    disinfection_method_text: Optional[str] = None
+
+    # Специализированные моющие средства
+    # Для пола и трапов
+    floor_cleaning_product: Optional[str] = None
+    floor_cleaning_concentration: Optional[str] = None
+    floor_cleaning_method_text: Optional[str] = None
+
+    # Для теплового оборудования
+    thermal_cleaning_product: Optional[str] = None
+    thermal_cleaning_concentration: Optional[str] = None
+    thermal_cleaning_method_text: Optional[str] = None
+
+    # Для стеклянных/зеркальных поверхностей (зеркала, окна, мониторы)
+    glass_cleaning_product: Optional[str] = None
+    glass_cleaning_concentration: Optional[str] = None
+    glass_cleaning_method_text: Optional[str] = None
 
     items: List[ChecklistItem] = field(default_factory=list)
 
