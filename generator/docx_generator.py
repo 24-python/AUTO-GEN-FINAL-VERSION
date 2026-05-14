@@ -449,7 +449,7 @@ class TechCardGenerator:
         # Заполняем помещение
         room_cell = main_table.cell(1, 0)
         if "Помещение:" in room_cell.text:
-            room_cell.text = f"Помещение: {checklist_data.room_name or '______________'}"
+            room_cell.text = f"Помещение: {checklist_data.room_name or '_____________'}"
             for para in room_cell.paragraphs:
                 for run in para.runs:
                     run.font.name = 'Arial'
@@ -691,9 +691,9 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
-                    self._set_cell_text(row.cells[3], product_name if product_name else "------------", bold=bool(product_name))
+                    self._set_cell_text(row.cells[3], product_name if product_name else "_____________", bold=bool(product_name))
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration if concentration else "------------")
+                    self._set_cell_text(row.cells[5], concentration if concentration else "_____________")
 
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
@@ -704,8 +704,8 @@ class TechCardGenerator:
                         run_text.font.name = 'Arial'
                         run_text.font.size = Pt(7)
 
-                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "------------")
-                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "------------")
+                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "_____________")
+                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "_____________")
                     self._set_cell_text(row.cells[8], instr.inventory or "", bold=bool(instr.inventory))
                     self._set_cell_text(row.cells[9], instr.frequency or "")
                     self._set_cell_text(row.cells[10], instr.executor or "")
