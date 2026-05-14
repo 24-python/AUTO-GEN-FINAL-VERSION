@@ -94,14 +94,16 @@ class TechCardGenerator:
         "ХИМИТЕК ПОЛИКОР® ДДС": "FFCCCC",
     }
 
+    # Порядок способов обработки: прочистка -> очистка -> мойка -> ополаскивание -> дезинфекция
     CLEANING_METHOD_ORDER = {
-        "очистка (обеспыливание поверхностей)": 1,
-        "мойка": 2,
-        "ополаскивание": 3,
-        "дезинфекция": 4,
+        "прочистка": 1,
+        "очистка (обеспыливание поверхностей)": 2,
+        "мойка": 3,
+        "ополаскивание": 4,
+        "дезинфекция": 5,
     }
 
-    # Нормализованные имена объектов для специальных моющих средств
+    # Объекты для специальных моющих средств
     FLOOR_OBJECTS = {"пол", "трапы"}
     GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
     THERMAL_OBJECTS = {
@@ -109,6 +111,50 @@ class TechCardGenerator:
         "варочные котлы", "сковороды", "фритюры", "грили",
         "пароконвектоматы", "печи подовые", "печи ротационные",
         "расстоечные шкафы", "вафельницы"
+    }
+
+    # Объекты, для которых обязательно добавляется поддерживающая обработка
+    SUPPORT_MAINTENANCE_OBJECTS = {
+        "прибор кисл теста",
+        "бисквиторезки",
+        "блендеры",
+        "вакуумные роторные шприцы",
+        "водяные бани",
+        "депозитор волюметрический",
+        "дозатор для геля (пульверизатор)",
+        "дозаторы для жидкостей",
+        "дробилки",
+        "измельчители",
+        "картофелечистки",
+        "машина для резки конд изделий",
+        "металлодетектор",
+        "миксеры планетарные",
+        "минифилы (дозаторы крема)",
+        "овощерезки",
+        "овощечистки",
+        "отсадочные машины",
+        "пневматические распылители",
+        "прессы для теста",
+        "просеиватели мука",
+        "просеиватели сахар",
+        "протирочные машины",
+        "распылители для желе и сиропов",
+        "рентгеновские системы контроля",
+        "слайсера",
+        "солодоварки",
+        "тарталетницы",
+        "термощупы",
+        "тестоделители",
+        "тестомесы",
+        "тестоокруглители",
+        "тестораскатки",
+        "ультразвуковые нарезки",
+        "ферментаторы",
+        "шприц-дозатор начинки",
+        "весы напольные",
+        "весы настольные",
+        "производственные столы д",
+        "производственные столы н",
     }
 
     def __init__(self, template_path: str = None):
@@ -456,6 +502,38 @@ class TechCardGenerator:
                 all_instrs = instructions_dict[obj.id]
                 instructions = self._select_instructions_for_room(all_instrs, room_category_id)
 
+                # Для определённого оборудования добавляем поддерживающие инструкции
+                if normalized_name in self.SUPPORT_MAINTENANCE_OBJECTS:
+                    existing_methods = {instr.cleaning_method for instr in instructions}
+                    for method, instrs in defaultdict(list, {i.cleaning_method: [] for i in all_instrs}).items():
+                        if method in existing_methods:
+                            continue
+                        best = None
+                        # Сначала специфичная для помещения
+                        for instr in all_instrs:
+                            if (instr.cleaning_method == method and
+                                (instr.maintenance_type or "").lower() == "поддерживающая" and
+                                instr.room_category_id == room_category_id):
+                                best = instr
+                                break
+                        if not best:
+                            # Затем общая
+                            for instr in all_instrs:
+                                if (instr.cleaning_method == method and
+                                    (instr.maintenance_type or "").lower() == "поддерживающая" and
+                                    instr.room_category_id is None):
+                                    best = instr
+                                    break
+                        if best:
+                            instructions.append(best)
+
+                    # Пересортировка с учётом добавленных инструкций
+                    instructions.sort(
+                        key=lambda x: self.CLEANING_METHOD_ORDER.get(
+                            (x.cleaning_method or "").lower().strip(), 99
+                        )
+                    )
+
                 if instructions:
                     category_object_instructions[cat_name].append((display_name, instructions, normalized_name))
                     all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
@@ -612,9 +690,9 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
-                    self._set_cell_text(row.cells[3], product_name if product_name else "_____________", bold=bool(product_name))
+                    self._set_cell_text(row.cells[3], product_name if product_name else "------------", bold=bool(product_name))
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration if concentration else "_____________")
+                    self._set_cell_text(row.cells[5], concentration if concentration else "------------")
 
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
@@ -625,8 +703,8 @@ class TechCardGenerator:
                         run_text.font.name = 'Arial'
                         run_text.font.size = Pt(7)
 
-                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "_____________")
-                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "_____________")
+                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "------------")
+                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "------------")
                     self._set_cell_text(row.cells[8], instr.inventory or "", bold=bool(instr.inventory))
                     self._set_cell_text(row.cells[9], instr.frequency or "")
                     self._set_cell_text(row.cells[10], instr.executor or "")
