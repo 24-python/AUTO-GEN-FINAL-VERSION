@@ -103,6 +103,9 @@ class TechCardGenerator:
         "дезинфекция": 5,
     }
 
+    # Порядок уровней обработки для вывода
+    LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
+
     # Объекты для специальных моющих средств
     FLOOR_OBJECTS = {"пол", "трапы"}
     GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
@@ -500,39 +503,37 @@ class TechCardGenerator:
 
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
-                instructions = self._select_instructions_for_room(all_instrs, room_category_id)
 
-                # Для определённого оборудования добавляем поддерживающие инструкции
                 if normalized_name in self.SUPPORT_MAINTENANCE_OBJECTS:
-                    existing_methods = {instr.cleaning_method for instr in instructions}
-                    for method, instrs in defaultdict(list, {i.cleaning_method: [] for i in all_instrs}).items():
-                        if method in existing_methods:
-                            continue
-                        best = None
-                        # Сначала специфичная для помещения
-                        for instr in all_instrs:
-                            if (instr.cleaning_method == method and
-                                (instr.maintenance_type or "").lower() == "поддерживающая" and
-                                instr.room_category_id == room_category_id):
-                                best = instr
-                                break
-                        if not best:
-                            # Затем общая
-                            for instr in all_instrs:
-                                if (instr.cleaning_method == method and
-                                    (instr.maintenance_type or "").lower() == "поддерживающая" and
-                                    instr.room_category_id is None):
+                    # Специальный отбор: добавляем все уровни для каждого метода
+                    by_method = defaultdict(list)
+                    for instr in all_instrs:
+                        method = instr.cleaning_method or ""
+                        by_method[method].append(instr)
+                    instructions = []
+                    for method, instrs in by_method.items():
+                        for maint_level in ["основная", "поддерживающая"]:
+                            best = None
+                            for instr in instrs:
+                                if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
                                     best = instr
                                     break
-                        if best:
-                            instructions.append(best)
-
-                    # Пересортировка с учётом добавленных инструкций
+                            if not best:
+                                for instr in instrs:
+                                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
+                                        best = instr
+                                        break
+                            if best:
+                                instructions.append(best)
                     instructions.sort(
-                        key=lambda x: self.CLEANING_METHOD_ORDER.get(
-                            (x.cleaning_method or "").lower().strip(), 99
+                        key=lambda x: (
+                            self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
+                            self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99)
                         )
                     )
+                else:
+                    # Стандартный отбор (одна инструкция на метод)
+                    instructions = self._select_instructions_for_room(all_instrs, room_category_id)
 
                 if instructions:
                     category_object_instructions[cat_name].append((display_name, instructions, normalized_name))
