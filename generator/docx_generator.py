@@ -94,6 +94,16 @@ class TechCardGenerator:
         "ХИМИТЕК ПОЛИКОР® ДДС": "FFCCCC",
     }
 
+    # Цвета для инвентаря
+    INVENTORY_COLORS = {
+        "черный": "969696",
+        "красный": "FFCCCC",
+        "желтый": "FFFFCC",
+        "зеленый": "99FF99",
+        "синий": "99CCFF",
+        "голубой": "CCECFF",
+    }
+
     # Порядок способов обработки: прочистка -> очистка -> мойка -> ополаскивание -> дезинфекция
     CLEANING_METHOD_ORDER = {
         "прочистка": 1,
@@ -627,7 +637,7 @@ class TechCardGenerator:
                         if current_nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('section_header', header_text, None))
                             inserted_headers.add(group_set)
-                            break  # важно, чтобы не добавить несколько заголовков для одного объекта, если он в нескольких группах (но такого нет)
+                            break
                     merged_name = ", ".join(sorted(data["names"]))
                     group_start_row = len(rows_data)
                     if data["instructions"]:
@@ -744,7 +754,16 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "_____________")
                     self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "_____________")
-                    self._set_cell_text(row.cells[8], instr.inventory or "", bold=bool(instr.inventory))
+
+                    # Инвентарь: цвет из чек-листа или "промаркированный"
+                    if checklist_data.inventory_color and checklist_data.inventory_color in self.INVENTORY_COLORS:
+                        inv_text = checklist_data.inventory_color
+                        inv_color = self.INVENTORY_COLORS[checklist_data.inventory_color]
+                        self._set_cell_text(row.cells[8], inv_text, bold=True)
+                        self._set_cell_background(row.cells[8], inv_color)
+                    else:
+                        self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+
                     self._set_cell_text(row.cells[9], instr.frequency or "")
                     self._set_cell_text(row.cells[10], instr.executor or "")
                     self._set_cell_text(row.cells[11], instr.control_method or "")

@@ -71,6 +71,9 @@ class ChecklistData:
     glass_cleaning_concentration: Optional[str] = None
     glass_cleaning_method_text: Optional[str] = None
 
+    # Цветовое кодирование инвентаря (из выпадающего списка)
+    inventory_color: Optional[str] = None
+
     items: List[ChecklistItem] = field(default_factory=list)
 
     def get_checked_items(self) -> List[ChecklistItem]:

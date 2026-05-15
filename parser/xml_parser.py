@@ -12,6 +12,7 @@
 Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
 Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
 Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
+Добавлено: парсинг цвета инвентаря из выпадающего списка.
 """
 
 import zipfile
@@ -93,6 +94,11 @@ class SDTChecklistParser:
         'производственное', 'бытовое', 'складское', 'санитарное',
         'вспомогательное', 'моечное', 'техническое', 'офисное',
         'общего назначения'
+    ]
+
+    # Разрешённые цвета инвентаря (для фильтрации)
+    ALLOWED_INVENTORY_COLORS = [
+        'черный', 'красный', 'желтый', 'зеленый', 'синий', 'голубой'
     ]
 
     def __init__(self):
@@ -354,18 +360,14 @@ class SDTChecklistParser:
 
     def _parse_additional_info(self, root, data: ChecklistData):
         """
-        Извлекает моющие и дезинфицирующие средства из раздела "Дополнительная информация".
-        Ищет все выпадающие списки (SDT dropDownList), которые не являются категорией помещения.
-        Порядок:
-          - Первые три: общее моющее средство (название, концентрация, способ разведения)
-          - Следующие три: общее дезинфицирующее средство
-          - Далее три: моющее для пола/трапов
-          - Далее три: моющее для теплового оборудования
-          - Далее три: моющее для стеклянных/зеркальных поверхностей (зеркала, окна, мониторы)
+        Извлекает моющие и дезинфицирующие средства из раздела "Дополнительная информация",
+        а также цвет инвентаря из выпадающего списка.
+        Цвет инвентаря может находиться в любом месте среди выпадающих списков,
+        поэтому сначала выделяем его, а оставшиеся значения обрабатываем как средства.
         """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
-        dropdown_values = []
+        all_values = []
 
         for sdt in sdt_elements:
             sdt_pr = sdt.find('.//w:sdtPr', namespaces=self.NAMESPACES)
@@ -376,7 +378,6 @@ class SDTChecklistParser:
             if dropdown is None:
                 continue
 
-            # Проверяем, не категория ли это помещения
             sdt_content = sdt.find('.//w:sdtContent', namespaces=self.NAMESPACES)
             if sdt_content is not None:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
@@ -385,11 +386,31 @@ class SDTChecklistParser:
                     # Пропускаем категории помещений (в любом регистре)
                     if value.lower() in self.ROOM_CATEGORIES:
                         continue
-                    dropdown_values.append(value)
+                    all_values.append(value)
 
-        print(f"  📦 Найдено выпадающих списков со средствами: {len(dropdown_values)}")
+        print(f"  📦 Найдено выпадающих списков: {len(all_values)}")
 
-        # Первые три значения — общее моющее средство
+        # Ищем цвет инвентаря среди всех значений
+        inventory_color = None
+        dropdown_values = []
+        for v in all_values:
+            if v.lower() in self.ALLOWED_INVENTORY_COLORS:
+                # Если нашли цвет инвентаря, запоминаем (первый найденный)
+                if inventory_color is None:
+                    inventory_color = v.lower()
+                    print(f"  🎨 Найден цвет инвентаря: {inventory_color}")
+                # Сам цвет не добавляем в список средств
+            else:
+                dropdown_values.append(v)
+
+        # Сохраняем цвет инвентаря в данные
+        data.inventory_color = inventory_color
+        if inventory_color is None:
+            print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
+
+        # Теперь обрабатываем оставшиеся значения как средства
+        # Порядок: общее моющее (0-2), общее дезинфицирующее (3-5),
+        # пол/трапы (6-8), тепловое (9-11), стекло (12-14)
         if len(dropdown_values) >= 3:
             data.cleaning_product = dropdown_values[0]
             data.cleaning_concentration = dropdown_values[1]
@@ -398,7 +419,6 @@ class SDTChecklistParser:
             print(f"     Концентрация: {data.cleaning_concentration}")
             print(f"     Способ разведения: {data.cleaning_method_text}")
 
-        # Следующие три — общее дезинфицирующее
         if len(dropdown_values) >= 6:
             data.disinfection_product = dropdown_values[3]
             data.disinfection_concentration = dropdown_values[4]
@@ -407,7 +427,6 @@ class SDTChecklistParser:
             print(f"     Концентрация: {data.disinfection_concentration}")
             print(f"     Способ разведения: {data.disinfection_method_text}")
 
-        # Следующие три — моющее для пола и трапов
         if len(dropdown_values) >= 9:
             data.floor_cleaning_product = dropdown_values[6]
             data.floor_cleaning_concentration = dropdown_values[7]
@@ -416,7 +435,6 @@ class SDTChecklistParser:
             print(f"     Концентрация: {data.floor_cleaning_concentration}")
             print(f"     Способ разведения: {data.floor_cleaning_method_text}")
 
-        # Следующие три — моющее для теплового оборудования
         if len(dropdown_values) >= 12:
             data.thermal_cleaning_product = dropdown_values[9]
             data.thermal_cleaning_concentration = dropdown_values[10]
@@ -425,7 +443,6 @@ class SDTChecklistParser:
             print(f"     Концентрация: {data.thermal_cleaning_concentration}")
             print(f"     Способ разведения: {data.thermal_cleaning_method_text}")
 
-        # Следующие три — моющее для стеклянных/зеркальных поверхностей
         if len(dropdown_values) >= 15:
             data.glass_cleaning_product = dropdown_values[12]
             data.glass_cleaning_concentration = dropdown_values[13]
@@ -447,7 +464,7 @@ class SDTChecklistParser:
 
                 self._parse_header(root, data)
                 self._parse_room_category(root, data)
-                self._parse_additional_info(root, data)  # Новый метод
+                self._parse_additional_info(root, data)
 
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
@@ -499,6 +516,10 @@ class SDTChecklistParser:
             print(f"   Моющее для теплового оборудования: {data.thermal_cleaning_product}")
         if data.glass_cleaning_product:
             print(f"   Моющее для стекол/зеркал: {data.glass_cleaning_product}")
+        if data.inventory_color:
+            print(f"   Цвет инвентаря: {data.inventory_color}")
+        else:
+            print("   Цвет инвентаря: промаркированный")
 
 
 def parse_checklist(file_path: str) -> ChecklistData:
