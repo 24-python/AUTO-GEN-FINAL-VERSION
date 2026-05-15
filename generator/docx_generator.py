@@ -160,6 +160,27 @@ class TechCardGenerator:
         "производственные столы н",
     }
 
+    # Групповые заголовки для вставки в режиме 3
+    GROUP_HEADERS = {
+        frozenset({"весы напольные", "весы настольные"}): "Санитарная обработка средств измерений",
+        frozenset({
+            "прибор кисл теста", "бисквиторезки", "блендеры", "вакуумные роторные шприцы",
+            "водяные бани", "депозитор волюметрический", "дозатор для геля (пульверизатор)",
+            "дозаторы для жидкостей", "дробилки", "измельчители", "картофелечистки",
+            "машина для резки конд изделий", "металлодетектор", "миксеры планетарные",
+            "минифилы (дозаторы крема)", "овощерезки", "овощечистки", "отсадочные машины",
+            "пневматические распылители", "прессы для теста", "просеиватели мука",
+            "просеиватели сахар", "протирочные машины", "распылители для желе и сиропов",
+            "рентгеновские системы контроля", "слайсера", "солодоварки", "тарталетницы",
+            "термощупы", "тестоделители", "тестомесы", "тестоокруглители", "тестораскатки",
+            "ультразвуковые нарезки", "ферментаторы", "шприц-дозатор начинки",
+            "пмм купольная", "пмм туннельная", "таромоечная машина",
+            "стиральные машины", "сушильные машины", "холодильная витрина", "ледогенератор",
+            "морозильный ларь", "холод шкафы", "холод столы"
+        }): "Санитарная обработка технологического оборудования",
+        frozenset({"производственные столы д", "производственные столы н"}): "Санитарная обработка рабочих поверхностей",
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
@@ -583,6 +604,8 @@ class TechCardGenerator:
                 if group_end_row > group_start_row:
                     merge_info.append((group_start_row, group_end_row))
         elif mode == 3:
+            # Собираем множество имён, чтобы понять, какие группы присутствуют
+            inserted_headers = set()
             priority_groups = defaultdict(list)
             for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
                 priority_groups[sort_priority].append((display_name, instructions, normalized_name))
@@ -598,6 +621,13 @@ class TechCardGenerator:
                     groups[signature]["names"].append(dn)
 
                 for sig, data in groups.items():
+                    # Проверяем, нужно ли вставить групповой заголовок
+                    current_nn = data["normalized_name"]
+                    for group_set, header_text in self.GROUP_HEADERS.items():
+                        if current_nn in group_set and group_set not in inserted_headers:
+                            rows_data.append(('section_header', header_text, None))
+                            inserted_headers.add(group_set)
+                            break  # важно, чтобы не добавить несколько заголовков для одного объекта, если он в нескольких группах (но такого нет)
                     merged_name = ", ".join(sorted(data["names"]))
                     group_start_row = len(rows_data)
                     if data["instructions"]:
@@ -643,6 +673,14 @@ class TechCardGenerator:
                 self._set_cell_text(row.cells[0], row_info[1])
                 if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
                     row.cells[0].paragraphs[0].runs[0].font.bold = True
+
+            elif row_info[0] == 'section_header':
+                self._merge_cells_horizontal(row, 0, 11)
+                self._set_cell_text(row.cells[0], row_info[1], bold=True)
+                self._set_cell_background(row.cells[0], "D2D2D2")
+                for para in row.cells[0].paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
 
             elif row_info[0] == 'object':
                 obj_name, instr = row_info[1], row_info[2]
@@ -726,7 +764,7 @@ class TechCardGenerator:
                 for row in range(actual_start + 1, actual_end + 1):
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
-                for col in [8, 9, 10, 11]:
+                for col in [2, 8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
         output_file = Path(output_path)
