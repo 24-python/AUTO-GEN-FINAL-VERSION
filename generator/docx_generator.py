@@ -48,7 +48,6 @@ class TechCardGenerator:
 
         # Щелочные и специальные моющие (голубой)
         "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ПЕНАКТИВ": "99CCFF",
-        "ХИМИТЕК УНИВЕРСАЛ-ПЕНАКТИВ-ЦВМ": "99CCFF",
         "ХИМИТЕК ЧУДОДЕЙ®-CIP": "99CCFF",
         "ХИМИТЕК ИЗУМРУД 400": "99CCFF",
         "ХИМИТЕК ИЗУМРУД 420": "99CCFF",
@@ -105,13 +104,15 @@ class TechCardGenerator:
         "голубой": "CCECFF",
     }
 
-    # Порядок способов обработки: прочистка -> очистка -> мойка -> ополаскивание -> дезинфекция
+    # Порядок способов обработки
     CLEANING_METHOD_ORDER = {
         "прочистка": 1,
-        "очистка (обеспыливание поверхностей)": 2,
-        "мойка": 3,
-        "ополаскивание": 4,
-        "дезинфекция": 5,
+        "очистка": 2,
+        "очистка (обеспыливание поверхностей)": 3,
+        "мойка": 4,
+        "мойка жаропрочного стекла": 5,
+        "ополаскивание": 6,
+        "дезинфекция": 7,
     }
 
     # Порядок уровней обработки для вывода
@@ -127,7 +128,7 @@ class TechCardGenerator:
         "расстоечные шкафы", "вафельницы"
     }
 
-    # Объекты, для которых обязательно добавляется поддерживающая обработка
+    # Объекты с поддерживающей обработкой
     SUPPORT_MAINTENANCE_OBJECTS = {
         "прибор кисл теста",
         "бисквиторезки",
@@ -171,7 +172,7 @@ class TechCardGenerator:
         "производственные столы н",
     }
 
-    # Групповые заголовки для вставки в режиме 3
+    # Групповые заголовки для режима 3
     GROUP_HEADERS = {
         frozenset({"весы напольные", "весы настольные"}): "Санитарная обработка средств измерений",
         frozenset({
@@ -190,6 +191,15 @@ class TechCardGenerator:
             "морозильный ларь", "холод шкафы", "холод столы"
         }): "Санитарная обработка технологического оборудования",
         frozenset({"производственные столы д", "производственные столы н"}): "Санитарная обработка рабочих поверхностей",
+    }
+
+    # Объекты с разделением на внешние/внутренние поверхности
+    SPLIT_SURFACE_OBJECTS = {
+        "холод шкафы", "камеры мороз", "камеры шок замор",
+        "морозильный ларь", "холод столы", "пароконвектоматы",
+        "ледогенератор", "ферментаторы", "солодоварки",
+        "пмм купольная", "пмм туннельная", "таромоечная машина",
+        "печи ротационные", "печи подовые", "багетницы"
     }
 
     def __init__(self, template_path: str = None):
@@ -296,6 +306,7 @@ class TechCardGenerator:
                 instr.frequency or "",
                 instr.executor or "",
                 instr.control_method or "",
+                instr.surface_type or "",
             )
             signatures.append(sig)
         return tuple(signatures)
@@ -346,6 +357,19 @@ class TechCardGenerator:
             )
         )
         return selected
+
+    def _select_split_instructions(self, all_instructions: list, room_category_id: int) -> dict:
+        """Для split-объектов: группирует инструкции по surface_type с логикой уровня обслуживания."""
+        result = {}
+        surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+        for sf in surface_types:
+            sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
+            if not sf_instrs:
+                continue
+            selected = self._select_instructions_for_room(sf_instrs, room_category_id)
+            if selected:
+                result[sf] = selected
+        return result
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
         """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонок 4 и 9)"""
@@ -531,13 +555,19 @@ class TechCardGenerator:
 
             display_name = obj.display_name if obj else item.name
             sort_priority = obj.sort_priority if obj else 999
-            normalized_name = item.name  # уникальный ключ из чек-листа
+            normalized_name = item.name
 
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
 
-                if normalized_name in self.SUPPORT_MAINTENANCE_OBJECTS:
-                    # Специальный отбор: добавляем все уровни для каждого метода
+                if normalized_name in self.SPLIT_SURFACE_OBJECTS:
+                    instructions = self._select_split_instructions(all_instrs, room_category_id)
+                    if instructions:
+                        category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                    else:
+                        unmatched_objects.append(display_name)
+                elif normalized_name in self.SUPPORT_MAINTENANCE_OBJECTS:
                     by_method = defaultdict(list)
                     for instr in all_instrs:
                         method = instr.cleaning_method or ""
@@ -563,15 +593,18 @@ class TechCardGenerator:
                             self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99)
                         )
                     )
+                    if instructions:
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                    else:
+                        unmatched_objects.append(display_name)
                 else:
-                    # Стандартный отбор (одна инструкция на метод)
                     instructions = self._select_instructions_for_room(all_instrs, room_category_id)
-
-                if instructions:
-                    category_object_instructions[cat_name].append((display_name, instructions, normalized_name))
-                    all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
-                else:
-                    unmatched_objects.append(display_name)
+                    if instructions:
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                    else:
+                        unmatched_objects.append(display_name)
             elif obj:
                 unmatched_objects.append(display_name)
             else:
@@ -580,7 +613,9 @@ class TechCardGenerator:
         session.close()
 
         rows_data = []
-        merge_info = []
+        merge_info_object = []    # для объединения названий объектов (столбец 0)
+        merge_info_columns = []   # для объединения колонок 2,8-11 у обычных объектов
+        surface_merge_info = []   # для объединения колонок внутри поверхностей split-объектов
 
         if mode == 1:
             sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
@@ -588,9 +623,63 @@ class TechCardGenerator:
                 items = category_object_instructions[cat_name]
                 if not items:
                     continue
-                items.sort(key=lambda x: x[0])  # сортировка по display_name
+                items.sort(key=lambda x: x[1])
                 rows_data.append(('category', cat_name, None))
-                for display_name, instructions, normalized_name in items:
+                for typ, display_name, instructions, normalized_name in items:
+                    if typ == 'split':
+                        group_start_row = len(rows_data)
+                        rows_data.append(('object', display_name, None, normalized_name))
+                        for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                            if sf not in instructions:
+                                continue
+                            sf_instrs = instructions[sf]
+                            sf_label = {"внешняя": "Внешние поверхности",
+                                        "внутренняя": "Внутренние поверхности",
+                                        "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                            rows_data.append(('section_header', sf_label, None))
+                            surface_start = len(rows_data)
+                            for instr in sf_instrs:
+                                rows_data.append(('object', "", instr, normalized_name))
+                            surface_end = len(rows_data) - 1
+                            if surface_end >= surface_start:
+                                surface_merge_info.append((surface_start, surface_end))
+                        group_end_row = len(rows_data) - 1
+                        merge_info_object.append((group_start_row, group_end_row))
+                    else:  # normal
+                        group_start_row = len(rows_data)
+                        if instructions:
+                            for i, instr in enumerate(instructions):
+                                cell_text = display_name if i == 0 else ""
+                                rows_data.append(('object', cell_text, instr, normalized_name))
+                        else:
+                            rows_data.append(('object', display_name, None, normalized_name))
+                        group_end_row = len(rows_data) - 1
+                        if group_end_row > group_start_row:
+                            merge_info_object.append((group_start_row, group_end_row))
+                            merge_info_columns.append((group_start_row, group_end_row))
+        elif mode == 2:
+            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
+                if isinstance(instructions, dict):  # split
+                    group_start_row = len(rows_data)
+                    rows_data.append(('object', display_name, None, normalized_name))
+                    for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                        if sf not in instructions:
+                            continue
+                        sf_instrs = instructions[sf]
+                        sf_label = {"внешняя": "Внешние поверхности",
+                                    "внутренняя": "Внутренние поверхности",
+                                    "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                        rows_data.append(('section_header', sf_label, None))
+                        surface_start = len(rows_data)
+                        for instr in sf_instrs:
+                            rows_data.append(('object', "", instr, normalized_name))
+                        surface_end = len(rows_data) - 1
+                        if surface_end >= surface_start:
+                            surface_merge_info.append((surface_start, surface_end))
+                    group_end_row = len(rows_data) - 1
+                    merge_info_object.append((group_start_row, group_end_row))
+                else:  # normal
                     group_start_row = len(rows_data)
                     if instructions:
                         for i, instr in enumerate(instructions):
@@ -600,22 +689,9 @@ class TechCardGenerator:
                         rows_data.append(('object', display_name, None, normalized_name))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
-                        merge_info.append((group_start_row, group_end_row))
-        elif mode == 2:
-            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
-                group_start_row = len(rows_data)
-                if instructions:
-                    for i, instr in enumerate(instructions):
-                        cell_text = display_name if i == 0 else ""
-                        rows_data.append(('object', cell_text, instr, normalized_name))
-                else:
-                    rows_data.append(('object', display_name, None, normalized_name))
-                group_end_row = len(rows_data) - 1
-                if group_end_row > group_start_row:
-                    merge_info.append((group_start_row, group_end_row))
+                        merge_info_object.append((group_start_row, group_end_row))
+                        merge_info_columns.append((group_start_row, group_end_row))
         elif mode == 3:
-            # Собираем множество имён, чтобы понять, какие группы присутствуют
             inserted_headers = set()
             priority_groups = defaultdict(list)
             for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
@@ -623,20 +699,22 @@ class TechCardGenerator:
 
             for priority in sorted(priority_groups.keys()):
                 items = priority_groups[priority]
-                # Группируем по инструкциям, сохраняя normalized_name первого объекта в группе
+                normal_items = [(dn, instr, nn) for dn, instr, nn in items if not isinstance(instr, dict)]
+                split_items = [(dn, instr, nn) for dn, instr, nn in items if isinstance(instr, dict)]
+
+                # Обычные объекты
                 groups = {}
-                for dn, instr, nn in items:
+                for dn, instr, nn in normal_items:
                     signature = self._get_instruction_signature(instr)
                     if signature not in groups:
                         groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn}
                     groups[signature]["names"].append(dn)
 
                 for sig, data in groups.items():
-                    # Проверяем, нужно ли вставить групповой заголовок
                     current_nn = data["normalized_name"]
                     for group_set, header_text in self.GROUP_HEADERS.items():
                         if current_nn in group_set and group_set not in inserted_headers:
-                            rows_data.append(('section_header', header_text, None))
+                            rows_data.append(('group_header', header_text, None))
                             inserted_headers.add(group_set)
                             break
                     merged_name = ", ".join(sorted(data["names"]))
@@ -649,7 +727,35 @@ class TechCardGenerator:
                         rows_data.append(('object', merged_name, None, data["normalized_name"]))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
-                        merge_info.append((group_start_row, group_end_row))
+                        merge_info_object.append((group_start_row, group_end_row))
+                        merge_info_columns.append((group_start_row, group_end_row))
+
+                # Split-объекты
+                for dn, split_instr, nn in split_items:
+                    # Проверка групповых заголовков для split-объектов
+                    for group_set, header_text in self.GROUP_HEADERS.items():
+                        if nn in group_set and group_set not in inserted_headers:
+                            rows_data.append(('group_header', header_text, None))
+                            inserted_headers.add(group_set)
+                            break
+                    group_start_row = len(rows_data)
+                    rows_data.append(('object', dn, None, nn))
+                    for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                        if sf not in split_instr:
+                            continue
+                        sf_instrs = split_instr[sf]
+                        sf_label = {"внешняя": "Внешние поверхности",
+                                    "внутренняя": "Внутренние поверхности",
+                                    "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                        rows_data.append(('section_header', sf_label, None))
+                        surface_start = len(rows_data)
+                        for instr in sf_instrs:
+                            rows_data.append(('object', "", instr, nn))
+                        surface_end = len(rows_data) - 1
+                        if surface_end >= surface_start:
+                            surface_merge_info.append((surface_start, surface_end))
+                    group_end_row = len(rows_data) - 1
+                    merge_info_object.append((group_start_row, group_end_row))
 
         if unmatched_objects:
             rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
@@ -685,11 +791,21 @@ class TechCardGenerator:
                 if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
                     row.cells[0].paragraphs[0].runs[0].font.bold = True
 
-            elif row_info[0] == 'section_header':
+            elif row_info[0] == 'group_header':
+                # Групповой заголовок на всю ширину таблицы
                 self._merge_cells_horizontal(row, 0, 11)
                 self._set_cell_text(row.cells[0], row_info[1], bold=True)
                 self._set_cell_background(row.cells[0], "D2D2D2")
                 for para in row.cells[0].paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(7)
+
+            elif row_info[0] == 'section_header':
+                # Подзаголовок поверхности (только колонки 2–8)
+                self._merge_cells_horizontal(row, 1, 11)
+                self._set_cell_text(row.cells[1], row_info[1], bold=True)
+                self._set_cell_background(row.cells[1], "D2D2D2")
+                for para in row.cells[1].paragraphs:
                     for run in para.runs:
                         run.font.size = Pt(7)
 
@@ -706,37 +822,37 @@ class TechCardGenerator:
                     extra_method_text = None
 
                     # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
-                    if cleaning_method == "мойка":
-                        if normalized_name and normalized_name in self.FLOOR_OBJECTS:
-                            if checklist_data.floor_cleaning_product:
-                                product_name = checklist_data.floor_cleaning_product
-                                concentration = checklist_data.floor_cleaning_concentration
-                                extra_method_text = checklist_data.floor_cleaning_method_text
-                        elif normalized_name and normalized_name in self.THERMAL_OBJECTS:
-                            if checklist_data.thermal_cleaning_product:
-                                product_name = checklist_data.thermal_cleaning_product
-                                concentration = checklist_data.thermal_cleaning_concentration
-                                extra_method_text = checklist_data.thermal_cleaning_method_text
-                        elif normalized_name and normalized_name in self.GLASS_OBJECTS:
-                            if checklist_data.glass_cleaning_product:
-                                product_name = checklist_data.glass_cleaning_product
-                                concentration = checklist_data.glass_cleaning_concentration
-                                extra_method_text = checklist_data.glass_cleaning_method_text
-                        else:
-                            # Общее моющее средство
-                            if checklist_data.cleaning_product:
-                                product_name = checklist_data.cleaning_product
-                            if checklist_data.cleaning_concentration:
-                                concentration = checklist_data.cleaning_concentration
-                            if checklist_data.cleaning_method_text:
-                                extra_method_text = checklist_data.cleaning_method_text
-                    elif cleaning_method == "дезинфекция":
-                        if checklist_data.disinfection_product:
-                            product_name = checklist_data.disinfection_product
-                        if checklist_data.disinfection_concentration:
-                            concentration = checklist_data.disinfection_concentration
-                        if checklist_data.disinfection_method_text:
-                            extra_method_text = checklist_data.disinfection_method_text
+                    if normalized_name and normalized_name not in self.SPLIT_SURFACE_OBJECTS:
+                        if cleaning_method == "мойка":
+                            if normalized_name in self.FLOOR_OBJECTS:
+                                if checklist_data.floor_cleaning_product:
+                                    product_name = checklist_data.floor_cleaning_product
+                                    concentration = checklist_data.floor_cleaning_concentration
+                                    extra_method_text = checklist_data.floor_cleaning_method_text
+                            elif normalized_name in self.THERMAL_OBJECTS:
+                                if checklist_data.thermal_cleaning_product:
+                                    product_name = checklist_data.thermal_cleaning_product
+                                    concentration = checklist_data.thermal_cleaning_concentration
+                                    extra_method_text = checklist_data.thermal_cleaning_method_text
+                            elif normalized_name in self.GLASS_OBJECTS:
+                                if checklist_data.glass_cleaning_product:
+                                    product_name = checklist_data.glass_cleaning_product
+                                    concentration = checklist_data.glass_cleaning_concentration
+                                    extra_method_text = checklist_data.glass_cleaning_method_text
+                            else:
+                                if checklist_data.cleaning_product:
+                                    product_name = checklist_data.cleaning_product
+                                if checklist_data.cleaning_concentration:
+                                    concentration = checklist_data.cleaning_concentration
+                                if checklist_data.cleaning_method_text:
+                                    extra_method_text = checklist_data.cleaning_method_text
+                        elif cleaning_method == "дезинфекция":
+                            if checklist_data.disinfection_product:
+                                product_name = checklist_data.disinfection_product
+                            if checklist_data.disinfection_concentration:
+                                concentration = checklist_data.disinfection_concentration
+                            if checklist_data.disinfection_method_text:
+                                extra_method_text = checklist_data.disinfection_method_text
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
@@ -756,14 +872,17 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "_____________")
                     self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "_____________")
 
-                    # Инвентарь: цвет из чек-листа или "промаркированный"
-                    if checklist_data.inventory_color and checklist_data.inventory_color in self.INVENTORY_COLORS:
-                        inv_text = checklist_data.inventory_color
-                        inv_color = self.INVENTORY_COLORS[checklist_data.inventory_color]
-                        self._set_cell_text(row.cells[8], inv_text, bold=True)
-                        self._set_cell_background(row.cells[8], inv_color)
+                    if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS:
+                        inv_text = instr.inventory or ""
+                        self._set_cell_text(row.cells[8], inv_text, bold=bool(inv_text))
                     else:
-                        self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+                        if checklist_data.inventory_color and checklist_data.inventory_color in self.INVENTORY_COLORS:
+                            inv_text = checklist_data.inventory_color
+                            inv_color = self.INVENTORY_COLORS[checklist_data.inventory_color]
+                            self._set_cell_text(row.cells[8], inv_text, bold=True)
+                            self._set_cell_background(row.cells[8], inv_color)
+                        else:
+                            self._set_cell_text(row.cells[8], "промаркированный", bold=True)
 
                     self._set_cell_text(row.cells[9], instr.frequency or "")
                     self._set_cell_text(row.cells[10], instr.executor or "")
@@ -777,13 +896,28 @@ class TechCardGenerator:
             current_row += 1
 
         # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
-        for group_start, group_end in merge_info:
+        # 1. Объединение названий объектов (столбец 0)
+        for group_start, group_end in merge_info_object:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
             if actual_end > actual_start:
                 for row in range(actual_start + 1, actual_end + 1):
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+
+        # 2. Объединение для обычных объектов (столбцы 2,8-11)
+        for group_start, group_end in merge_info_columns:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+            if actual_end > actual_start:
+                for col in [2, 8, 9, 10, 11]:
+                    self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+
+        # 3. Объединение внутри поверхностей split-объектов
+        for group_start, group_end in surface_merge_info:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+            if actual_end > actual_start:
                 for col in [2, 8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 

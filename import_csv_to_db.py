@@ -9,6 +9,7 @@ import_csv_to_db.py
 - Импорт категорий помещений (room_categories)
 - Импорт инструкций с привязкой к категории помещения (room_category_id)
 - Импорт поля maintenance_type (основная/поддерживающая/генеральная)
+- Импорт поля surface_type (внешняя/внутренняя/очистка от мин. отложений)
 """
 
 import csv
@@ -310,16 +311,19 @@ class CSVImporter:
                 room_cat_name = instr_row.get('room_category_name', '').strip()
                 room_category_id = self._get_room_category_id(room_cat_name, room_cat_ids)
 
-                # maintenance_type
                 maintenance_type = instr_row.get('maintenance_type', '').strip() or None
 
-                # Ищем существующую инструкцию с учётом maintenance_type, room_category_id
+                # surface_type
+                surface_type = instr_row.get('surface_type', '').strip() or None
+
+                # Ищем существующую инструкцию с учётом maintenance_type, room_category_id, surface_type
                 existing_instr = self.session.query(Instruction).filter(
                     Instruction.object_id == obj.id,
                     Instruction.cleaning_method == cleaning_method,
                     Instruction.product_name == product_name,
                     Instruction.room_category_id == room_category_id,
-                    Instruction.maintenance_type == maintenance_type
+                    Instruction.maintenance_type == maintenance_type,
+                    Instruction.surface_type == surface_type
                 ).first()
 
                 if existing_instr:
@@ -328,6 +332,7 @@ class CSVImporter:
                     else:
                         existing_instr.room_category_id = room_category_id
                         existing_instr.maintenance_type = maintenance_type
+                        existing_instr.surface_type = surface_type
                         existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
                         existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
                         existing_instr.concentration = instr_row.get('concentration', '').strip() or None
@@ -343,6 +348,7 @@ class CSVImporter:
                         object_id=obj.id,
                         room_category_id=room_category_id,
                         maintenance_type=maintenance_type,
+                        surface_type=surface_type,
                         cleaning_method=cleaning_method or None,
                         instruction_number=instr_row.get('instruction_number', '').strip() or None,
                         product_name=product_name or None,

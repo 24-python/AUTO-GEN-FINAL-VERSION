@@ -85,6 +85,9 @@ class Instruction(Base):
     executor = Column(String(200), nullable=True)                 # исполнитель
     control_method = Column(String(200), nullable=True)           # метод контроля
 
+    # Новое поле для типа поверхности (внешняя/внутренняя/очистка от мин. отложений)
+    surface_type = Column(String(50), nullable=True)
+
     created_at = Column(DateTime, default=datetime.now)
 
     # Связи
@@ -92,7 +95,7 @@ class Instruction(Base):
     room_category = relationship("RoomCategory", back_populates="instructions")
 
     def __repr__(self):
-        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}', room_cat='{self.room_category.name if self.room_category else 'общая'}')>"
+        return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}', surface='{self.surface_type}', room_cat='{self.room_category.name if self.room_category else 'общая'}')>"
 
     def is_empty(self) -> bool:
         """Проверяет, пустая ли инструкция (нет данных)"""

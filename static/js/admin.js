@@ -242,7 +242,8 @@ createApp({
                     ...i,
                     isNew: false,
                     room_category_id: i.room_category_id || null,
-                    maintenance_type: i.maintenance_type || 'основная'
+                    maintenance_type: i.maintenance_type || 'основная',
+                    surface_type: i.surface_type || null   // добавляем поддержку surface_type
                 }));
                 this.editObject = obj;
                 this.showInstructionsModal = true;
@@ -258,7 +259,8 @@ createApp({
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
-                instruction_number: ''
+                instruction_number: '',
+                surface_type: null       // по умолчанию общая
             });
         },
         duplicateInstruction(instr, idx) {
@@ -283,7 +285,8 @@ createApp({
                     frequency: instr.frequency,
                     executor: instr.executor,
                     control_method: instr.control_method,
-                    instruction_number: instr.instruction_number
+                    instruction_number: instr.instruction_number,
+                    surface_type: instr.surface_type || null   // передаём тип поверхности
                 };
 
                 if (instr.isNew) {

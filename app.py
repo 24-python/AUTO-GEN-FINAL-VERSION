@@ -3,7 +3,7 @@
 Веб-приложение для парсинга чек-листов и генерации техкарт.
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
 Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
-Добавлена поддержка категорий помещений (room_categories) и maintenance_type.
+Добавлена поддержка категорий помещений (room_categories), maintenance_type и surface_type.
 """
 
 import os
@@ -530,7 +530,8 @@ def api_object_instructions(obj_id):
             'frequency': i.frequency or '',
             'executor': i.executor or '',
             'control_method': i.control_method or '',
-            'instruction_number': i.instruction_number or ''
+            'instruction_number': i.instruction_number or '',
+            'surface_type': i.surface_type or ''     # добавлено
         } for i in obj.instructions]
         session.close()
         return jsonify({'instructions': result})
@@ -566,7 +567,8 @@ def api_create_instruction(obj_id):
         frequency=data.get('frequency', ''),
         executor=data.get('executor', ''),
         control_method=data.get('control_method', ''),
-        instruction_number=data.get('instruction_number', '')
+        instruction_number=data.get('instruction_number', ''),
+        surface_type=data.get('surface_type')       # добавлено
     )
     session.add(instr)
     session.commit()
@@ -593,7 +595,7 @@ def api_update_instruction(instr_id):
 
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
                   'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency',
-                  'executor', 'control_method', 'instruction_number']
+                  'executor', 'control_method', 'instruction_number', 'surface_type']  # добавлено
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])
@@ -638,7 +640,7 @@ def api_export_csv():
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
         'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
         'cleaning_technique', 'concentration', 'temperature', 'exposure_time', 'inventory',
-        'frequency', 'executor', 'control_method'
+        'frequency', 'executor', 'control_method', 'surface_type'   # добавлено
     ])
 
     for obj in objects:
@@ -654,13 +656,14 @@ def api_export_csv():
                     instr.product_name or '', instr.cleaning_technique or '',
                     instr.concentration or '', instr.temperature or '',
                     instr.exposure_time or '', instr.inventory or '',
-                    instr.frequency or '', instr.executor or '', instr.control_method or ''
+                    instr.frequency or '', instr.executor or '', instr.control_method or '',
+                    instr.surface_type or ''    # добавлено
                 ])
         else:
             writer.writerow([
                 obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
                 obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ])
 
     session.close()
