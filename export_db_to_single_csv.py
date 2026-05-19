@@ -56,7 +56,7 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
             'product_name',
             'cleaning_technique',
             'concentration',
-            'application_method',      # новое поле
+            'application_method',      # ← добавлено
             'temperature',
             'exposure_time',
             'inventory',
@@ -95,7 +95,7 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
                         instr.product_name or '',
                         instr.cleaning_technique or '',
                         instr.concentration or '',
-                        instr.application_method or '',    # новое поле
+                        instr.application_method or '',   # ← добавлено
                         instr.temperature or '',
                         instr.exposure_time or '',
                         instr.inventory or '',
@@ -105,6 +105,7 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
                     ])
                     total_rows += 1
             else:
+                # Для объектов без инструкций — столько же пустых полей
                 writer.writerow([
                     obj.id,
                     cat_name,
@@ -113,7 +114,7 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
                     obj.base_name,
                     obj.modifier or '',
                     obj.sort_priority,
-                    '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''  # добавлен один пустой столбец
+                    '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''  # 17 пустых
                 ])
                 total_rows += 1
 

@@ -41,6 +41,12 @@ class TechCardGenerator:
     # Порядок уровней обработки для вывода
     LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
 
+    # Заглушки, которые не должны подставляться из чек-листа
+    SKIP_PLACEHOLDERS = {
+        "Выберите элемент.", "Не выбрано", "Выберите элемент",
+        "", None
+    }
+
     # Объекты для специальных моющих средств
     FLOOR_OBJECTS = {"пол", "трапы"}
     GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
@@ -761,38 +767,34 @@ class TechCardGenerator:
                     if normalized_name and normalized_name not in self.SPLIT_SURFACE_OBJECTS:
                         if cleaning_method == "мойка":
                             if normalized_name in self.FLOOR_OBJECTS:
-                                if checklist_data.floor_cleaning_product:
+                                if checklist_data.floor_cleaning_product and checklist_data.floor_cleaning_product not in self.SKIP_PLACEHOLDERS:
                                     product_name = checklist_data.floor_cleaning_product
                                     concentration = checklist_data.floor_cleaning_concentration
                                     extra_method_text = checklist_data.floor_cleaning_method_text
                             elif normalized_name in self.THERMAL_OBJECTS:
-                                if checklist_data.thermal_cleaning_product:
+                                if checklist_data.thermal_cleaning_product and checklist_data.thermal_cleaning_product not in self.SKIP_PLACEHOLDERS:
                                     product_name = checklist_data.thermal_cleaning_product
                                     concentration = checklist_data.thermal_cleaning_concentration
                                     extra_method_text = checklist_data.thermal_cleaning_method_text
                             elif normalized_name in self.GLASS_OBJECTS:
-                                if checklist_data.glass_cleaning_product:
+                                if checklist_data.glass_cleaning_product and checklist_data.glass_cleaning_product not in self.SKIP_PLACEHOLDERS:
                                     product_name = checklist_data.glass_cleaning_product
                                     concentration = checklist_data.glass_cleaning_concentration
                                     extra_method_text = checklist_data.glass_cleaning_method_text
                             else:
-                                if checklist_data.cleaning_product:
+                                if checklist_data.cleaning_product and checklist_data.cleaning_product not in self.SKIP_PLACEHOLDERS:
                                     product_name = checklist_data.cleaning_product
-                                if checklist_data.cleaning_concentration:
                                     concentration = checklist_data.cleaning_concentration
-                                if checklist_data.cleaning_method_text:
                                     extra_method_text = checklist_data.cleaning_method_text
                         elif cleaning_method == "дезинфекция":
-                            if checklist_data.disinfection_product:
+                            if checklist_data.disinfection_product and checklist_data.disinfection_product not in self.SKIP_PLACEHOLDERS:
                                 product_name = checklist_data.disinfection_product
-                            if checklist_data.disinfection_concentration:
                                 concentration = checklist_data.disinfection_concentration
-                            if checklist_data.disinfection_method_text:
                                 extra_method_text = checklist_data.disinfection_method_text
-                    else:
-                        # Для split-объектов метод разведения из поля application_method
-                        if instr.application_method:
-                            extra_method_text = instr.application_method
+
+                    # Если метод разведения не взят из чек-листа, берём из БД
+                    if not extra_method_text and instr.application_method:
+                        extra_method_text = instr.application_method
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")

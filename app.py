@@ -787,7 +787,8 @@ def api_export_csv():
         'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
         'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
-        'cleaning_technique', 'concentration', 'temperature', 'exposure_time', 'inventory',
+        'cleaning_technique', 'concentration', 'application_method',  # <-- добавлено
+        'temperature', 'exposure_time', 'inventory',
         'frequency', 'executor', 'control_method', 'surface_type'
     ])
 
@@ -802,7 +803,9 @@ def api_export_csv():
                     instr.maintenance_type or '',
                     instr.cleaning_method or '', instr.instruction_number or '',
                     instr.product_name or '', instr.cleaning_technique or '',
-                    instr.concentration or '', instr.temperature or '',
+                    instr.concentration or '',
+                    instr.application_method or '',  # <-- добавлено
+                    instr.temperature or '',
                     instr.exposure_time or '', instr.inventory or '',
                     instr.frequency or '', instr.executor or '', instr.control_method or '',
                     instr.surface_type or ''
@@ -811,7 +814,7 @@ def api_export_csv():
             writer.writerow([
                 obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
                 obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ])
 
     session.close()
@@ -822,7 +825,6 @@ def api_export_csv():
     with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
         tmp.write(output)
         return send_file(tmp.name, as_attachment=True, download_name='db_export.csv')
-
 
 # ============================================================
 # API: ИМПОРТ CSV (ОБЪЕКТЫ)
