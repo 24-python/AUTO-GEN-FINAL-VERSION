@@ -139,6 +139,12 @@ class TechCardGenerator:
         products = session.query(Product).all()
         return {p.name: p.color for p in products if p.color}
 
+    def _clean_text(self, val: str) -> str:
+        """Очищает строку от лишних пробелов и переводов строк (но не XML-элементов)."""
+        if not val:
+            return ""
+        return val.strip().replace('\n', ' ').replace('\r', ' ')
+
     def _normalize_product_name(self, name: str) -> str:
         if not name:
             return ""
@@ -161,12 +167,39 @@ class TechCardGenerator:
         for col in range(start_col + 1, end_col + 1):
             start_cell.merge(row.cells[col])
 
+    def _remove_extra_paragraphs_in_cell(self, cell):
+        """Удаляет все пустые параграфы в ячейке, оставляя только один."""
+        tc = cell._tc
+        paragraphs = tc.findall(qn('w:p'))
+        if not paragraphs:
+            return
+        first_p = paragraphs[0]
+        for p in paragraphs[1:]:
+            tc.remove(p)
+        if not first_p.findall(qn('w:r')):
+            run = OxmlElement('w:r')
+            run_pr = OxmlElement('w:rPr')
+            sz = OxmlElement('w:sz')
+            sz.set(qn('w:val'), '14')
+            run_pr.append(sz)
+            rFonts = OxmlElement('w:rFonts')
+            rFonts.set(qn('w:ascii'), 'Arial')
+            rFonts.set(qn('w:hAnsi'), 'Arial')
+            run_pr.append(rFonts)
+            run.append(run_pr)
+            t = OxmlElement('w:t')
+            t.set(qn('xml:space'), 'preserve')
+            t.text = ''
+            run.append(t)
+            first_p.append(run)
+
     def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
         if start_row >= end_row:
             return
         start_cell = table.cell(start_row, col)
         for row in range(start_row + 1, end_row + 1):
             start_cell.merge(table.cell(row, col))
+        self._remove_extra_paragraphs_in_cell(start_cell)
 
     def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
         first_text = table.cell(start_row, col).text.strip()
@@ -377,6 +410,7 @@ class TechCardGenerator:
 
     def _set_cell_text(self, cell, text: str, bold: bool = False):
         """Устанавливает текст в ячейку. Если bold=True, делает шрифт жирным."""
+        text = self._clean_text(text)
         if not cell.paragraphs:
             cell.add_paragraph()
         para = cell.paragraphs[0]
@@ -415,6 +449,34 @@ class TechCardGenerator:
             t.text = text
             break
 
+    def _set_product_cell(self, cell, text: str, bold: bool = False):
+        """Устанавливает текст в ячейку, обрабатывая надстрочный знак ®."""
+        text = self._clean_text(text)
+        if not cell.paragraphs:
+            cell.add_paragraph()
+        para = cell.paragraphs[0]
+        # Очищаем параграф перед вставкой новых runs
+        for r in para.runs:
+            para._p.remove(r._r)
+
+        # Разбиваем по символу ®
+        parts = text.split('®')
+        for i, part in enumerate(parts):
+            if part:
+                run = para.add_run(part)
+                run.font.name = 'Arial'
+                run.font.size = Pt(7)
+                if bold:
+                    run.bold = True
+            if i < len(parts) - 1:
+                # Вставляем надстрочный ®
+                run_reg = para.add_run('®')
+                run_reg.font.name = 'Arial'
+                run_reg.font.size = Pt(7)
+                if bold:
+                    run_reg.bold = True
+                run_reg.font.superscript = True
+
     def _clear_cell_text(self, cell):
         """Очищает текст в ячейке"""
         for para in cell.paragraphs:
@@ -430,7 +492,7 @@ class TechCardGenerator:
         # Заполняем помещение
         room_cell = main_table.cell(1, 0)
         if "Помещение:" in room_cell.text:
-            room_cell.text = f"Помещение: {checklist_data.room_name or '_____________'}"
+            room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
             for para in room_cell.paragraphs:
                 for run in para.runs:
                     run.font.name = 'Arial'
@@ -757,10 +819,10 @@ class TechCardGenerator:
                 self._set_cell_text(row.cells[0], obj_name)
 
                 if instr:
-                    cleaning_method = instr.cleaning_method or ""
-                    product_name = instr.product_name or ""
-                    concentration = instr.concentration or ""
-                    cleaning_technique = instr.cleaning_technique or ""
+                    cleaning_method = self._clean_text(instr.cleaning_method or "")
+                    product_name = self._clean_text(instr.product_name or "")
+                    concentration = self._clean_text(instr.concentration or "")
+                    cleaning_technique = self._clean_text(instr.cleaning_technique or "")
                     extra_method_text = None
 
                     # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
@@ -768,39 +830,40 @@ class TechCardGenerator:
                         if cleaning_method == "мойка":
                             if normalized_name in self.FLOOR_OBJECTS:
                                 if checklist_data.floor_cleaning_product and checklist_data.floor_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = checklist_data.floor_cleaning_product
-                                    concentration = checklist_data.floor_cleaning_concentration
-                                    extra_method_text = checklist_data.floor_cleaning_method_text
+                                    product_name = self._clean_text(checklist_data.floor_cleaning_product)
+                                    concentration = self._clean_text(checklist_data.floor_cleaning_concentration)
+                                    extra_method_text = self._clean_text(checklist_data.floor_cleaning_method_text)
                             elif normalized_name in self.THERMAL_OBJECTS:
                                 if checklist_data.thermal_cleaning_product and checklist_data.thermal_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = checklist_data.thermal_cleaning_product
-                                    concentration = checklist_data.thermal_cleaning_concentration
-                                    extra_method_text = checklist_data.thermal_cleaning_method_text
+                                    product_name = self._clean_text(checklist_data.thermal_cleaning_product)
+                                    concentration = self._clean_text(checklist_data.thermal_cleaning_concentration)
+                                    extra_method_text = self._clean_text(checklist_data.thermal_cleaning_method_text)
                             elif normalized_name in self.GLASS_OBJECTS:
                                 if checklist_data.glass_cleaning_product and checklist_data.glass_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = checklist_data.glass_cleaning_product
-                                    concentration = checklist_data.glass_cleaning_concentration
-                                    extra_method_text = checklist_data.glass_cleaning_method_text
+                                    product_name = self._clean_text(checklist_data.glass_cleaning_product)
+                                    concentration = self._clean_text(checklist_data.glass_cleaning_concentration)
+                                    extra_method_text = self._clean_text(checklist_data.glass_cleaning_method_text)
                             else:
                                 if checklist_data.cleaning_product and checklist_data.cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = checklist_data.cleaning_product
-                                    concentration = checklist_data.cleaning_concentration
-                                    extra_method_text = checklist_data.cleaning_method_text
+                                    product_name = self._clean_text(checklist_data.cleaning_product)
+                                    concentration = self._clean_text(checklist_data.cleaning_concentration)
+                                    extra_method_text = self._clean_text(checklist_data.cleaning_method_text)
                         elif cleaning_method == "дезинфекция":
                             if checklist_data.disinfection_product and checklist_data.disinfection_product not in self.SKIP_PLACEHOLDERS:
-                                product_name = checklist_data.disinfection_product
-                                concentration = checklist_data.disinfection_concentration
-                                extra_method_text = checklist_data.disinfection_method_text
+                                product_name = self._clean_text(checklist_data.disinfection_product)
+                                concentration = self._clean_text(checklist_data.disinfection_concentration)
+                                extra_method_text = self._clean_text(checklist_data.disinfection_method_text)
 
                     # Если метод разведения не взят из чек-листа, берём из БД
                     if not extra_method_text and instr.application_method:
-                        extra_method_text = instr.application_method
+                        extra_method_text = self._clean_text(instr.application_method)
 
                     self._set_cell_text(row.cells[1], cleaning_method)
-                    self._set_cell_text(row.cells[2], instr.instruction_number or "")
-                    self._set_cell_text(row.cells[3], product_name if product_name else "_____________", bold=bool(product_name))
+                    self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                    # Используем новый метод для ячейки с названием средства
+                    self._set_product_cell(row.cells[3], product_name if product_name else "___________", bold=bool(product_name))
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration if concentration else "_____________")
+                    self._set_cell_text(row.cells[5], concentration if concentration else "___________")
 
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
@@ -811,12 +874,12 @@ class TechCardGenerator:
                         run_text.font.name = 'Arial'
                         run_text.font.size = Pt(7)
 
-                    self._set_cell_text(row.cells[6], instr.temperature if instr.temperature else "_____________")
-                    self._set_cell_text(row.cells[7], instr.exposure_time if instr.exposure_time else "_____________")
+                    self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
+                    self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
                     if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS:
-                        inv_text = instr.inventory or ""
-                        self._set_cell_text(row.cells[8], inv_text, bold=bool(inv_text))
+                        inv_text = self._clean_text(instr.inventory or "")
+                        self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
                     else:
                         if checklist_data.inventory_color and checklist_data.inventory_color in self.INVENTORY_COLORS:
                             inv_text = checklist_data.inventory_color
@@ -826,9 +889,9 @@ class TechCardGenerator:
                         else:
                             self._set_cell_text(row.cells[8], "промаркированный", bold=True)
 
-                    self._set_cell_text(row.cells[9], instr.frequency or "")
-                    self._set_cell_text(row.cells[10], instr.executor or "")
-                    self._set_cell_text(row.cells[11], instr.control_method or "")
+                    self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
+                    self._set_cell_text(row.cells[10], self._clean_text(instr.executor or ""))
+                    self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
                     # Использование цвета из БД
                     if product_name:
