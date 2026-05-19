@@ -438,7 +438,7 @@ class TechCardGenerator:
 
         session = SessionLocal()
         category_priority = self._get_category_priority(session)
-        product_colors = self._load_product_colors(session)  # загрузка цветов из БД
+        product_colors = self._load_product_colors(session)
 
         room_category_id = None
         if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
@@ -789,21 +789,10 @@ class TechCardGenerator:
                                 concentration = checklist_data.disinfection_concentration
                             if checklist_data.disinfection_method_text:
                                 extra_method_text = checklist_data.disinfection_method_text
-
-                    # === РАЗБИВКА КОНЦЕНТРАЦИИ ДЛЯ SPLIT-ОБЪЕКТОВ ===
-                    if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS and concentration and '%' in concentration:
-                        first_pct = concentration.find('%')
-                        second_pct = concentration.find('%', first_pct + 1)
-                        if second_pct != -1:
-                            before = concentration[:second_pct + 1]
-                            after = concentration[second_pct + 1:]
-                            if after.startswith(','):
-                                before += ','
-                                after = after[1:].lstrip()
-                            else:
-                                before += ','
-                            concentration = before
-                            extra_method_text = after if after else None
+                    else:
+                        # Для split-объектов метод разведения из поля application_method
+                        if instr.application_method:
+                            extra_method_text = instr.application_method
 
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
