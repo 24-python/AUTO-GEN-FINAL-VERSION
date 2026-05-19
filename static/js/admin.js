@@ -10,6 +10,7 @@ createApp({
             searchQuery: '',
             sortField: 'sort_priority',
             sortDir: 'asc',
+            currentSection: 'objects',
 
             showEditModal: false,
             showAddModal: false,
