@@ -144,7 +144,7 @@
         <div class="text-muted mt-2" style="font-size:0.8rem">Всего: <span v-text="objects.length"></span> объектов | Отфильтровано: <span v-text="filteredObjects.length"></span></div>
 
         <!-- МОДАЛКА: Категория помещения -->
-        <div class="modal-overlay" v-if="showRoomCatForm" @click.self="showRoomCatForm = false">
+        <div class="modal-overlay" v-if="showRoomCatForm">
             <div class="modal-content-ct" style="max-width:400px">
                 <div class="modal-header-ct">
                     <span v-text="editingRoomCat ? 'Редактировать категорию' : 'Добавить категорию'"></span>
@@ -162,7 +162,7 @@
         </div>
 
         <!-- МОДАЛКА: Редактирование объекта -->
-        <div class="modal-overlay" v-if="showEditModal" @click.self="showEditModal = false">
+        <div class="modal-overlay" v-if="showEditModal">
             <div class="modal-content-ct">
                 <div class="modal-header-ct">
                     <span>Редактирование объекта</span>
@@ -184,7 +184,7 @@
         </div>
 
         <!-- МОДАЛКА: Добавление объекта -->
-        <div class="modal-overlay" v-if="showAddModal" @click.self="showAddModal = false">
+        <div class="modal-overlay" v-if="showAddModal">
             <div class="modal-content-ct">
                 <div class="modal-header-ct"><span>Добавить объект</span><button class="btn-ct-outline btn-sm" @click="showAddModal = false">✕</button></div>
                 <div class="modal-body-ct">
@@ -201,7 +201,7 @@
         </div>
 
         <!-- МОДАЛКА: Инструкции -->
-        <div class="modal-overlay" v-if="showInstructionsModal" @click.self="showInstructionsModal = false">
+        <div class="modal-overlay" v-if="showInstructionsModal">
             <div class="modal-content-ct" style="max-width:800px">
                 <div class="modal-header-ct">
                     <span>Инструкции: <span v-text="editObject?.display_name"></span></span>
@@ -301,7 +301,7 @@
         </div>
 
         <!-- МОДАЛКА: Импорт CSV -->
-        <div class="modal-overlay" v-if="showImportModal" @click.self="showImportModal = false">
+        <div class="modal-overlay" v-if="showImportModal">
             <div class="modal-content-ct">
                 <div class="modal-header-ct"><span>Импорт CSV</span><button class="btn-ct-outline btn-sm" @click="showImportModal = false">✕</button></div>
                 <div class="modal-body-ct">
@@ -322,7 +322,7 @@
         </div>
 
         <!-- МОДАЛКА: Средство -->
-        <div class="modal-overlay" v-if="showProductForm" @click.self="showProductForm = false">
+        <div class="modal-overlay" v-if="showProductForm">
             <div class="modal-content-ct" style="max-width:400px">
                 <div class="modal-header-ct">
                     <span v-text="editingProduct ? 'Редактировать средство' : 'Добавить средство'"></span>
@@ -351,7 +351,7 @@
         </div>
 
         <!-- МОДАЛКА: Импорт CSV для средств -->
-        <div class="modal-overlay" v-if="showProductImportModal" @click.self="showProductImportModal = false">
+        <div class="modal-overlay" v-if="showProductImportModal">
             <div class="modal-content-ct" style="max-width:400px">
                 <div class="modal-header-ct">
                     <span>Импорт средств из CSV</span>
