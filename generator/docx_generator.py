@@ -627,16 +627,23 @@ class TechCardGenerator:
                 rows_data.append(('category', cat_name, None))
                 for typ, display_name, instructions, normalized_name in items:
                     if typ == 'split':
+                        # Первый заголовок поверхности будет содержать название объекта
+                        surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                        first_surface = True
                         group_start_row = len(rows_data)
-                        rows_data.append(('object', display_name, None, normalized_name))
-                        for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                        for sf in surfaces:
                             if sf not in instructions:
                                 continue
                             sf_instrs = instructions[sf]
                             sf_label = {"внешняя": "Внешние поверхности",
                                         "внутренняя": "Внутренние поверхности",
                                         "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
-                            rows_data.append(('section_header', sf_label, None))
+                            if first_surface:
+                                # Включаем название объекта в строку заголовка
+                                rows_data.append(('section_header', sf_label, display_name))
+                                first_surface = False
+                            else:
+                                rows_data.append(('section_header', sf_label, None))
                             surface_start = len(rows_data)
                             for instr in sf_instrs:
                                 rows_data.append(('object', "", instr, normalized_name))
@@ -661,16 +668,21 @@ class TechCardGenerator:
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
             for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
                 if isinstance(instructions, dict):  # split
+                    surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                    first_surface = True
                     group_start_row = len(rows_data)
-                    rows_data.append(('object', display_name, None, normalized_name))
-                    for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                    for sf in surfaces:
                         if sf not in instructions:
                             continue
                         sf_instrs = instructions[sf]
                         sf_label = {"внешняя": "Внешние поверхности",
                                     "внутренняя": "Внутренние поверхности",
                                     "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
-                        rows_data.append(('section_header', sf_label, None))
+                        if first_surface:
+                            rows_data.append(('section_header', sf_label, display_name))
+                            first_surface = False
+                        else:
+                            rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
                             rows_data.append(('object', "", instr, normalized_name))
@@ -732,22 +744,27 @@ class TechCardGenerator:
 
                 # Split-объекты
                 for dn, split_instr, nn in split_items:
-                    # Проверка групповых заголовков для split-объектов
+                    # Проверка групповых заголовков
                     for group_set, header_text in self.GROUP_HEADERS.items():
                         if nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
                             inserted_headers.add(group_set)
                             break
+                    surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                    first_surface = True
                     group_start_row = len(rows_data)
-                    rows_data.append(('object', dn, None, nn))
-                    for sf in ["внешняя", "внутренняя", "очистка от мин. отложений"]:
+                    for sf in surfaces:
                         if sf not in split_instr:
                             continue
                         sf_instrs = split_instr[sf]
                         sf_label = {"внешняя": "Внешние поверхности",
                                     "внутренняя": "Внутренние поверхности",
                                     "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
-                        rows_data.append(('section_header', sf_label, None))
+                        if first_surface:
+                            rows_data.append(('section_header', sf_label, dn))
+                            first_surface = False
+                        else:
+                            rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
                             rows_data.append(('object', "", instr, nn))
@@ -792,7 +809,6 @@ class TechCardGenerator:
                     row.cells[0].paragraphs[0].runs[0].font.bold = True
 
             elif row_info[0] == 'group_header':
-                # Групповой заголовок на всю ширину таблицы
                 self._merge_cells_horizontal(row, 0, 11)
                 self._set_cell_text(row.cells[0], row_info[1], bold=True)
                 self._set_cell_background(row.cells[0], "D2D2D2")
@@ -801,7 +817,11 @@ class TechCardGenerator:
                         run.font.size = Pt(7)
 
             elif row_info[0] == 'section_header':
-                # Подзаголовок поверхности (только колонки 2–8)
+                # Может содержать название объекта в row_info[2]
+                if len(row_info) > 2 and row_info[2] is not None:
+                    self._set_cell_text(row.cells[0], row_info[2], bold=True)
+                else:
+                    self._set_cell_text(row.cells[0], "")
                 self._merge_cells_horizontal(row, 1, 11)
                 self._set_cell_text(row.cells[1], row_info[1], bold=True)
                 self._set_cell_background(row.cells[1], "D2D2D2")
