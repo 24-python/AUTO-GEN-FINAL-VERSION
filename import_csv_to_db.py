@@ -10,6 +10,7 @@ import_csv_to_db.py
 - Импорт инструкций с привязкой к категории помещения (room_category_id)
 - Импорт поля maintenance_type (основная/поддерживающая/генеральная)
 - Импорт поля surface_type (внешняя/внутренняя/очистка от мин. отложений)
+- Импорт поля application_method (метод разведения)
 """
 
 import csv
@@ -312,9 +313,8 @@ class CSVImporter:
                 room_category_id = self._get_room_category_id(room_cat_name, room_cat_ids)
 
                 maintenance_type = instr_row.get('maintenance_type', '').strip() or None
-
-                # surface_type
                 surface_type = instr_row.get('surface_type', '').strip() or None
+                application_method = instr_row.get('application_method', '').strip() or None
 
                 # Ищем существующую инструкцию с учётом maintenance_type, room_category_id, surface_type
                 existing_instr = self.session.query(Instruction).filter(
@@ -333,6 +333,7 @@ class CSVImporter:
                         existing_instr.room_category_id = room_category_id
                         existing_instr.maintenance_type = maintenance_type
                         existing_instr.surface_type = surface_type
+                        existing_instr.application_method = application_method
                         existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
                         existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
                         existing_instr.concentration = instr_row.get('concentration', '').strip() or None
@@ -349,6 +350,7 @@ class CSVImporter:
                         room_category_id=room_category_id,
                         maintenance_type=maintenance_type,
                         surface_type=surface_type,
+                        application_method=application_method,
                         cleaning_method=cleaning_method or None,
                         instruction_number=instr_row.get('instruction_number', '').strip() or None,
                         product_name=product_name or None,

@@ -4,7 +4,7 @@ export_db_to_single_csv.py
 
 Экспортирует все данные из БД в один CSV файл.
 Каждая строка = один объект со всеми его инструкциями.
-Добавлены колонки: room_category_name, maintenance_type, surface_type.
+Добавлены колонки: room_category_name, maintenance_type, surface_type, application_method.
 """
 
 import csv
@@ -50,12 +50,13 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
             'instruction_id',
             'room_category_name',
             'maintenance_type',
-            'surface_type',                # новое поле
+            'surface_type',
             'cleaning_method',
             'instruction_number',
             'product_name',
             'cleaning_technique',
             'concentration',
+            'application_method',      # новое поле
             'temperature',
             'exposure_time',
             'inventory',
@@ -88,12 +89,13 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
                         instr.id,
                         room_cat_name,
                         instr.maintenance_type or '',
-                        instr.surface_type or '',      # новое поле
+                        instr.surface_type or '',
                         instr.cleaning_method or '',
                         instr.instruction_number or '',
                         instr.product_name or '',
                         instr.cleaning_technique or '',
                         instr.concentration or '',
+                        instr.application_method or '',    # новое поле
                         instr.temperature or '',
                         instr.exposure_time or '',
                         instr.inventory or '',
@@ -111,7 +113,7 @@ def export_all_to_single_csv(output_path: str = "db_export.csv"):
                     obj.base_name,
                     obj.modifier or '',
                     obj.sort_priority,
-                    '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                    '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''  # добавлен один пустой столбец
                 ])
                 total_rows += 1
 

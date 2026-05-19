@@ -670,6 +670,7 @@ def api_object_instructions(obj_id):
             'product_name': i.product_name or '',
             'cleaning_technique': i.cleaning_technique or '',
             'concentration': i.concentration or '',
+            'application_method': i.application_method or '',
             'temperature': i.temperature or '',
             'exposure_time': i.exposure_time or '',
             'inventory': i.inventory or '',
@@ -707,6 +708,7 @@ def api_create_instruction(obj_id):
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
         concentration=data.get('concentration', ''),
+        application_method=data.get('application_method', ''),
         temperature=data.get('temperature', ''),
         exposure_time=data.get('exposure_time', ''),
         inventory=data.get('inventory', ''),
@@ -740,7 +742,7 @@ def api_update_instruction(instr_id):
             instr.room_category_id = rc_id
 
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
-                  'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency',
+                  'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory', 'frequency',
                   'executor', 'control_method', 'instruction_number', 'surface_type']
         for key in fields:
             if key in data:

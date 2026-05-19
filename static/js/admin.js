@@ -343,18 +343,18 @@ createApp({
                 Toastify({ text: '❌ Ошибка загрузки инструкций', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         },
-        addInstruction() {
-            this.currentInstructions.push({
-                id: null, isNew: true,
-                room_category_id: null,
-                maintenance_type: 'основная',
-                cleaning_method: '', product_name: '', cleaning_technique: '',
-                concentration: '', temperature: '', exposure_time: '',
-                inventory: '', frequency: '', executor: '', control_method: '',
-                instruction_number: '',
-                surface_type: null
-            });
-        },
+        aaddInstruction() {
+    this.currentInstructions.push({
+        id: null, isNew: true,
+        room_category_id: null,
+        maintenance_type: 'основная',
+        cleaning_method: '', product_name: '', cleaning_technique: '',
+        concentration: '', application_method: '', temperature: '', exposure_time: '',
+        inventory: '', frequency: '', executor: '', control_method: '',
+        instruction_number: '',
+        surface_type: null
+    });
+},
         duplicateInstruction(instr, idx) {
             const copy = JSON.parse(JSON.stringify(instr));
             copy.id = null;
@@ -365,21 +365,22 @@ createApp({
         async saveInstruction(instr) {
             try {
                 const payload = {
-                    room_category_id: instr.room_category_id || null,
-                    maintenance_type: instr.maintenance_type,
-                    cleaning_method: instr.cleaning_method,
-                    product_name: instr.product_name,
-                    cleaning_technique: instr.cleaning_technique,
-                    concentration: instr.concentration,
-                    temperature: instr.temperature,
-                    exposure_time: instr.exposure_time,
-                    inventory: instr.inventory,
-                    frequency: instr.frequency,
-                    executor: instr.executor,
-                    control_method: instr.control_method,
-                    instruction_number: instr.instruction_number,
-                    surface_type: instr.surface_type || null
-                };
+    room_category_id: instr.room_category_id || null,
+    maintenance_type: instr.maintenance_type,
+    cleaning_method: instr.cleaning_method,
+    product_name: instr.product_name,
+    cleaning_technique: instr.cleaning_technique,
+    concentration: instr.concentration,
+    application_method: instr.application_method || '',   // <--
+    temperature: instr.temperature,
+    exposure_time: instr.exposure_time,
+    inventory: instr.inventory,
+    frequency: instr.frequency,
+    executor: instr.executor,
+    control_method: instr.control_method,
+    instruction_number: instr.instruction_number,
+    surface_type: instr.surface_type || null
+};
 
                 if (instr.isNew) {
                     const res = await fetch(`/api/objects/${this.editObject.id}/instructions`, {

@@ -69,28 +69,25 @@ class Instruction(Base):
 
     id = Column(Integer, primary_key=True)
     object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
-    room_category_id = Column(Integer, ForeignKey('room_categories.id'), nullable=True)  # NULL = общая инструкция
+    room_category_id = Column(Integer, ForeignKey('room_categories.id'), nullable=True)
 
-    # Поля из Excel
-    maintenance_type = Column(String(50), nullable=True)          # основная / поддерживающая / генеральная
-    cleaning_method = Column(String(100), nullable=True)          # мойка/дезинфекция/очистка
-    instruction_number = Column(String(50), nullable=True)        # № инструкции
-    product_name = Column(String(200), nullable=True)             # наименование средства
-    cleaning_technique = Column(String(200), nullable=True)       # метод уборки
-    concentration = Column(String(200), nullable=True)            # концентрация
-    temperature = Column(String(50), nullable=True)               # температура раствора
-    exposure_time = Column(String(50), nullable=True)             # время выдержки
-    inventory = Column(String(100), nullable=True)                # инвентарь
-    frequency = Column(String(100), nullable=True)                # периодичность
-    executor = Column(String(200), nullable=True)                 # исполнитель
-    control_method = Column(String(200), nullable=True)           # метод контроля
-
-    # Новое поле для типа поверхности (внешняя/внутренняя/очистка от мин. отложений)
+    maintenance_type = Column(String(50), nullable=True)
+    cleaning_method = Column(String(100), nullable=True)
+    instruction_number = Column(String(50), nullable=True)
+    product_name = Column(String(200), nullable=True)
+    cleaning_technique = Column(String(200), nullable=True)
+    concentration = Column(String(200), nullable=True)
+    application_method = Column(String(200), nullable=True)      # новое поле
+    temperature = Column(String(50), nullable=True)
+    exposure_time = Column(String(50), nullable=True)
+    inventory = Column(String(100), nullable=True)
+    frequency = Column(String(100), nullable=True)
+    executor = Column(String(200), nullable=True)
+    control_method = Column(String(200), nullable=True)
     surface_type = Column(String(50), nullable=True)
 
     created_at = Column(DateTime, default=datetime.now)
 
-    # Связи
     object = relationship("Object", back_populates="instructions")
     room_category = relationship("RoomCategory", back_populates="instructions")
 
@@ -98,11 +95,10 @@ class Instruction(Base):
         return f"<Instruction(id={self.id}, object_id={self.object_id}, method='{self.cleaning_method}', surface='{self.surface_type}', room_cat='{self.room_category.name if self.room_category else 'общая'}')>"
 
     def is_empty(self) -> bool:
-        """Проверяет, пустая ли инструкция (нет данных)"""
         fields = [
             self.maintenance_type, self.cleaning_method, self.product_name, self.concentration,
             self.temperature, self.exposure_time, self.frequency,
-            self.executor, self.control_method
+            self.executor, self.control_method, self.application_method
         ]
         return not any(field for field in fields if field and field.strip())
 

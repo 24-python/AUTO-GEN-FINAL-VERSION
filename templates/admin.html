@@ -271,8 +271,18 @@
                             <div class="col-6"><label class="form-label-ct">Метод уборки</label><input class="form-control-ct form-control-sm" v-model="instr.cleaning_technique"></div>
                         </div>
                         <div class="row">
-                            <div class="col-6"><label class="form-label-ct">Концентрация</label><input class="form-control-ct form-control-sm" v-model="instr.concentration"></div>
-                            <div class="col-6"><label class="form-label-ct">Температура</label><input class="form-control-ct form-control-sm" v-model="instr.temperature"></div>
+                            <div class="col-4">
+                                <label class="form-label-ct">Концентрация</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.concentration">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label-ct">Метод разведения</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.application_method">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label-ct">Температура</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.temperature">
+                            </div>
                         </div>
                         <div class="row">
                             <div class="col-4"><label class="form-label-ct">Время выдержки</label><input class="form-control-ct form-control-sm" v-model="instr.exposure_time"></div>
