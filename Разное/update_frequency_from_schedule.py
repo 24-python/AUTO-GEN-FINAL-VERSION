@@ -7,8 +7,8 @@
 
 Использование:
     python update_frequency_from_schedule.py "производственных помещений.docx"
-    python update_frequency_from_schedule.py "производственных помещений.docx" --csv=db_export_all1111.csv
-    python update_frequency_from_schedule.py file1.docx file2.docx --csv=db_export_all1111.csv
+    python update_frequency_from_schedule.py "производственных помещений.docx" --csv=db_export.csv
+    python update_frequency_from_schedule.py file1.docx file2.docx --csv=db_export.csv
 """
 
 import sys
@@ -279,11 +279,11 @@ def update_csv(csv_path: str, schedule_data: dict, room_category_name: str, outp
 def main():
     if len(sys.argv) < 2:
         print("Использование:")
-        print("  python update_frequency_from_schedule.py <файл1.docx> [файл2.docx ...] [--csv=db_export_all1111.csv]")
+        print("  python update_frequency_from_schedule.py <файл1.docx> [файл2.docx ...] [--csv=db_export.csv]")
         print()
         print("Пример:")
-        print("  python update_frequency_from_schedule.py 'производственных помещений.docx' --csv=db_export_all1111.csv")
-        print("  python update_frequency_from_schedule.py file1.docx file2.docx --csv=db_export_all1111.csv")
+        print("  python update_frequency_from_schedule.py 'производственных помещений.docx' --csv=db_export.csv")
+        print("  python update_frequency_from_schedule.py file1.docx file2.docx --csv=db_export.csv")
         return
 
     csv_path = "db_export_all1111.csv"

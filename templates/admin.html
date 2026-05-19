@@ -51,6 +51,39 @@
             </div>
         </div>
 
+        <!-- Управление средствами -->
+        <div class="card-ct mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-droplet me-2"></i>Средства (цветовое кодирование)</span>
+                <div>
+                    <a href="/api/products/export_csv" class="btn-ct-outline btn-sm me-2">
+                        <i class="bi bi-download me-1"></i>Экспорт CSV
+                    </a>
+                    <button class="btn-ct-outline btn-sm me-2" @click="openProductImportModal()">
+                        <i class="bi bi-upload me-1"></i>Импорт CSV
+                    </button>
+                    <button class="btn-ct-primary btn-sm" @click="openProductForm()">
+                        <i class="bi bi-plus-circle me-1"></i>Добавить
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div v-if="products.length === 0" class="text-muted text-center py-2">
+                    Нет средств. Нажмите «Добавить».
+                </div>
+                <div v-else class="d-flex flex-wrap gap-2">
+                    <span v-for="p in products" :key="p.id"
+                          class="badge-ct d-flex align-items-center gap-2"
+                          :style="{backgroundColor: '#' + (p.color || 'FFFFFF'), color: '#000', padding: '6px 12px', fontSize: '0.85rem'}">
+                        <span v-text="p.name"></span>
+                        <span v-if="p.product_type" style="font-size:0.75rem; opacity:0.7">({{ p.product_type }})</span>
+                        <i class="bi bi-pencil-square" @click="editProduct(p)" title="Редактировать" style="cursor:pointer"></i>
+                        <i class="bi bi-x-circle text-danger" @click="deleteProduct(p)" title="Удалить" style="cursor:pointer"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+
         <!-- Заголовок и кнопки -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h3 class="fw-bold"><i class="bi bi-database me-2"></i>Управление объектами</h3>
@@ -271,6 +304,56 @@
                 </div>
             </div>
         </div>
+
+        <!-- МОДАЛКА: Средство -->
+        <div class="modal-overlay" v-if="showProductForm" @click.self="showProductForm = false">
+            <div class="modal-content-ct" style="max-width:400px">
+                <div class="modal-header-ct">
+                    <span v-text="editingProduct ? 'Редактировать средство' : 'Добавить средство'"></span>
+                    <button class="btn-ct-outline btn-sm" @click="showProductForm = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-2"><label class="form-label-ct">Название</label>
+                        <input class="form-control-ct" v-model="productForm.name"></div>
+                    <div class="mb-2"><label class="form-label-ct">Тип</label>
+                        <select class="form-select-ct" v-model="productForm.product_type">
+                            <option value="">-- без типа --</option>
+                            <option value="дезинфицирующее">дезинфицирующее</option>
+                            <option value="нейтральное">нейтральное</option>
+                            <option value="щелочное">щелочное</option>
+                            <option value="кислотное">кислотное</option>
+                            <option value="специальное">специальное</option>
+                        </select></div>
+                    <div class="mb-2"><label class="form-label-ct">Цвет (HEX без #)</label>
+                        <input class="form-control-ct" v-model="productForm.color" placeholder="FFCC00"></div>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showProductForm = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="saveProduct">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- МОДАЛКА: Импорт CSV для средств -->
+        <div class="modal-overlay" v-if="showProductImportModal" @click.self="showProductImportModal = false">
+            <div class="modal-content-ct" style="max-width:400px">
+                <div class="modal-header-ct">
+                    <span>Импорт средств из CSV</span>
+                    <button class="btn-ct-outline btn-sm" @click="showProductImportModal = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-2">
+                        <label class="form-label-ct">CSV файл (name;product_type;color)</label>
+                        <input type="file" accept=".csv" class="form-control-ct" @change="handleProductImportFile">
+                    </div>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showProductImportModal = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="doProductImport" :disabled="!productImportFile">Загрузить</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <footer style="background: var(--ct-surface); border-top: 1px solid var(--ct-border); padding: 16px 0; margin-top: 40px;">

@@ -6,6 +6,7 @@ createApp({
             objects: [],
             categories: [],
             roomCategories: [],
+            products: [],                     // средства
             searchQuery: '',
             sortField: 'sort_priority',
             sortDir: 'asc',
@@ -14,6 +15,11 @@ createApp({
             showAddModal: false,
             showImportModal: false,
             showInstructionsModal: false,
+            showProductForm: false,           // форма средства
+            showProductImportModal: false,    // импорт средств CSV
+            editingProduct: null,            // редактируемое средство
+            productForm: { name: '', product_type: '', color: '' },  // поля средства
+            productImportFile: null,          // файл для импорта средств
 
             editObject: null,
             formData: {
@@ -62,6 +68,7 @@ createApp({
         this.loadObjects();
         this.loadCategories();
         this.loadRoomCategories();
+        this.loadProducts();                // загрузка средств
     },
     methods: {
         async loadObjects() {
@@ -87,6 +94,13 @@ createApp({
                 this.roomCategories = data.room_categories || [];
             } catch (e) {}
         },
+        async loadProducts() {
+            try {
+                const res = await fetch('/api/products');
+                const data = await res.json();
+                this.products = data.products || [];
+            } catch (e) {}
+        },
 
         toggleSort(field) {
             if (this.sortField === field) {
@@ -103,12 +117,10 @@ createApp({
             if (!confirm('Точно удалить ВСЕ данные?')) return;
 
             try {
-                // Получаем все объекты
                 const res = await fetch('/api/objects');
                 const data = await res.json();
                 const allObjects = data.objects || [];
 
-                // Удаляем каждый объект (инструкции удалятся каскадно)
                 for (const obj of allObjects) {
                     await fetch(`/api/objects/${obj.id}`, { method: 'DELETE' });
                 }
@@ -118,6 +130,86 @@ createApp({
                 await this.loadRoomCategories();
             } catch (e) {
                 Toastify({ text: '❌ Ошибка очистки БД', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ========== СРЕДСТВА ==========
+        openProductForm() {
+            this.editingProduct = null;
+            this.productForm = { name: '', product_type: '', color: '' };
+            this.showProductForm = true;
+        },
+        editProduct(p) {
+            this.editingProduct = p;
+            this.productForm = { name: p.name, product_type: p.product_type || '', color: p.color || '' };
+            this.showProductForm = true;
+        },
+        async saveProduct() {
+            const payload = {
+                name: this.productForm.name.trim(),
+                product_type: this.productForm.product_type,
+                color: this.productForm.color.trim()
+            };
+            if (!payload.name) {
+                Toastify({ text: '⚠️ Введите название', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            try {
+                const url = this.editingProduct ? `/api/products/${this.editingProduct.id}` : '/api/products';
+                const method = this.editingProduct ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Toastify({ text: '✅ Средство сохранено', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showProductForm = false;
+                    this.editingProduct = null;
+                    await this.loadProducts();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        async deleteProduct(p) {
+            if (!confirm(`Удалить средство «${p.name}»?`)) return;
+            try {
+                await fetch(`/api/products/${p.id}`, { method: 'DELETE' });
+                Toastify({ text: '✅ Средство удалено', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                await this.loadProducts();
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка удаления', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // Импорт/экспорт средств
+        openProductImportModal() {
+            this.productImportFile = null;
+            this.showProductImportModal = true;
+        },
+        handleProductImportFile(e) {
+            this.productImportFile = e.target.files[0];
+        },
+        async doProductImport() {
+            if (!this.productImportFile) return;
+            const formData = new FormData();
+            formData.append('file', this.productImportFile);
+            try {
+                const res = await fetch('/api/products/import_csv', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    Toastify({ text: `✅ Импорт: создано ${data.created || 0}, обновлено ${data.updated || 0}`, duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showProductImportModal = false;
+                    await this.loadProducts();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         },
 
@@ -243,7 +335,7 @@ createApp({
                     isNew: false,
                     room_category_id: i.room_category_id || null,
                     maintenance_type: i.maintenance_type || 'основная',
-                    surface_type: i.surface_type || null   // добавляем поддержку surface_type
+                    surface_type: i.surface_type || null
                 }));
                 this.editObject = obj;
                 this.showInstructionsModal = true;
@@ -260,7 +352,7 @@ createApp({
                 concentration: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
                 instruction_number: '',
-                surface_type: null       // по умолчанию общая
+                surface_type: null
             });
         },
         duplicateInstruction(instr, idx) {
@@ -286,7 +378,7 @@ createApp({
                     executor: instr.executor,
                     control_method: instr.control_method,
                     instruction_number: instr.instruction_number,
-                    surface_type: instr.surface_type || null   // передаём тип поверхности
+                    surface_type: instr.surface_type || null
                 };
 
                 if (instr.isNew) {

@@ -106,6 +106,17 @@ class Instruction(Base):
         ]
         return not any(field for field in fields if field and field.strip())
 
+class Product(Base):
+    """Моющие и дезинфицирующие средства"""
+    __tablename__ = 'products'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False, unique=True)   # название средства
+    product_type = Column(String(50), nullable=True)          # тип: дезинфицирующее, нейтральное, щелочное, кислотное, специальное
+    color = Column(String(6), nullable=True)                  # HEX-код цвета (без #)
+
+    def __repr__(self):
+        return f"<Product(id={self.id}, name='{self.name}', type='{self.product_type}', color='{self.color}')>"
 
 # Индексы для ускорения поиска
 Index('idx_object_normalized_name', Object.normalized_name)

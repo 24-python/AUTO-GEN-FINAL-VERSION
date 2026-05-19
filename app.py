@@ -4,8 +4,10 @@
 Поддерживает одиночные .docx, несколько .docx + .zip, выгрузку ZIP-архивом.
 Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
 Добавлена поддержка категорий помещений (room_categories), maintenance_type и surface_type.
+Добавлена таблица средств (products) с управлением через API и импортом/экспортом CSV.
 """
 
+import csv
 import os
 import uuid
 import zipfile
@@ -13,13 +15,14 @@ import tempfile
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
+from io import StringIO                     # <-- добавлено
 
 from flask import Flask, request, render_template, jsonify, send_file
 
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
-from db.models import Object, Instruction, Category as DBCategory, RoomCategory
+from db.models import Object, Instruction, Category as DBCategory, RoomCategory, Product
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
@@ -365,6 +368,149 @@ def api_categories():
     session.close()
     return jsonify({'categories': result})
 
+# ============================================================
+# API: СРЕДСТВА (PRODUCTS)
+# ============================================================
+
+@app.route('/api/products')
+def api_products():
+    session = SessionLocal()
+    products = session.query(Product).order_by(Product.name).all()
+    result = [{'id': p.id, 'name': p.name, 'product_type': p.product_type or '', 'color': p.color or ''} for p in products]
+    session.close()
+    return jsonify({'products': result})
+
+
+@app.route('/api/products', methods=['POST'])
+def api_create_product():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': 'Название обязательно'}), 400
+
+    session = SessionLocal()
+    existing = session.query(Product).filter(Product.name == name).first()
+    if existing:
+        session.close()
+        return jsonify({'success': False, 'error': 'Такое средство уже существует'}), 400
+
+    product = Product(
+        name=name,
+        product_type=data.get('product_type', '').strip() or None,
+        color=data.get('color', '').strip() or None
+    )
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    pid = product.id
+    session.close()
+    return jsonify({'success': True, 'id': pid})
+
+
+@app.route('/api/products/<int:product_id>', methods=['PUT'])
+def api_update_product(product_id):
+    data = request.get_json()
+    session = SessionLocal()
+    product = session.query(Product).get(product_id)
+    if product:
+        if 'name' in data:
+            product.name = data['name'].strip()
+        if 'product_type' in data:
+            product.product_type = data['product_type'].strip() or None
+        if 'color' in data:
+            product.color = data['color'].strip() or None
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/products/<int:product_id>', methods=['DELETE'])
+def api_delete_product(product_id):
+    session = SessionLocal()
+    product = session.query(Product).get(product_id)
+    if product:
+        session.delete(product)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/products/import_csv', methods=['POST'])
+def api_import_products_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({'success': False, 'error': 'Файл должен быть CSV'}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_products_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    updated = 0
+    errors = []
+
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                name = row.get('name', '').strip()
+                if not name:
+                    continue
+                product_type = row.get('product_type', '').strip() or None
+                color = row.get('color', '').strip() or None
+
+                existing = session.query(Product).filter(Product.name == name).first()
+                if existing:
+                    existing.product_type = product_type
+                    existing.color = color
+                    updated += 1
+                else:
+                    p = Product(name=name, product_type=product_type, color=color)
+                    session.add(p)
+                    created += 1
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({
+        'success': True,
+        'created': created,
+        'updated': updated,
+        'errors': errors
+    })
+
+
+@app.route('/api/products/export_csv')
+def api_export_products_csv():
+    session = SessionLocal()
+    products = session.query(Product).order_by(Product.name).all()
+
+    si = StringIO()                       # <-- исправлено
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['name', 'product_type', 'color'])
+    for p in products:
+        writer.writerow([p.name, p.product_type or '', p.color or ''])
+
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        tmp.write(output)
+        return send_file(tmp.name, as_attachment=True, download_name='products_export.csv')
+
 
 # ============================================================
 # API: КАТЕГОРИИ ПОМЕЩЕНИЙ (Room Categories)
@@ -531,7 +677,7 @@ def api_object_instructions(obj_id):
             'executor': i.executor or '',
             'control_method': i.control_method or '',
             'instruction_number': i.instruction_number or '',
-            'surface_type': i.surface_type or ''     # добавлено
+            'surface_type': i.surface_type or ''
         } for i in obj.instructions]
         session.close()
         return jsonify({'instructions': result})
@@ -568,7 +714,7 @@ def api_create_instruction(obj_id):
         executor=data.get('executor', ''),
         control_method=data.get('control_method', ''),
         instruction_number=data.get('instruction_number', ''),
-        surface_type=data.get('surface_type')       # добавлено
+        surface_type=data.get('surface_type')
     )
     session.add(instr)
     session.commit()
@@ -595,7 +741,7 @@ def api_update_instruction(instr_id):
 
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
                   'concentration', 'temperature', 'exposure_time', 'inventory', 'frequency',
-                  'executor', 'control_method', 'instruction_number', 'surface_type']  # добавлено
+                  'executor', 'control_method', 'instruction_number', 'surface_type']
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])
@@ -620,7 +766,7 @@ def api_delete_instruction(instr_id):
 
 
 # ============================================================
-# API: ЭКСПОРТ CSV
+# API: ЭКСПОРТ CSV (ОБЪЕКТЫ)
 # ============================================================
 
 @app.route('/api/export_csv')
@@ -640,7 +786,7 @@ def api_export_csv():
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
         'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
         'cleaning_technique', 'concentration', 'temperature', 'exposure_time', 'inventory',
-        'frequency', 'executor', 'control_method', 'surface_type'   # добавлено
+        'frequency', 'executor', 'control_method', 'surface_type'
     ])
 
     for obj in objects:
@@ -657,7 +803,7 @@ def api_export_csv():
                     instr.concentration or '', instr.temperature or '',
                     instr.exposure_time or '', instr.inventory or '',
                     instr.frequency or '', instr.executor or '', instr.control_method or '',
-                    instr.surface_type or ''    # добавлено
+                    instr.surface_type or ''
                 ])
         else:
             writer.writerow([
@@ -677,7 +823,7 @@ def api_export_csv():
 
 
 # ============================================================
-# API: ИМПОРТ CSV
+# API: ИМПОРТ CSV (ОБЪЕКТЫ)
 # ============================================================
 
 @app.route('/api/import_csv', methods=['POST'])

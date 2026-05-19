@@ -6,7 +6,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 from pathlib import Path
 from parser.models import ChecklistData
-from db.models import Instruction, Category as DBCategory, Object as DBObject, RoomCategory
+from db.models import Instruction, Category as DBCategory, Object as DBObject, RoomCategory, Product
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -16,83 +16,6 @@ import copy
 class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
-
-    PRODUCT_COLORS = {
-        # Дезинфицирующие средства (жёлтый)
-        "ХИМИТЕК ПОЛИДЕЗ®-СУПЕР": "FFFFCC",
-        "ХИМИТЕК ПОЛИДЕЗ®-ЭКСПРЕСС": "FFFFCC",
-        "ХИМИТЕК ПОЛИДЕЗ®": "FFFFCC",
-        "ПОЛИДЕЗ®": "FFFFCC",
-        "ХИМИТЕК УНИВЕРСАЛ-ДЕЗ": "FFFFCC",
-        "ХИМИТЕК СВЕЖЕСТЬ-АНТИСЕПТИК": "FFFFCC",
-
-        # Нейтральные моющие (зелёный)
-        "ХИМИТЕК УНИВЕРСАЛ-ПД-Н": "99FF99",
-        "ХИМИТЕК УНИВЕРСАЛ-ПД": "99FF99",
-        "ХИМИТЕК УНИВЕРСАЛ-ПД для дозирующих систем": "99FF99",
-        "ХИМИТЕК ИЗУМРУД 100": "99FF99",
-        "ХИМИТЕК ИЗУМРУД 110": "99FF99",
-        "ХИМИТЕК ИЗУМРУД 300": "99FF99",
-        "ХИМИТЕК ИЗУМРУД 310": "99FF99",
-        "ХИМИТЕК ИНТЕРЬЕР-ОФИС": "99FF99",
-        "ХИМИТЕК ИНТЕРЬЕР-ОФИС-СПРЕЙ": "99FF99",
-        "ХИМИТЕК КУХМАСТЕР-ГЕЛЬ": "99FF99",
-        "ХИМИТЕК КУХМАСТЕР": "99FF99",
-        "ХИМИТЕК КУХМАСТЕР для дозирующих систем": "99FF99",
-        "ХИМИТЕК КУХМАСТЕР-ФОРТЕ": "99FF99",
-        "ХИМИТЕК КУХМАСТЕР-ФОРТЕ для дозирующих систем": "99FF99",
-        "ХИМИТЕК ПЕКАРЬ-АКТИВАТОР": "99FF99",
-        "ХИМИТЕК СТИРАЛЬ-02": "99FF99",
-        "ХИМИТЕК ЧАРОИТ®": "99FF99",
-        "ХИМИТЕК ЧАРОЙТ®-СПРЕЙ": "99FF99",
-
-        # Щелочные и специальные моющие (голубой)
-        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ПЕНАКТИВ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-CIP": "99CCFF",
-        "ХИМИТЕК ИЗУМРУД 400": "99CCFF",
-        "ХИМИТЕК ИЗУМРУД 420": "99CCFF",
-        "ХИМИТЕК КЕРАМИК-БЕЛИЗНА": "99CCFF",
-        "ХИМИТЕК КЕРАМИК-БЛЕСК": "99CCFF",
-        "ХИМИТЕК КЕРАМИК-РЕЛЬЕФ": "99CCFF",
-        "ХИМИТЕК КУХМАСТЕР-ПРОФИ": "99CCFF",
-        "ХИМИТЕК КУХМАСТЕР-ПРОФИ 12°Ж": "99CCFF",
-        "ХИМИТЕК ПЕКАРЬ-АНТИНАГАР": "99CCFF",
-        "ХИМИТЕК ПЕНАПОЛ-ПРОФИ": "99CCFF",
-        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ-ЦВМ": "99CCFF",
-        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ": "99CCFF",
-        "ХИМИТЕК СПЕЦ-УНИВЕРСАЛ 220002": "99CCFF",
-        "ХИМИТЕК СТИРАЛЬ-ПРОФИ": "99CCFF",
-        "ХИМИТЕК СТИРАЛЬ-03": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ® модификация 190025": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ГЕЛЬ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ПЕНАКТИВ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-АНТИНАГАР-ПЕНАКТИВ 210014": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-КОМБИ-ЦВМ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-ПОЛИПРОМ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-ПОЛИПРОМ 190022": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-ФОРТЕ": "99CCFF",
-        "ХИМИТЕК ЧУДОДЕЙ®-ЭКСПРЕСС": "99CCFF",
-        "ХИМИТЕК ШУНГИТ 100": "99CCFF",
-        "ХИМИТЕК ШУНГИТ 200": "99CCFF",
-
-        # Кислотные моющие (розовый)
-        "ХИМИТЕК ПОЛИКОР®": "FFCCCC",
-        "ХИМИТЕК АНТИМИНЕРАЛ-ЛАКТО-ПЕНАКТИВ": "FFCCCC",
-        "ХИМИТЕК АНТИМИНЕРАЛ-ЛАКТО": "FFCCCC",
-        "ХИМИТЕК АНТИМИНИРАЛ-ФОРТЕ": "FFCCCC",
-        "ХИМИТЕК АНТИЗАПАХ-ФОРТЕ": "FFCCCC",
-        "ХИМИТЕК АНТИМИНЕРАЛ-CIP": "FFCCCC",
-        "ХИМИТЕК ИНТЕРЬЕР": "FFCCCC",
-        "ХИМИТЕК ИЗУМРУД 500": "FFCCCC",
-        "ХИМИТЕК КУХМАСТЕР-ОПОЛАСКИВАТЕЛЬ": "FFCCCC",
-        "ХИМИТЕК ПОЛИКОР®-ГЕЛЬ": "FFCCCC",
-        "ХИМИТЕК ПОЛИКОР®-ГЕЛЬ ДДС": "FFCCCC",
-        "ХИМИТЕК ПОЛИКОР-ГЕЛЬ® ДДС 180022": "FFCCCC",
-        "ХИМИТЕК ПОЛИКОР® ДДС": "FFCCCC",
-    }
 
     # Цвета для инвентаря
     INVENTORY_COLORS = {
@@ -205,6 +128,11 @@ class TechCardGenerator:
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
+    def _load_product_colors(self, session) -> dict:
+        """Загружает цвета средств из таблицы products."""
+        products = session.query(Product).all()
+        return {p.name: p.color for p in products if p.color}
+
     def _normalize_product_name(self, name: str) -> str:
         if not name:
             return ""
@@ -212,15 +140,6 @@ class TechCardGenerator:
         normalized = normalized.lower()
         normalized = re.sub(r'\s+', ' ', normalized)
         return normalized.strip()
-
-    def _get_color_for_product(self, product_name: str) -> str:
-        if not product_name:
-            return None
-        normalized_input = self._normalize_product_name(product_name)
-        for key, color in self.PRODUCT_COLORS.items():
-            if self._normalize_product_name(key) == normalized_input:
-                return color
-        return None
 
     def _set_cell_background(self, cell, hex_color: str):
         shading = OxmlElement('w:shd')
@@ -519,6 +438,7 @@ class TechCardGenerator:
 
         session = SessionLocal()
         category_priority = self._get_category_priority(session)
+        product_colors = self._load_product_colors(session)  # загрузка цветов из БД
 
         room_category_id = None
         if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
@@ -627,7 +547,6 @@ class TechCardGenerator:
                 rows_data.append(('category', cat_name, None))
                 for typ, display_name, instructions, normalized_name in items:
                     if typ == 'split':
-                        # Первый заголовок поверхности будет содержать название объекта
                         surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
                         first_surface = True
                         group_start_row = len(rows_data)
@@ -639,7 +558,6 @@ class TechCardGenerator:
                                         "внутренняя": "Внутренние поверхности",
                                         "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
                             if first_surface:
-                                # Включаем название объекта в строку заголовка
                                 rows_data.append(('section_header', sf_label, display_name))
                                 first_surface = False
                             else:
@@ -744,7 +662,6 @@ class TechCardGenerator:
 
                 # Split-объекты
                 for dn, split_instr, nn in split_items:
-                    # Проверка групповых заголовков
                     for group_set, header_text in self.GROUP_HEADERS.items():
                         if nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
@@ -817,7 +734,6 @@ class TechCardGenerator:
                         run.font.size = Pt(7)
 
             elif row_info[0] == 'section_header':
-                # Может содержать название объекта в row_info[2]
                 if len(row_info) > 2 and row_info[2] is not None:
                     self._set_cell_text(row.cells[0], row_info[2], bold=True)
                 else:
@@ -874,6 +790,21 @@ class TechCardGenerator:
                             if checklist_data.disinfection_method_text:
                                 extra_method_text = checklist_data.disinfection_method_text
 
+                    # === РАЗБИВКА КОНЦЕНТРАЦИИ ДЛЯ SPLIT-ОБЪЕКТОВ ===
+                    if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS and concentration and '%' in concentration:
+                        first_pct = concentration.find('%')
+                        second_pct = concentration.find('%', first_pct + 1)
+                        if second_pct != -1:
+                            before = concentration[:second_pct + 1]
+                            after = concentration[second_pct + 1:]
+                            if after.startswith(','):
+                                before += ','
+                                after = after[1:].lstrip()
+                            else:
+                                before += ','
+                            concentration = before
+                            extra_method_text = after if after else None
+
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], instr.instruction_number or "")
                     self._set_cell_text(row.cells[3], product_name if product_name else "_____________", bold=bool(product_name))
@@ -908,15 +839,15 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[10], instr.executor or "")
                     self._set_cell_text(row.cells[11], instr.control_method or "")
 
+                    # Использование цвета из БД
                     if product_name:
-                        color = self._get_color_for_product(product_name)
+                        color = product_colors.get(product_name)
                         if color:
                             self._set_cell_background(row.cells[3], color)
 
             current_row += 1
 
         # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
-        # 1. Объединение названий объектов (столбец 0)
         for group_start, group_end in merge_info_object:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -925,7 +856,6 @@ class TechCardGenerator:
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-        # 2. Объединение для обычных объектов (столбцы 2,8-11)
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -933,7 +863,6 @@ class TechCardGenerator:
                 for col in [2, 8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
-        # 3. Объединение внутри поверхностей split-объектов
         for group_start, group_end in surface_merge_info:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
