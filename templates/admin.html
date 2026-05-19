@@ -261,7 +261,13 @@
                             </div>
                         </div>
                         <div class="row">
-                            <div class="col-6"><label class="form-label-ct">Средство</label><input class="form-control-ct form-control-sm" v-model="instr.product_name"></div>
+                            <div class="col-6">
+                                <label class="form-label-ct">Средство</label>
+                                <select class="form-select-ct form-select-sm" v-model="instr.product_name">
+                                    <option value="">-- выберите --</option>
+                                    <option v-for="p in products" :value="p.name" v-text="p.name"></option>
+                                </select>
+                            </div>
                             <div class="col-6"><label class="form-label-ct">Метод уборки</label><input class="form-control-ct form-control-sm" v-model="instr.cleaning_technique"></div>
                         </div>
                         <div class="row">
