@@ -861,9 +861,9 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
                     # Используем новый метод для ячейки с названием средства
-                    self._set_product_cell(row.cells[3], product_name if product_name else "___________", bold=bool(product_name))
+                    self._set_product_cell(row.cells[3], product_name if product_name else "_____________________", bold=bool(product_name))
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration if concentration else "___________")
+                    self._set_cell_text(row.cells[5], concentration if concentration else "___________________")
 
                     if extra_method_text:
                         para = row.cells[5].paragraphs[0]
