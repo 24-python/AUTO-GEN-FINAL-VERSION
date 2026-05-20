@@ -17,7 +17,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from io import StringIO                     # <-- добавлено
 
-from flask import Flask, request, render_template, jsonify, send_file
+from flask import Flask, request, render_template, jsonify, send_file, Response
 
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
@@ -497,8 +497,9 @@ def api_import_products_csv():
 def api_export_products_csv():
     session = SessionLocal()
     products = session.query(Product).order_by(Product.name).all()
+    session.close()
 
-    si = StringIO()                       # <-- исправлено
+    si = StringIO()
     writer = csv.writer(si, delimiter=';')
     writer.writerow(['name', 'product_type', 'color'])
     for p in products:
@@ -507,10 +508,11 @@ def api_export_products_csv():
     output = si.getvalue().encode('utf-8-sig')
     si.close()
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
-        tmp.write(output)
-        return send_file(tmp.name, as_attachment=True, download_name='products_export.csv')
-
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=products_export.csv'}
+    )
 
 # ============================================================
 # API: КАТЕГОРИИ ПОМЕЩЕНИЙ (Room Categories)

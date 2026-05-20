@@ -150,6 +150,19 @@ class TechCardGenerator:
         "печи ротационные", "печи подовые", "багетницы"
     }
 
+    # Объекты, для которых разрешено несколько инструкций на один способ обработки
+    MULTI_METHOD_OBJECTS = {
+        "вешала", "внутрицеховая тара (вёдра ящики)", "гастроёмкости", "дежи", "доски",
+        "изотермические контейнеры (bigbox)", "инвентарь", "корзины для расстойки теста",
+        "крючки", "листы для выпечки а", "листы для выпечки н", "листы от шпилек",
+        "мусаты", "ножи", "оборотная тара", "отсадочные мешки", "передвижные ёмкости",
+        "посуда", "расстоечные термочехлы", "секачи", "силапеновые коврики",
+        "съёмные детали оборудования а", "съёмные детали оборудования н", "тележки",
+        "тележки подкатные", "формы для выпечки а", "формы для выпечки н",
+        "формы для выпечки с", "шампура", "шпильки", "ёмкости для перетаривания",
+        "ёмкости для сыпучих продуктов"
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
 
@@ -331,6 +344,42 @@ class TechCardGenerator:
         selected.sort(
             key=lambda x: self.CLEANING_METHOD_ORDER.get(
                 (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        return selected
+
+    def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
+        """Выбирает все подходящие инструкции (может быть несколько на один метод)."""
+        if not all_instructions:
+            return []
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            method = instr.cleaning_method or ""
+            by_method[method].append(instr)
+
+        selected = []
+        for method, instrs in by_method.items():
+            # Определяем лучший maintenance_type и room_category_id, доступные для этого метода
+            best_maints = []
+            # Проверяем специфичные для помещения
+            for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                specific = [i for i in instrs if (i.maintenance_type or "").lower() == maint_level and i.room_category_id == room_category_id]
+                if specific:
+                    best_maints.extend(specific)
+                    break
+            if not best_maints:
+                # Если нет специфичных, проверяем общие
+                for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                    common = [i for i in instrs if (i.maintenance_type or "").lower() == maint_level and i.room_category_id is None]
+                    if common:
+                        best_maints.extend(common)
+                        break
+            selected.extend(best_maints)
+
+        selected.sort(
+            key=lambda x: (
+                self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99),
+                self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99)
             )
         )
         return selected
@@ -600,6 +649,14 @@ class TechCardGenerator:
                             self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99)
                         )
                     )
+                    if instructions:
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                    else:
+                        unmatched_objects.append(display_name)
+                elif normalized_name in self.MULTI_METHOD_OBJECTS:
+                    # для объектов, допускающих несколько инструкций на один метод
+                    instructions = self._select_all_instructions_for_room(all_instrs, room_category_id)
                     if instructions:
                         category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
