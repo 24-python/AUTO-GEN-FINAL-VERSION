@@ -803,7 +803,7 @@ class TechCardGenerator:
 
             elif row_info[0] == 'section_header':
                 if len(row_info) > 2 and row_info[2] is not None:
-                    self._set_cell_text(row.cells[0], row_info[2], bold=True)
+                    self._set_cell_text(row.cells[0], row_info[2])
                 else:
                     self._set_cell_text(row.cells[0], "")
                 self._merge_cells_horizontal(row, 1, 11)
