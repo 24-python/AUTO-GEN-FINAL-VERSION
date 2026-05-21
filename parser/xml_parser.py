@@ -101,6 +101,12 @@ class SDTChecklistParser:
         'черный', 'красный', 'желтый', 'зеленый', 'синий', 'голубой'
     ]
 
+    # Заглушки, которые могут быть выбраны вместо цвета инвентаря
+    INVENTORY_COLOR_PLACEHOLDERS = {
+        "Выберите элемент.", "Не выбрано", "Выберите элемент",
+        "", None
+    }
+
     def __init__(self):
         self._category_cache = {}
 
@@ -390,16 +396,20 @@ class SDTChecklistParser:
 
         print(f"  📦 Найдено выпадающих списков: {len(all_values)}")
 
-        # Ищем цвет инвентаря среди всех значений
+        # Ищем цвет инвентаря среди всех значений, исключая заглушки
         inventory_color = None
         dropdown_values = []
         for v in all_values:
+            # Сначала проверяем, является ли значение реальным цветом
             if v.lower() in self.ALLOWED_INVENTORY_COLORS:
-                # Если нашли цвет инвентаря, запоминаем (первый найденный)
                 if inventory_color is None:
                     inventory_color = v.lower()
                     print(f"  🎨 Найден цвет инвентаря: {inventory_color}")
-                # Сам цвет не добавляем в список средств
+                # Реальный цвет не добавляем в список средств
+            elif v in self.INVENTORY_COLOR_PLACEHOLDERS:
+                # Это заглушка цвета – не добавляем в средства и не меняем цвет
+                if inventory_color is None:
+                    print(f"  🎨 Цвет инвентаря не выбран (заглушка), будет 'промаркированный'")
             else:
                 dropdown_values.append(v)
 
