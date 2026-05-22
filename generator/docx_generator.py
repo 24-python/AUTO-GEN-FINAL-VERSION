@@ -568,6 +568,26 @@ class TechCardGenerator:
                 for t in run._r.findall(qn('w:t')):
                     t.text = ''
 
+    def _is_valid_product_name(self, name: str) -> bool:
+        """Проверяет, похоже ли значение на название средства (не концентрация/метод/заглушка)."""
+        if not name:
+            return False
+        name_lower = name.lower().strip()
+        if name_lower in ('выберите элемент.', 'не выбрано', 'выберите элемент', ''):
+            return False
+        # Паттерны, указывающие на концентрацию или метод
+        patterns = [
+            r'%', r'дозирующая система', r'ручной', r'система', r'протирание',
+            r'щётка', r'ветошь', r'губка', r'погружение', r'замачивание',
+            r'орошение', r'распыление', r'протирка', r'обработка', r'раствор'
+        ]
+        for pattern in patterns:
+            if re.search(pattern, name_lower):
+                return False
+        if re.match(r'^[0-9.,%\-–\s]+$', name_lower):
+            return False
+        return True
+
     def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1,
                  enterprise_products_path: str = None) -> str:
         doc = Document(self.template_path)
@@ -874,7 +894,7 @@ class TechCardGenerator:
         row_to_remove = main_table.rows[start_row]
         tbl.remove(row_to_remove._tr)
 
-        # === ЗАПОЛНЕНИЕ С ПОДСТАНОВКОЙ СРЕДСТВ ИЗ ЧЕК-ЛИСТА ===
+        # === ЗАПОЛНЕНИЕ С НОВОЙ ЛОГИКОЙ ПОДСТАНОВКИ ===
         current_row = start_row
         for row_info in rows_data:
             row = main_table.rows[current_row]
@@ -912,63 +932,97 @@ class TechCardGenerator:
 
                 if instr:
                     cleaning_method = self._clean_text(instr.cleaning_method or "")
-                    product_name = self._clean_text(instr.product_name or "")
-                    concentration = self._clean_text(instr.concentration or "")
                     cleaning_technique = self._clean_text(instr.cleaning_technique or "")
-                    extra_method_text = None
 
-                    # === ПЕРЕОПРЕДЕЛЕНИЕ ИЗ ЧЕК-ЛИСТА ===
-                    if normalized_name and normalized_name not in self.SPLIT_SURFACE_OBJECTS:
-                        if cleaning_method == "мойка":
-                            if normalized_name in self.FLOOR_OBJECTS:
-                                if checklist_data.floor_cleaning_product and checklist_data.floor_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = self._clean_text(checklist_data.floor_cleaning_product)
-                                    concentration = self._clean_text(checklist_data.floor_cleaning_concentration)
-                                    extra_method_text = self._clean_text(checklist_data.floor_cleaning_method_text)
-                            elif normalized_name in self.THERMAL_OBJECTS:
-                                if checklist_data.thermal_cleaning_product and checklist_data.thermal_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = self._clean_text(checklist_data.thermal_cleaning_product)
-                                    concentration = self._clean_text(checklist_data.thermal_cleaning_concentration)
-                                    extra_method_text = self._clean_text(checklist_data.thermal_cleaning_method_text)
-                            elif normalized_name in self.GLASS_OBJECTS:
-                                if checklist_data.glass_cleaning_product and checklist_data.glass_cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = self._clean_text(checklist_data.glass_cleaning_product)
-                                    concentration = self._clean_text(checklist_data.glass_cleaning_concentration)
-                                    extra_method_text = self._clean_text(checklist_data.glass_cleaning_method_text)
-                            else:
-                                if checklist_data.cleaning_product and checklist_data.cleaning_product not in self.SKIP_PLACEHOLDERS:
-                                    product_name = self._clean_text(checklist_data.cleaning_product)
-                                    concentration = self._clean_text(checklist_data.cleaning_concentration)
-                                    extra_method_text = self._clean_text(checklist_data.cleaning_method_text)
-                        elif cleaning_method == "дезинфекция":
-                            if checklist_data.disinfection_product and checklist_data.disinfection_product not in self.SKIP_PLACEHOLDERS:
-                                product_name = self._clean_text(checklist_data.disinfection_product)
-                                concentration = self._clean_text(checklist_data.disinfection_concentration)
-                                extra_method_text = self._clean_text(checklist_data.disinfection_method_text)
+                    # ---------- НОВАЯ ЛОГИКА: определение product_name, concentration, extra_method ----------
+                    # 1. Исходные данные из БД (инструкции)
+                    db_product = self._clean_text(instr.product_name or "")
+                    db_concentration = self._clean_text(instr.concentration or "")
+                    db_method = self._clean_text(instr.application_method or "")
 
-                    # Если метод разведения не взят из чек-листа, берём из БД
-                    if not extra_method_text and instr.application_method:
-                        extra_method_text = self._clean_text(instr.application_method)
+                    # 2. Проверяем, есть ли валидное средство в БД
+                    has_db_product = db_product and self._is_valid_product_name(db_product)
 
+                    # 3. Если средство из БД валидно — используем его, а концентрацию и метод берём из БД (могут быть пустыми)
+                    if has_db_product:
+                        final_product = db_product
+                        final_concentration = db_concentration  # может быть ""
+                        final_extra_method = db_method  # может быть ""
+                    else:
+                        # 4. Если в БД нет валидного средства, пытаемся взять из чек-листа (только для не-split объектов)
+                        final_product = ""
+                        final_concentration = ""
+                        final_extra_method = ""
+                        if normalized_name and normalized_name not in self.SPLIT_SURFACE_OBJECTS:
+                            # Определяем источник в зависимости от метода
+                            checklist_product = None
+                            checklist_concentration = None
+                            checklist_method = None
+                            if cleaning_method == "мойка":
+                                if normalized_name in self.FLOOR_OBJECTS:
+                                    checklist_product = checklist_data.floor_cleaning_product
+                                    checklist_concentration = checklist_data.floor_cleaning_concentration
+                                    checklist_method = checklist_data.floor_cleaning_method_text
+                                elif normalized_name in self.THERMAL_OBJECTS:
+                                    checklist_product = checklist_data.thermal_cleaning_product
+                                    checklist_concentration = checklist_data.thermal_cleaning_concentration
+                                    checklist_method = checklist_data.thermal_cleaning_method_text
+                                elif normalized_name in self.GLASS_OBJECTS:
+                                    checklist_product = checklist_data.glass_cleaning_product
+                                    checklist_concentration = checklist_data.glass_cleaning_concentration
+                                    checklist_method = checklist_data.glass_cleaning_method_text
+                                else:
+                                    checklist_product = checklist_data.cleaning_product
+                                    checklist_concentration = checklist_data.cleaning_concentration
+                                    checklist_method = checklist_data.cleaning_method_text
+                            elif cleaning_method == "дезинфекция":
+                                checklist_product = checklist_data.disinfection_product
+                                checklist_concentration = checklist_data.disinfection_concentration
+                                checklist_method = checklist_data.disinfection_method_text
+
+                            # Проверяем валидность продукта из чек-листа
+                            if checklist_product and self._is_valid_product_name(checklist_product):
+                                final_product = self._clean_text(checklist_product)
+                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                                final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+
+                    # 5. Если после всех попыток продукт отсутствует — ставим прочерк в ячейку средства
+                    if not final_product:
+                        final_product = None  # Будет отображён как "_____________________"
+
+                    # ---------- ЗАПОЛНЕНИЕ ЯЧЕЕК ----------
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                    # Используем новый метод для ячейки с названием средства
-                    self._set_product_cell(row.cells[3], product_name if product_name else "_____________________", bold=bool(product_name))
+                    # Колонка 4: средство
+                    if final_product:
+                        self._set_product_cell(row.cells[3], final_product, bold=True)
+                    else:
+                        self._set_product_cell(row.cells[3], "_____________________", bold=False)
+
                     self._set_cell_text(row.cells[4], cleaning_technique)
-                    self._set_cell_text(row.cells[5], concentration if concentration else "___________________")
 
-                    if extra_method_text:
-                        para = row.cells[5].paragraphs[0]
-                        run_br = para.add_run()
-                        br = OxmlElement('w:br')
-                        run_br._r.append(br)
-                        run_text = para.add_run(extra_method_text)
-                        run_text.font.name = 'Arial'
-                        run_text.font.size = Pt(7)
+                    # Колонка 6: концентрация + метод разведения
+                    concat_text = ""
+                    if final_concentration:
+                        concat_text += final_concentration
+                    if final_extra_method:
+                        if concat_text:
+                            concat_text += " "
+                        concat_text += final_extra_method
+                    if concat_text:
+                        self._set_cell_text(row.cells[5], concat_text)
+                    else:
+                        # Прочерк, если есть средство ИЛИ метод из специального списка
+                        if final_product or cleaning_method in ("очистка", "очистка (обеспыливание поверхностей)", "стерилизация"):
+                            self._set_cell_text(row.cells[5], "___________________")
+                        else:
+                            self._set_cell_text(row.cells[5], "")
 
+                    # Температура и время выдержки остаются как раньше
                     self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                     self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
+                    # Инвентарь
                     if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS:
                         inv_text = self._clean_text(instr.inventory or "")
                         self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
@@ -985,9 +1039,9 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[10], self._clean_text(instr.executor or ""))
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
-                    # Использование цвета из БД
-                    if product_name:
-                        color = product_colors.get(product_name)
+                    # Цветное кодирование средства
+                    if final_product:
+                        color = product_colors.get(final_product)
                         if color:
                             self._set_cell_background(row.cells[3], color)
 
