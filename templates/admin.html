@@ -332,17 +332,17 @@
             </div>
         </div>
 
-        <!-- МОДАЛКА: Инструкции -->
+        <!-- МОДАЛКА: Инструкции (зафиксирован заголовок) -->
         <div class="modal-overlay" v-if="showInstructionsModal">
-            <div class="modal-content-ct" style="max-width:800px">
-                <div class="modal-header-ct">
+            <div class="modal-content-ct" style="max-width:800px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+                <div class="modal-header-ct" style="position:sticky; top:0; z-index:10; background:var(--ct-surface); flex-shrink:0;">
                     <span>Инструкции: <span v-text="editObject?.display_name"></span></span>
                     <div>
                         <button class="btn-ct-primary btn-sm me-2" @click="addInstruction"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         <button class="btn-ct-outline btn-sm" @click="showInstructionsModal = false">✕</button>
                     </div>
                 </div>
-                <div class="modal-body-ct">
+                <div class="modal-body-ct" style="flex:1; overflow-y:auto;">
                     <div v-if="currentInstructions.length === 0" class="text-muted text-center py-3">Нет инструкций. Нажмите «Добавить».</div>
 
                     <div v-for="(instr, idx) in currentInstructions" :key="idx" class="instruction-row" :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB'}">
