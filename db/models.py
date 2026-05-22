@@ -2,7 +2,7 @@
 Модели данных для базы данных технологических карт
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -58,6 +58,8 @@ class Object(Base):
     # Связи
     category = relationship("Category", back_populates="objects")
     instructions = relationship("Instruction", back_populates="object", cascade="all, delete-orphan")
+    object_property = relationship("ObjectProperty", back_populates="object", uselist=False, cascade="all, delete-orphan")
+    object_groups = relationship("ObjectGroup", back_populates="object", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Object(id={self.id}, normalized_name='{self.normalized_name}', display_name='{self.display_name}')>"
@@ -102,6 +104,7 @@ class Instruction(Base):
         ]
         return not any(field for field in fields if field and field.strip())
 
+
 class Product(Base):
     """Моющие и дезинфицирующие средства"""
     __tablename__ = 'products'
@@ -113,6 +116,52 @@ class Product(Base):
 
     def __repr__(self):
         return f"<Product(id={self.id}, name='{self.name}', type='{self.product_type}', color='{self.color}')>"
+
+
+# ========== НОВЫЕ ТАБЛИЦЫ КОНФИГУРАЦИИ ==========
+
+class ObjectProperty(Base):
+    """Флаги специальных свойств объектов"""
+    __tablename__ = 'object_properties'
+
+    id = Column(Integer, primary_key=True)
+    object_id = Column(Integer, ForeignKey('objects.id'), nullable=False, unique=True)
+    is_split = Column(Boolean, default=False)                 # SPLIT_SURFACE_OBJECTS
+    is_multi_method = Column(Boolean, default=False)          # MULTI_METHOD_OBJECTS
+    has_support_maintenance = Column(Boolean, default=False)  # SUPPORT_MAINTENANCE_OBJECTS
+    special_product_type = Column(String(20), nullable=True)  # floor, thermal, glass
+
+    object = relationship("Object", back_populates="object_property")
+
+    def __repr__(self):
+        return f"<ObjectProperty(object_id={self.object_id}, split={self.is_split}, multi={self.is_multi_method}, support={self.has_support_maintenance}, special={self.special_product_type})>"
+
+
+class ObjectGroup(Base):
+    """Группы объектов для заголовков (GROUP_HEADERS)"""
+    __tablename__ = 'object_groups'
+
+    id = Column(Integer, primary_key=True)
+    group_name = Column(String(250), nullable=False)          # Название группы (заголовок)
+    object_id = Column(Integer, ForeignKey('objects.id'), nullable=False)
+
+    object = relationship("Object", back_populates="object_groups")
+
+    def __repr__(self):
+        return f"<ObjectGroup(group='{self.group_name}', object_id={self.object_id})>"
+
+
+class CleaningMethodOrder(Base):
+    """Порядок способов обработки (CLEANING_METHOD_ORDER)"""
+    __tablename__ = 'cleaning_method_order'
+
+    id = Column(Integer, primary_key=True)
+    method_name = Column(String(150), nullable=False, unique=True)
+    sort_order = Column(Integer, nullable=False)
+
+    def __repr__(self):
+        return f"<CleaningMethodOrder(method='{self.method_name}', order={self.sort_order})>"
+
 
 # Индексы для ускорения поиска
 Index('idx_object_normalized_name', Object.normalized_name)

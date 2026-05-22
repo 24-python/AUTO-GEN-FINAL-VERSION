@@ -5,6 +5,7 @@
 Добавлена история генераций с пагинацией, админ-панель с CRUD, автоочистка загрузок.
 Добавлена поддержка категорий помещений (room_categories), maintenance_type и surface_type.
 Добавлена таблица средств (products) с управлением через API и импортом/экспортом CSV.
+Добавлены таблицы конфигурации генератора: object_properties, object_groups, cleaning_method_order.
 """
 
 import csv
@@ -15,14 +16,15 @@ import tempfile
 import time
 from pathlib import Path
 from datetime import datetime, timedelta
-from io import StringIO                     # <-- добавлено
+from io import StringIO
 
 from flask import Flask, request, render_template, jsonify, send_file, Response
 
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
-from db.models import Object, Instruction, Category as DBCategory, RoomCategory, Product
+from db.models import (Object, Instruction, Category as DBCategory, RoomCategory, Product,
+                       ObjectProperty, ObjectGroup, CleaningMethodOrder)
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
@@ -185,7 +187,7 @@ cleanup_old_files(app.config['UPLOAD_FOLDER'], 24)
 def initialize_database():
     """Проверяет и инициализирует БД при запуске"""
     from db.database import engine
-    from db.models import Base, Category as DBCategory, RoomCategory
+    from db.models import Base, Category as DBCategory, RoomCategory, CleaningMethodOrder
 
     # Создаём таблицы, если их нет
     Base.metadata.create_all(bind=engine)
@@ -209,6 +211,15 @@ def initialize_database():
             seed_room_categories()
         else:
             print(f"✅ БД содержит {rc_count} категорий помещений")
+
+        # Проверяем и заполняем порядок способов обработки
+        cm_count = session.query(CleaningMethodOrder).count()
+        if cm_count == 0:
+            print("📦 Первичная инициализация порядка способов обработки...")
+            from db.init_db import seed_cleaning_method_order
+            seed_cleaning_method_order()
+        else:
+            print(f"✅ БД содержит {cm_count} способов обработки")
     finally:
         session.close()
 
@@ -770,6 +781,435 @@ def api_delete_instruction(instr_id):
 
 
 # ============================================================
+# API: СВОЙСТВА ОБЪЕКТОВ (ObjectProperty)
+# ============================================================
+
+@app.route('/api/object-properties')
+def api_object_properties():
+    session = SessionLocal()
+    props = session.query(ObjectProperty).all()
+    result = []
+    for p in props:
+        obj = session.query(Object).get(p.object_id)
+        result.append({
+            'id': p.id,
+            'object_id': p.object_id,
+            'object_name': obj.display_name if obj else '',
+            'normalized_name': obj.normalized_name if obj else '',
+            'is_split': p.is_split,
+            'is_multi_method': p.is_multi_method,
+            'has_support_maintenance': p.has_support_maintenance,
+            'special_product_type': p.special_product_type or ''
+        })
+    session.close()
+    return jsonify({'object_properties': result})
+
+
+@app.route('/api/object-properties/<int:prop_id>', methods=['PUT'])
+def api_update_object_property(prop_id):
+    data = request.get_json()
+    session = SessionLocal()
+    prop = session.query(ObjectProperty).get(prop_id)
+    if prop:
+        for field in ['is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type']:
+            if field in data:
+                setattr(prop, field, data[field])
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/object-properties/export_csv')
+def api_export_object_properties_csv():
+    session = SessionLocal()
+    props = session.query(ObjectProperty).all()
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['object_id', 'normalized_name', 'is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type'])
+    for p in props:
+        obj = session.query(Object).get(p.object_id)
+        writer.writerow([
+            p.object_id,
+            obj.normalized_name if obj else '',
+            p.is_split,
+            p.is_multi_method,
+            p.has_support_maintenance,
+            p.special_product_type or ''
+        ])
+    session.close()
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=object_properties_export.csv'}
+    )
+
+
+@app.route('/api/object-properties/import_csv', methods=['POST'])
+def api_import_object_properties_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({'success': False, 'error': 'Файл должен быть CSV'}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_obj_props_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    updated = 0
+    errors = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                obj_id = row.get('object_id', '').strip()
+                if not obj_id:
+                    continue
+                try:
+                    obj_id = int(obj_id)
+                except ValueError:
+                    errors.append(f"Некорректный object_id: {row.get('object_id')}")
+                    continue
+
+                obj = session.query(Object).get(obj_id)
+                if not obj:
+                    errors.append(f"Объект с ID {obj_id} не найден")
+                    continue
+
+                prop = session.query(ObjectProperty).filter_by(object_id=obj_id).first()
+                if prop:
+                    prop.is_split = row.get('is_split', 'false').lower() in ('true', '1', 'yes')
+                    prop.is_multi_method = row.get('is_multi_method', 'false').lower() in ('true', '1', 'yes')
+                    prop.has_support_maintenance = row.get('has_support_maintenance', 'false').lower() in ('true', '1', 'yes')
+                    prop.special_product_type = row.get('special_product_type', '').strip() or None
+                    updated += 1
+                else:
+                    prop = ObjectProperty(
+                        object_id=obj_id,
+                        is_split=row.get('is_split', 'false').lower() in ('true', '1', 'yes'),
+                        is_multi_method=row.get('is_multi_method', 'false').lower() in ('true', '1', 'yes'),
+                        has_support_maintenance=row.get('has_support_maintenance', 'false').lower() in ('true', '1', 'yes'),
+                        special_product_type=row.get('special_product_type', '').strip() or None
+                    )
+                    session.add(prop)
+                    created += 1
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({
+        'success': True,
+        'created': created,
+        'updated': updated,
+        'errors': errors
+    })
+
+
+# ============================================================
+# API: ГРУППЫ ОБЪЕКТОВ (ObjectGroup)
+# ============================================================
+
+@app.route('/api/object-groups')
+def api_object_groups():
+    session = SessionLocal()
+    groups = session.query(ObjectGroup).all()
+    result = []
+    for g in groups:
+        obj = session.query(Object).get(g.object_id)
+        result.append({
+            'id': g.id,
+            'group_name': g.group_name,
+            'object_id': g.object_id,
+            'object_name': obj.display_name if obj else '',
+            'normalized_name': obj.normalized_name if obj else ''
+        })
+    session.close()
+    return jsonify({'object_groups': result})
+
+
+@app.route('/api/object-groups', methods=['POST'])
+def api_create_object_group():
+    data = request.get_json()
+    group_name = data.get('group_name', '').strip()
+    object_id = data.get('object_id')
+    if not group_name or not object_id:
+        return jsonify({'success': False, 'error': 'group_name и object_id обязательны'}), 400
+
+    session = SessionLocal()
+    # Проверка существования объекта
+    obj = session.query(Object).get(object_id)
+    if not obj:
+        session.close()
+        return jsonify({'success': False, 'error': 'Объект не найден'}), 404
+
+    group = ObjectGroup(group_name=group_name, object_id=object_id)
+    session.add(group)
+    session.commit()
+    session.refresh(group)
+    gid = group.id
+    session.close()
+    return jsonify({'success': True, 'id': gid})
+
+
+@app.route('/api/object-groups/<int:group_id>', methods=['PUT'])
+def api_update_object_group(group_id):
+    data = request.get_json()
+    session = SessionLocal()
+    group = session.query(ObjectGroup).get(group_id)
+    if group:
+        if 'group_name' in data:
+            group.group_name = data['group_name'].strip()
+        if 'object_id' in data:
+            # Проверка существования нового объекта
+            obj = session.query(Object).get(data['object_id'])
+            if not obj:
+                session.close()
+                return jsonify({'success': False, 'error': 'Объект не найден'}), 404
+            group.object_id = data['object_id']
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/object-groups/<int:group_id>', methods=['DELETE'])
+def api_delete_object_group(group_id):
+    session = SessionLocal()
+    group = session.query(ObjectGroup).get(group_id)
+    if group:
+        session.delete(group)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/object-groups/export_csv')
+def api_export_object_groups_csv():
+    session = SessionLocal()
+    groups = session.query(ObjectGroup).all()
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['group_name', 'object_id', 'normalized_name'])
+    for g in groups:
+        obj = session.query(Object).get(g.object_id)
+        writer.writerow([g.group_name, g.object_id, obj.normalized_name if obj else ''])
+    session.close()
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=object_groups_export.csv'}
+    )
+
+
+@app.route('/api/object-groups/import_csv', methods=['POST'])
+def api_import_object_groups_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({'success': False, 'error': 'Файл должен быть CSV'}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_obj_groups_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    errors = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                group_name = row.get('group_name', '').strip()
+                obj_id_str = row.get('object_id', '').strip()
+                if not group_name or not obj_id_str:
+                    continue
+                try:
+                    obj_id = int(obj_id_str)
+                except ValueError:
+                    errors.append(f"Некорректный object_id: {obj_id_str}")
+                    continue
+
+                obj = session.query(Object).get(obj_id)
+                if not obj:
+                    errors.append(f"Объект с ID {obj_id} не найден")
+                    continue
+
+                # Проверяем на дубликат
+                existing = session.query(ObjectGroup).filter_by(group_name=group_name, object_id=obj_id).first()
+                if not existing:
+                    group = ObjectGroup(group_name=group_name, object_id=obj_id)
+                    session.add(group)
+                    created += 1
+                # Если существует, можно пропустить или обновить – просто пропускаем
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({
+        'success': True,
+        'created': created,
+        'errors': errors
+    })
+
+
+# ============================================================
+# API: ПОРЯДОК МЕТОДОВ ОЧИСТКИ (CleaningMethodOrder)
+# ============================================================
+
+@app.route('/api/cleaning-methods')
+def api_cleaning_methods():
+    session = SessionLocal()
+    methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
+    result = [{'id': m.id, 'method_name': m.method_name, 'sort_order': m.sort_order} for m in methods]
+    session.close()
+    return jsonify({'cleaning_methods': result})
+
+
+@app.route('/api/cleaning-methods', methods=['POST'])
+def api_create_cleaning_method():
+    data = request.get_json()
+    name = data.get('method_name', '').strip()
+    order = data.get('sort_order', 99)
+    if not name:
+        return jsonify({'success': False, 'error': 'method_name обязателен'}), 400
+
+    session = SessionLocal()
+    existing = session.query(CleaningMethodOrder).filter(CleaningMethodOrder.method_name == name).first()
+    if existing:
+        session.close()
+        return jsonify({'success': False, 'error': 'Такой метод уже существует'}), 400
+
+    method = CleaningMethodOrder(method_name=name, sort_order=order)
+    session.add(method)
+    session.commit()
+    session.refresh(method)
+    mid = method.id
+    session.close()
+    return jsonify({'success': True, 'id': mid})
+
+
+@app.route('/api/cleaning-methods/<int:method_id>', methods=['PUT'])
+def api_update_cleaning_method(method_id):
+    data = request.get_json()
+    session = SessionLocal()
+    method = session.query(CleaningMethodOrder).get(method_id)
+    if method:
+        if 'method_name' in data:
+            method.method_name = data['method_name'].strip()
+        if 'sort_order' in data:
+            method.sort_order = data['sort_order']
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/cleaning-methods/<int:method_id>', methods=['DELETE'])
+def api_delete_cleaning_method(method_id):
+    session = SessionLocal()
+    method = session.query(CleaningMethodOrder).get(method_id)
+    if method:
+        session.delete(method)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
+@app.route('/api/cleaning-methods/export_csv')
+def api_export_cleaning_methods_csv():
+    session = SessionLocal()
+    methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['method_name', 'sort_order'])
+    for m in methods:
+        writer.writerow([m.method_name, m.sort_order])
+    session.close()
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=cleaning_methods_export.csv'}
+    )
+
+
+@app.route('/api/cleaning-methods/import_csv', methods=['POST'])
+def api_import_cleaning_methods_csv():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Нет файла'}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({'success': False, 'error': 'Файл должен быть CSV'}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_cleaning_methods_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    updated = 0
+    errors = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                name = row.get('method_name', '').strip()
+                order = int(row.get('sort_order', 99))
+                if not name:
+                    continue
+
+                existing = session.query(CleaningMethodOrder).filter(CleaningMethodOrder.method_name == name).first()
+                if existing:
+                    existing.sort_order = order
+                    updated += 1
+                else:
+                    method = CleaningMethodOrder(method_name=name, sort_order=order)
+                    session.add(method)
+                    created += 1
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({
+        'success': True,
+        'created': created,
+        'updated': updated,
+        'errors': errors
+    })
+
+
+# ============================================================
 # API: ЭКСПОРТ CSV (ОБЪЕКТЫ)
 # ============================================================
 
@@ -789,7 +1229,7 @@ def api_export_csv():
         'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
         'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
-        'cleaning_technique', 'concentration', 'application_method',  # <-- добавлено
+        'cleaning_technique', 'concentration', 'application_method',
         'temperature', 'exposure_time', 'inventory',
         'frequency', 'executor', 'control_method', 'surface_type'
     ])
@@ -806,7 +1246,7 @@ def api_export_csv():
                     instr.cleaning_method or '', instr.instruction_number or '',
                     instr.product_name or '', instr.cleaning_technique or '',
                     instr.concentration or '',
-                    instr.application_method or '',  # <-- добавлено
+                    instr.application_method or '',
                     instr.temperature or '',
                     instr.exposure_time or '', instr.inventory or '',
                     instr.frequency or '', instr.executor or '', instr.control_method or '',

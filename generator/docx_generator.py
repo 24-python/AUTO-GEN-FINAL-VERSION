@@ -6,7 +6,9 @@ from docx.oxml.ns import qn
 from docx.shared import Pt
 from pathlib import Path
 from parser.models import ChecklistData
-from db.models import Instruction, Category as DBCategory, Object as DBObject, RoomCategory, Product
+from db.models import (Instruction, Category as DBCategory, Object as DBObject,
+                       RoomCategory, Product, ObjectProperty, ObjectGroup,
+                       CleaningMethodOrder)
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -27,20 +29,6 @@ class TechCardGenerator:
         "голубой": "CCECFF",
     }
 
-    # Порядок способов обработки
-    CLEANING_METHOD_ORDER = {
-        "прочистка": 1,
-        "очистка": 2,
-        "очистка (обеспыливание поверхностей)": 3,
-        "удаление маркировки": 4,
-        "мойка": 5,
-        "мойка жаропрочного стекла": 6,
-        "ополаскивание": 7,
-        "стерилизация": 8,
-        "дезинфекция": 9,
-        "машинная стирка": 10,
-    }
-
     # Порядок уровней обработки для вывода
     LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
 
@@ -50,121 +38,55 @@ class TechCardGenerator:
         "", None
     }
 
-    # Объекты для специальных моющих средств
-    FLOOR_OBJECTS = {"пол", "трапы"}
-    GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
-    THERMAL_OBJECTS = {
-        "плиты индук", "плиты элек", "плиты газ",
-        "варочные котлы", "сковороды", "фритюры", "грили",
-        "пароконвектоматы", "печи подовые", "печи ротационные",
-        "расстоечные шкафы", "вафельницы"
-    }
-
-    # Объекты с поддерживающей обработкой
-    SUPPORT_MAINTENANCE_OBJECTS = {
-        "прибор кисл теста",
-        "бисквиторезки",
-        "блендеры",
-        "вакуумные роторные шприцы",
-        "водяные бани",
-        "депозитор волюметрический",
-        "дозатор для геля (пульверизатор)",
-        "дозаторы для жидкостей",
-        "дробилки",
-        "измельчители",
-        "картофелечистки",
-        "машина для резки конд изделий",
-        "металлодетектор",
-        "миксеры планетарные",
-        "минифилы (дозаторы крема)",
-        "овощерезки",
-        "овощечистки",
-        "отсадочные машины",
-        "пневматические распылители",
-        "прессы для теста",
-        "просеиватели мука",
-        "просеиватели сахар",
-        "протирочные машины",
-        "распылители для желе и сиропов",
-        "рентгеновские системы контроля",
-        "слайсера",
-        "солодоварки",
-        "тарталетницы",
-        "термощупы",
-        "тестоделители",
-        "тестомесы",
-        "тестоокруглители",
-        "тестораскатки",
-        "ультразвуковые нарезки",
-        "ферментаторы",
-        "шприц-дозатор начинки",
-        "весы напольные",
-        "весы настольные",
-        "производственные столы д",
-        "производственные столы н",
-    }
-
-    # Групповые заголовки для режима 3
-    GROUP_HEADERS = {
-        frozenset({"весы напольные", "весы настольные"}): "Санитарная обработка средств измерений",
-        frozenset({
-            "прибор кисл теста", "бисквиторезки", "блендеры", "вакуумные роторные шприцы",
-            "водяные бани", "депозитор волюметрический", "дозатор для геля (пульверизатор)",
-            "дозаторы для жидкостей", "дробилки", "измельчители", "картофелечистки",
-            "машина для резки конд изделий", "металлодетектор", "миксеры планетарные",
-            "минифилы (дозаторы крема)", "овощерезки", "овощечистки", "отсадочные машины",
-            "пневматические распылители", "прессы для теста", "просеиватели мука",
-            "просеиватели сахар", "протирочные машины", "распылители для желе и сиропов",
-            "рентгеновские системы контроля", "слайсера", "солодоварки", "тарталетницы",
-            "термощупы", "тестоделители", "тестомесы", "тестоокруглители", "тестораскатки",
-            "ультразвуковые нарезки", "ферментаторы", "шприц-дозатор начинки",
-            "пмм купольная", "пмм туннельная", "таромоечная машина",
-            "стиральные машины", "сушильные машины", "холодильная витрина", "ледогенератор",
-            "морозильный ларь", "холод шкафы", "холод столы"
-        }): "Санитарная обработка технологического оборудования",
-        frozenset({
-            "производственные столы д", "производственные столы н"}): "Санитарная обработка рабочих поверхностей",
-        frozenset({
-            "авд", "ведра", "ветошь", "мопы", "поломоечная машина", "пылесосы", "сгоны",
-            "тележки уборочные", "щётки"
-        }): "Санитарная обработка уборочного инвентаря и т.д.",
-        frozenset({
-            "вешала", "внутрицеховая тара (вёдра ящики)", "гастроёмкости", "дежи", "доски",
-            "изотермические контейнеры (bigbox)", "инвентарь", "корзины для расстойки теста",
-            "крючки", "листы для выпечки а", "листы для выпечки н", "листы от шпилек",
-            "мусаты", "ножи", "оборотная тара", "отсадочные мешки", "передвижные ёмкости",
-            "посуда", "расстоечные термочехлы", "секачи", "силапеновые коврики",
-            "съёмные детали оборудования а", "съёмные детали оборудования н", "тележки",
-            "тележки подкатные", "формы для выпечки а", "формы для выпечки н",
-            "формы для выпечки с", "шампура", "шпильки", "ёмкости для перетаривания",
-            "ёмкости для сыпучих продуктов"
-        }): "Санитарная обработка производственного инвентаря, посуды",
-    }
-
-    # Объекты с разделением на внешние/внутренние поверхности
-    SPLIT_SURFACE_OBJECTS = {
-        "холод шкафы", "камеры мороз", "камеры шок замор",
-        "морозильный ларь", "холод столы", "пароконвектоматы",
-        "ледогенератор", "ферментаторы", "солодоварки",
-        "пмм купольная", "пмм туннельная", "таромоечная машина",
-        "печи ротационные", "печи подовые", "багетницы", "аппарат для приготовления фрикаделек"
-    }
-
-    # Объекты, для которых разрешено несколько инструкций на один способ обработки
-    MULTI_METHOD_OBJECTS = {
-        "вешала", "внутрицеховая тара (вёдра ящики)", "гастроёмкости", "дежи", "доски",
-        "изотермические контейнеры (bigbox)", "инвентарь", "корзины для расстойки теста",
-        "крючки", "листы для выпечки а", "листы для выпечки н", "листы от шпилек",
-        "мусаты", "ножи", "оборотная тара", "отсадочные мешки", "передвижные ёмкости",
-        "посуда", "расстоечные термочехлы", "секачи", "силапеновые коврики",
-        "съёмные детали оборудования а", "съёмные детали оборудования н", "тележки",
-        "тележки подкатные", "формы для выпечки а", "формы для выпечки н",
-        "формы для выпечки с", "шампура", "шпильки", "ёмкости для перетаривания",
-        "ёмкости для сыпучих продуктов"
-    }
-
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
+        # Кэши конфигурации, загружаемые из БД
+        self._config_loaded = False
+
+    def _load_config(self, session):
+        """Загружает конфигурацию из БД (CleaningMethodOrder, ObjectProperty, ObjectGroup)"""
+        if self._config_loaded:
+            return
+
+        # 1. Порядок методов очистки
+        methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
+        self.cleaning_method_order = {m.method_name: m.sort_order for m in methods}
+
+        # 2. Свойства объектов
+        props = session.query(ObjectProperty).join(DBObject).all()
+        self.split_objects = set()
+        self.multi_method_objects = set()
+        self.support_objects = set()
+        self.floor_objects = set()
+        self.glass_objects = set()
+        self.thermal_objects = set()
+
+        for prop in props:
+            name = prop.object.normalized_name
+            if prop.is_split:
+                self.split_objects.add(name)
+            if prop.is_multi_method:
+                self.multi_method_objects.add(name)
+            if prop.has_support_maintenance:
+                self.support_objects.add(name)
+            if prop.special_product_type == 'floor':
+                self.floor_objects.add(name)
+            elif prop.special_product_type == 'glass':
+                self.glass_objects.add(name)
+            elif prop.special_product_type == 'thermal':
+                self.thermal_objects.add(name)
+
+        # 3. Группы объектов
+        groups = session.query(ObjectGroup).all()
+        self.group_headers = {}  # frozenset -> header
+        temp_groups = defaultdict(set)
+        for g in groups:
+            if g.object:
+                temp_groups[g.group_name].add(g.object.normalized_name)
+        for header, obj_set in temp_groups.items():
+            self.group_headers[frozenset(obj_set)] = header
+
+        self._config_loaded = True
 
     def _load_product_colors(self, session) -> dict:
         """Загружает цвета средств из таблицы products."""
@@ -278,7 +200,7 @@ class TechCardGenerator:
         signatures = []
         sorted_instructions = sorted(
             instructions,
-            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+            key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
             )
         )
@@ -342,7 +264,7 @@ class TechCardGenerator:
             if best:
                 selected.append(best)
         selected.sort(
-            key=lambda x: self.CLEANING_METHOD_ORDER.get(
+            key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
             )
         )
@@ -384,7 +306,7 @@ class TechCardGenerator:
             method_groups[method].append(instr)
 
         # Определяем порядок методов согласно CLEANING_METHOD_ORDER
-        order_func = lambda m: self.CLEANING_METHOD_ORDER.get(m.lower().strip(), 99)
+        order_func = lambda m: self.cleaning_method_order.get(m.lower().strip(), 99)
         ordered_methods = sorted(method_groups.keys(), key=order_func)
 
         result = []
@@ -609,6 +531,9 @@ class TechCardGenerator:
             self._clear_cell_text(warning_row.cells[0])
 
         session = SessionLocal()
+        # Загрузка конфигурации из БД
+        self._load_config(session)
+
         category_priority = self._get_category_priority(session)
         product_colors = self._load_product_colors(session)
 
@@ -652,14 +577,14 @@ class TechCardGenerator:
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
 
-                if normalized_name in self.SPLIT_SURFACE_OBJECTS:
+                if normalized_name in self.split_objects:
                     instructions = self._select_split_instructions(all_instrs, room_category_id)
                     if instructions:
                         category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name))
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
                     else:
                         unmatched_objects.append(display_name)
-                elif normalized_name in self.SUPPORT_MAINTENANCE_OBJECTS:
+                elif normalized_name in self.support_objects:
                     by_method = defaultdict(list)
                     for instr in all_instrs:
                         method = instr.cleaning_method or ""
@@ -682,7 +607,7 @@ class TechCardGenerator:
                     instructions.sort(
                         key=lambda x: (
                             self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
-                            self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99)
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
                         )
                     )
                     if instructions:
@@ -690,8 +615,7 @@ class TechCardGenerator:
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
                     else:
                         unmatched_objects.append(display_name)
-                elif normalized_name in self.MULTI_METHOD_OBJECTS:
-                    # для объектов, допускающих несколько инструкций на один метод
+                elif normalized_name in self.multi_method_objects:
                     instructions = self._select_all_instructions_for_room(all_instrs, room_category_id)
                     if instructions:
                         category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
@@ -713,9 +637,9 @@ class TechCardGenerator:
         session.close()
 
         rows_data = []
-        merge_info_object = []    # для объединения названий объектов (столбец 0)
-        merge_info_columns = []   # для объединения колонок 2,8-11 у обычных объектов
-        surface_merge_info = []   # для объединения колонок внутри поверхностей split-объектов
+        merge_info_object = []
+        merge_info_columns = []
+        surface_merge_info = []
 
         if mode == 1:
             sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
@@ -750,7 +674,7 @@ class TechCardGenerator:
                                 surface_merge_info.append((surface_start, surface_end))
                         group_end_row = len(rows_data) - 1
                         merge_info_object.append((group_start_row, group_end_row))
-                    else:  # normal
+                    else:
                         group_start_row = len(rows_data)
                         if instructions:
                             for i, instr in enumerate(instructions):
@@ -765,7 +689,7 @@ class TechCardGenerator:
         elif mode == 2:
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
             for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
-                if isinstance(instructions, dict):  # split
+                if isinstance(instructions, dict):
                     surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
                     first_surface = True
                     group_start_row = len(rows_data)
@@ -789,7 +713,7 @@ class TechCardGenerator:
                             surface_merge_info.append((surface_start, surface_end))
                     group_end_row = len(rows_data) - 1
                     merge_info_object.append((group_start_row, group_end_row))
-                else:  # normal
+                else:
                     group_start_row = len(rows_data)
                     if instructions:
                         for i, instr in enumerate(instructions):
@@ -812,7 +736,6 @@ class TechCardGenerator:
                 normal_items = [(dn, instr, nn) for dn, instr, nn in items if not isinstance(instr, dict)]
                 split_items = [(dn, instr, nn) for dn, instr, nn in items if isinstance(instr, dict)]
 
-                # Обычные объекты
                 groups = {}
                 for dn, instr, nn in normal_items:
                     signature = self._get_instruction_signature(instr)
@@ -822,7 +745,7 @@ class TechCardGenerator:
 
                 for sig, data in groups.items():
                     current_nn = data["normalized_name"]
-                    for group_set, header_text in self.GROUP_HEADERS.items():
+                    for group_set, header_text in self.group_headers.items():
                         if current_nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
                             inserted_headers.add(group_set)
@@ -840,9 +763,8 @@ class TechCardGenerator:
                         merge_info_object.append((group_start_row, group_end_row))
                         merge_info_columns.append((group_start_row, group_end_row))
 
-                # Split-объекты
                 for dn, split_instr, nn in split_items:
-                    for group_set, header_text in self.GROUP_HEADERS.items():
+                    for group_set, header_text in self.group_headers.items():
                         if nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
                             inserted_headers.add(group_set)
@@ -890,7 +812,6 @@ class TechCardGenerator:
             main_table.add_row()
             self._clone_row_formatting(main_table, start_row, len(main_table.rows) - 1)
 
-        # Удаляем эталонную строку
         row_to_remove = main_table.rows[start_row]
         tbl.remove(row_to_remove._tr)
 
@@ -935,39 +856,34 @@ class TechCardGenerator:
                     cleaning_technique = self._clean_text(instr.cleaning_technique or "")
 
                     # ---------- НОВАЯ ЛОГИКА: определение product_name, concentration, extra_method ----------
-                    # 1. Исходные данные из БД (инструкции)
                     db_product = self._clean_text(instr.product_name or "")
                     db_concentration = self._clean_text(instr.concentration or "")
                     db_method = self._clean_text(instr.application_method or "")
 
-                    # 2. Проверяем, есть ли валидное средство в БД
                     has_db_product = db_product and self._is_valid_product_name(db_product)
 
-                    # 3. Если средство из БД валидно — используем его, а концентрацию и метод берём из БД (могут быть пустыми)
                     if has_db_product:
                         final_product = db_product
-                        final_concentration = db_concentration  # может быть ""
-                        final_extra_method = db_method  # может быть ""
+                        final_concentration = db_concentration
+                        final_extra_method = db_method
                     else:
-                        # 4. Если в БД нет валидного средства, пытаемся взять из чек-листа (только для не-split объектов)
                         final_product = ""
                         final_concentration = ""
                         final_extra_method = ""
-                        if normalized_name and normalized_name not in self.SPLIT_SURFACE_OBJECTS:
-                            # Определяем источник в зависимости от метода
+                        if normalized_name and normalized_name not in self.split_objects:
                             checklist_product = None
                             checklist_concentration = None
                             checklist_method = None
                             if cleaning_method == "мойка":
-                                if normalized_name in self.FLOOR_OBJECTS:
+                                if normalized_name in self.floor_objects:
                                     checklist_product = checklist_data.floor_cleaning_product
                                     checklist_concentration = checklist_data.floor_cleaning_concentration
                                     checklist_method = checklist_data.floor_cleaning_method_text
-                                elif normalized_name in self.THERMAL_OBJECTS:
+                                elif normalized_name in self.thermal_objects:
                                     checklist_product = checklist_data.thermal_cleaning_product
                                     checklist_concentration = checklist_data.thermal_cleaning_concentration
                                     checklist_method = checklist_data.thermal_cleaning_method_text
-                                elif normalized_name in self.GLASS_OBJECTS:
+                                elif normalized_name in self.glass_objects:
                                     checklist_product = checklist_data.glass_cleaning_product
                                     checklist_concentration = checklist_data.glass_cleaning_concentration
                                     checklist_method = checklist_data.glass_cleaning_method_text
@@ -980,20 +896,16 @@ class TechCardGenerator:
                                 checklist_concentration = checklist_data.disinfection_concentration
                                 checklist_method = checklist_data.disinfection_method_text
 
-                            # Проверяем валидность продукта из чек-листа
                             if checklist_product and self._is_valid_product_name(checklist_product):
                                 final_product = self._clean_text(checklist_product)
                                 final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
                                 final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
 
-                    # 5. Если после всех попыток продукт отсутствует — ставим прочерк в ячейку средства
                     if not final_product:
-                        final_product = None  # Будет отображён как "_____________________"
+                        final_product = None
 
-                    # ---------- ЗАПОЛНЕНИЕ ЯЧЕЕК ----------
                     self._set_cell_text(row.cells[1], cleaning_method)
                     self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                    # Колонка 4: средство
                     if final_product:
                         self._set_product_cell(row.cells[3], final_product, bold=True)
                     else:
@@ -1001,7 +913,6 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[4], cleaning_technique)
 
-                    # Колонка 6: концентрация + метод разведения
                     concat_text = ""
                     if final_concentration:
                         concat_text += final_concentration
@@ -1012,18 +923,15 @@ class TechCardGenerator:
                     if concat_text:
                         self._set_cell_text(row.cells[5], concat_text)
                     else:
-                        # Прочерк, если есть средство ИЛИ метод из специального списка
                         if final_product or cleaning_method in ("очистка", "очистка (обеспыливание поверхностей)", "стерилизация"):
                             self._set_cell_text(row.cells[5], "___________________")
                         else:
                             self._set_cell_text(row.cells[5], "")
 
-                    # Температура и время выдержки остаются как раньше
                     self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                     self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
-                    # Инвентарь
-                    if normalized_name and normalized_name in self.SPLIT_SURFACE_OBJECTS:
+                    if normalized_name and normalized_name in self.split_objects:
                         inv_text = self._clean_text(instr.inventory or "")
                         self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
                     else:
@@ -1039,7 +947,6 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[10], self._clean_text(instr.executor or ""))
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
-                    # Цветное кодирование средства
                     if final_product:
                         color = product_colors.get(final_product)
                         if color:

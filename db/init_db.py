@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import engine, SessionLocal
-from db.models import Base, Category, RoomCategory
+from db.models import Base, Category, RoomCategory, CleaningMethodOrder
 
 
 def create_tables():
@@ -94,6 +94,41 @@ def seed_room_categories():
     print(f"✅ Добавлено {len(room_categories)} категорий помещений")
 
 
+def seed_cleaning_method_order():
+    """Заполнение порядка способов обработки (CleaningMethodOrder)"""
+    print("🔄 Проверка порядка способов обработки...")
+
+    session = SessionLocal()
+
+    existing_count = session.query(CleaningMethodOrder).count()
+    if existing_count > 0:
+        print(f"✅ Порядок способов обработки уже задан ({existing_count} методов), пропускаем")
+        session.close()
+        return
+
+    methods = [
+        ("прочистка", 1),
+        ("очистка", 2),
+        ("очистка (обеспыливание поверхностей)", 3),
+        ("удаление маркировки", 4),
+        ("мойка", 5),
+        ("мойка жаропрочного стекла", 6),
+        ("ополаскивание", 7),
+        ("стерилизация", 8),
+        ("дезинфекция", 9),
+        ("машинная стирка", 10),
+    ]
+
+    for name, sort_order in methods:
+        m = CleaningMethodOrder(method_name=name, sort_order=sort_order)
+        session.add(m)
+        print(f"  ➕ {name}: {sort_order}")
+
+    session.commit()
+    session.close()
+    print(f"✅ Добавлено {len(methods)} методов")
+
+
 def main():
     print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
     print("=" * 50)
@@ -101,6 +136,7 @@ def main():
     create_tables()
     seed_categories()
     seed_room_categories()
+    seed_cleaning_method_order()
 
     print(f"\n📁 Файл БД: {engine.url.database}")
     print("🎉 Готово!")
