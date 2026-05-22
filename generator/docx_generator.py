@@ -349,7 +349,9 @@ class TechCardGenerator:
         return selected
 
     def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
-        """Выбирает все подходящие инструкции (может быть несколько на один метод)."""
+        """Выбирает все подходящие инструкции (может быть несколько на один метод).
+        Порядок вывода: чередование методов согласно CLEANING_METHOD_ORDER.
+        """
         if not all_instructions:
             return []
         by_method = defaultdict(list)
@@ -359,7 +361,6 @@ class TechCardGenerator:
 
         selected = []
         for method, instrs in by_method.items():
-            # Определяем лучший maintenance_type и room_category_id, доступные для этого метода
             best_maints = []
             # Проверяем специфичные для помещения
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
@@ -376,13 +377,28 @@ class TechCardGenerator:
                         break
             selected.extend(best_maints)
 
-        selected.sort(
-            key=lambda x: (
-                self.CLEANING_METHOD_ORDER.get((x.cleaning_method or "").lower().strip(), 99),
-                self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99)
-            )
-        )
-        return selected
+        # Чередование методов: группируем инструкции по методам
+        method_groups = defaultdict(list)
+        for instr in selected:
+            method = instr.cleaning_method or ""
+            method_groups[method].append(instr)
+
+        # Определяем порядок методов согласно CLEANING_METHOD_ORDER
+        order_func = lambda m: self.CLEANING_METHOD_ORDER.get(m.lower().strip(), 99)
+        ordered_methods = sorted(method_groups.keys(), key=order_func)
+
+        result = []
+        # Пока есть непустые списки, берём по одной инструкции из каждого метода
+        while True:
+            added = False
+            for method in ordered_methods:
+                if method_groups[method]:
+                    result.append(method_groups[method].pop(0))
+                    added = True
+            if not added:
+                break
+
+        return result
 
     def _select_split_instructions(self, all_instructions: list, room_category_id: int) -> dict:
         """Для split-объектов: группирует инструкции по surface_type с логикой уровня обслуживания."""

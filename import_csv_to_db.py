@@ -200,7 +200,6 @@ class CSVImporter:
                 room_cat_ids[rc_name] = existing.id
                 self.stats.room_categories_updated += 1
             else:
-                # Принудительно приводим к нижнему регистру
                 rc = RoomCategory(name=rc_name.lower())
                 self.session.add(rc)
                 self.session.flush()
@@ -216,7 +215,6 @@ class CSVImporter:
     def _get_room_category_id(self, room_cat_name: str, room_cat_ids: Dict[str, int]) -> Optional[int]:
         if not room_cat_name:
             return None
-        # Приводим к нижнему регистру для поиска
         room_cat_name_lower = room_cat_name.strip().lower()
         if room_cat_name_lower in self.room_category_cache:
             return self.room_category_cache[room_cat_name_lower]
@@ -228,6 +226,27 @@ class CSVImporter:
         if rc:
             self.room_category_cache[room_cat_name_lower] = rc.id
             return rc.id
+        return None
+
+    @staticmethod
+    def _normalize_key(val: Optional[str]) -> Optional[str]:
+        """Приводит строку к нижнему регистру, обрезает пробелы, пустую строку превращает в None"""
+        if val is None:
+            return None
+        cleaned = val.strip().lower()
+        return cleaned if cleaned else None
+
+    def _find_existing_instruction(self, existing_instructions: List[Instruction], norm_method: Optional[str],
+                                   norm_product: Optional[str], room_category_id: Optional[int],
+                                   norm_maintenance: Optional[str], norm_surface: Optional[str]) -> Optional[Instruction]:
+        """Ищет инструкцию среди существующих по нормализованным ключам"""
+        for instr in existing_instructions:
+            if (self._normalize_key(instr.cleaning_method) == norm_method and
+                self._normalize_key(instr.product_name) == norm_product and
+                instr.room_category_id == room_category_id and
+                self._normalize_key(instr.maintenance_type) == norm_maintenance and
+                self._normalize_key(instr.surface_type) == norm_surface):
+                return instr
         return None
 
     def _import_objects_and_instructions(self, rows: List[Dict], category_ids: Dict[str, int],
@@ -303,6 +322,9 @@ class CSVImporter:
                 self.session.flush()
                 self.stats.objects_created += 1
 
+            # Загружаем существующие инструкции для объекта
+            existing_instructions = self.session.query(Instruction).filter(Instruction.object_id == obj.id).all()
+
             for instr_row in group['instructions']:
                 cleaning_method = instr_row.get('cleaning_method', '').strip()
                 product_name = instr_row.get('product_name', '').strip()
@@ -316,15 +338,17 @@ class CSVImporter:
                 surface_type = instr_row.get('surface_type', '').strip() or None
                 application_method = instr_row.get('application_method', '').strip() or None
 
-                # Ищем существующую инструкцию с учётом maintenance_type, room_category_id, surface_type
-                existing_instr = self.session.query(Instruction).filter(
-                    Instruction.object_id == obj.id,
-                    Instruction.cleaning_method == cleaning_method,
-                    Instruction.product_name == product_name,
-                    Instruction.room_category_id == room_category_id,
-                    Instruction.maintenance_type == maintenance_type,
-                    Instruction.surface_type == surface_type
-                ).first()
+                # Нормализуем ключевые поля
+                norm_method = self._normalize_key(cleaning_method) if cleaning_method else None
+                norm_product = self._normalize_key(product_name) if product_name else None
+                norm_maintenance = self._normalize_key(maintenance_type) if maintenance_type else None
+                norm_surface = self._normalize_key(surface_type) if surface_type else None
+
+                # Ищем существующую инструкцию с учётом нормализации
+                existing_instr = self._find_existing_instruction(
+                    existing_instructions, norm_method, norm_product,
+                    room_category_id, norm_maintenance, norm_surface
+                )
 
                 if existing_instr:
                     if self.mode == self.MODE_ADD_NEW:
