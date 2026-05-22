@@ -107,8 +107,45 @@ class SDTChecklistParser:
         "", None
     }
 
+    # Паттерны, по которым определяем, что значение выпадающего списка – не название средства,
+    # а концентрация или метод разведения
+    NON_PRODUCT_PATTERNS = [
+        r'%',                           # процент
+        r'дозирующая система',        # дозирующая система ProMax и т.п.
+        r'ручной',                     # ручной метод
+        r'система',                    # система
+        r'протирание',                 # метод уборки
+        r'щётка',                      # метод
+        r'ветошь',                     # метод
+        r'губка',                      # метод
+        r'погружение',                 # метод
+        r'замачивание',                # метод
+        r'орошение',                   # метод
+        r'распыление',                 # метод
+        r'протирка',                   # метод
+        r'обработка',                  # общее слово
+        r'раствор',                    # может быть в концентрации
+    ]
+
     def __init__(self):
         self._category_cache = {}
+
+    def _is_product_name(self, value: str) -> bool:
+        """Проверяет, похоже ли значение на название средства (а не концентрацию/метод/заглушку)"""
+        if not value:
+            return False
+        value_lower = value.lower().strip()
+        # Если значение совпадает с заглушками – не продукт
+        if value_lower in ('выберите элемент.', 'не выбрано', 'выберите элемент', ''):
+            return False
+        # Проверяем паттерны
+        for pattern in self.NON_PRODUCT_PATTERNS:
+            if re.search(pattern, value_lower):
+                return False
+        # Дополнительно: если содержит только цифры, символы процента, запятые, точки, дефисы – вероятно, концентрация
+        if re.match(r'^[0-9.,%\-–\s]+$', value_lower):
+            return False
+        return True
 
     def _get_checkbox_state(self, sdt_element) -> bool:
         """Определяет состояние чек-бокса по символу внутри SDT"""
@@ -418,48 +455,100 @@ class SDTChecklistParser:
         if inventory_color is None:
             print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
 
-        # Теперь обрабатываем оставшиеся значения как средства
-        # Порядок: общее моющее (0-2), общее дезинфицирующее (3-5),
-        # пол/трапы (6-8), тепловое (9-11), стекло (12-14)
-        if len(dropdown_values) >= 3:
-            data.cleaning_product = dropdown_values[0]
-            data.cleaning_concentration = dropdown_values[1]
-            data.cleaning_method_text = dropdown_values[2]
+        # Функция для извлечения тройки значений (средство, концентрация, метод) из части массива
+        def extract_triplet(start_index, values):
+            product = None
+            concentration = None
+            method = None
+            # Ищем продукт
+            for i in range(start_index, min(start_index+3, len(values))):
+                if i >= len(values):
+                    break
+                if self._is_product_name(values[i]):
+                    product = values[i]
+                    # Следующие за продуктом значения могут быть концентрацией и методом
+                    next_idx = i+1
+                    if next_idx < len(values) and not self._is_product_name(values[next_idx]):
+                        concentration = values[next_idx]
+                    if next_idx+1 < len(values) and not self._is_product_name(values[next_idx+1]):
+                        method = values[next_idx+1]
+                    break
+            # Если продукт не найден, берём первое значение как концентрацию? Нет, оставляем None
+            return product, concentration, method
+
+        # Теперь нужно разобрать dropdown_values на пять групп (общее моющее, дезинфекция, пол/трапы, тепловое, стекло).
+        # Ожидаемый порядок: 0-2: общее моющее, 3-5: дезинфекция, 6-8: пол/трапы, 9-11: тепловое, 12-14: стекло.
+        # Но при пропусках могут быть сдвиги. Применим эвристику: будем искать подряд идущие тройки, используя extract_triplet.
+        # Начнём с индекса 0.
+        idx = 0
+        # Общее моющее
+        data.cleaning_product, data.cleaning_concentration, data.cleaning_method_text = extract_triplet(idx, dropdown_values)
+        if data.cleaning_product is None:
+            # Если не нашли, возможно, первая тройка не продукт, пропускаем
+            # попробуем просто взять первые три, если продукт не распознан
+            if len(dropdown_values) >= 1 and not self._is_product_name(dropdown_values[0]):
+                # первое значение не продукт, это может быть концентрация без продукта
+                # мы не можем определить, поэтому оставляем None для продукта
+                pass
+            idx += 3
+        else:
+            idx += 3  # сдвигаемся на 3
+
+        # Дезинфекция
+        data.disinfection_product, data.disinfection_concentration, data.disinfection_method_text = extract_triplet(idx, dropdown_values)
+        if data.disinfection_product is None:
+            idx += 3
+        else:
+            idx += 3
+
+        # Пол/трапы
+        data.floor_cleaning_product, data.floor_cleaning_concentration, data.floor_cleaning_method_text = extract_triplet(idx, dropdown_values)
+        if data.floor_cleaning_product is None:
+            idx += 3
+        else:
+            idx += 3
+
+        # Тепловое
+        data.thermal_cleaning_product, data.thermal_cleaning_concentration, data.thermal_cleaning_method_text = extract_triplet(idx, dropdown_values)
+        if data.thermal_cleaning_product is None:
+            idx += 3
+        else:
+            idx += 3
+
+        # Стекло
+        data.glass_cleaning_product, data.glass_cleaning_concentration, data.glass_cleaning_method_text = extract_triplet(idx, dropdown_values)
+
+        # Вывод информации
+        if data.cleaning_product:
             print(f"  🧴 Общее моющее средство: {data.cleaning_product}")
-            print(f"     Концентрация: {data.cleaning_concentration}")
-            print(f"     Способ разведения: {data.cleaning_method_text}")
-
-        if len(dropdown_values) >= 6:
-            data.disinfection_product = dropdown_values[3]
-            data.disinfection_concentration = dropdown_values[4]
-            data.disinfection_method_text = dropdown_values[5]
+            print(f"     Концентрация: {data.cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.cleaning_method_text or 'не указан'}")
+        else:
+            print("  🧴 Общее моющее средство не выбрано")
+        if data.disinfection_product:
             print(f"  🦠 Общее дезинфицирующее средство: {data.disinfection_product}")
-            print(f"     Концентрация: {data.disinfection_concentration}")
-            print(f"     Способ разведения: {data.disinfection_method_text}")
-
-        if len(dropdown_values) >= 9:
-            data.floor_cleaning_product = dropdown_values[6]
-            data.floor_cleaning_concentration = dropdown_values[7]
-            data.floor_cleaning_method_text = dropdown_values[8]
+            print(f"     Концентрация: {data.disinfection_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.disinfection_method_text or 'не указан'}")
+        else:
+            print("  🦠 Общее дезинфицирующее средство не выбрано")
+        if data.floor_cleaning_product:
             print(f"  🧽 Моющее для пола/трапов: {data.floor_cleaning_product}")
-            print(f"     Концентрация: {data.floor_cleaning_concentration}")
-            print(f"     Способ разведения: {data.floor_cleaning_method_text}")
-
-        if len(dropdown_values) >= 12:
-            data.thermal_cleaning_product = dropdown_values[9]
-            data.thermal_cleaning_concentration = dropdown_values[10]
-            data.thermal_cleaning_method_text = dropdown_values[11]
+            print(f"     Концентрация: {data.floor_cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.floor_cleaning_method_text or 'не указан'}")
+        else:
+            print("  🧽 Моющее для пола/трапов не выбрано")
+        if data.thermal_cleaning_product:
             print(f"  🔥 Моющее для теплового оборудования: {data.thermal_cleaning_product}")
-            print(f"     Концентрация: {data.thermal_cleaning_concentration}")
-            print(f"     Способ разведения: {data.thermal_cleaning_method_text}")
-
-        if len(dropdown_values) >= 15:
-            data.glass_cleaning_product = dropdown_values[12]
-            data.glass_cleaning_concentration = dropdown_values[13]
-            data.glass_cleaning_method_text = dropdown_values[14]
+            print(f"     Концентрация: {data.thermal_cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.thermal_cleaning_method_text or 'не указан'}")
+        else:
+            print("  🔥 Моющее для теплового оборудования не выбрано")
+        if data.glass_cleaning_product:
             print(f"  🪞 Моющее для стекол/зеркал/мониторов: {data.glass_cleaning_product}")
-            print(f"     Концентрация: {data.glass_cleaning_concentration}")
-            print(f"     Способ разведения: {data.glass_cleaning_method_text}")
+            print(f"     Концентрация: {data.glass_cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.glass_cleaning_method_text or 'не указан'}")
+        else:
+            print("  🪞 Моющее для стекол/зеркал/мониторов не выбрано")
 
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
