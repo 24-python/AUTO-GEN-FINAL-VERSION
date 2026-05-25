@@ -913,20 +913,26 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[4], cleaning_technique)
 
-                    concat_text = ""
-                    if final_concentration:
-                        concat_text += final_concentration
+                    # Колонка 6: концентрация + метод разведения (с переносом строки)
+                    para = row.cells[5].paragraphs[0]
+                    # Очищаем старые runs
+                    for r in para.runs:
+                        para._p.remove(r._r)
+
+                    # Сначала выводим концентрацию (или прочерк)
+                    conc_text = final_concentration if final_concentration else "___________________"
+                    run_conc = para.add_run(conc_text)
+                    run_conc.font.name = 'Arial'
+                    run_conc.font.size = Pt(7)
+
+                    # Если есть метод разведения, добавляем разрыв строки и метод
                     if final_extra_method:
-                        if concat_text:
-                            concat_text += " "
-                        concat_text += final_extra_method
-                    if concat_text:
-                        self._set_cell_text(row.cells[5], concat_text)
-                    else:
-                        if final_product or cleaning_method in ("очистка", "очистка (обеспыливание поверхностей)", "стерилизация"):
-                            self._set_cell_text(row.cells[5], "___________________")
-                        else:
-                            self._set_cell_text(row.cells[5], "")
+                        run_br = para.add_run()
+                        br = OxmlElement('w:br')
+                        run_br._r.append(br)
+                        run_method = para.add_run(final_extra_method)
+                        run_method.font.name = 'Arial'
+                        run_method.font.size = Pt(7)
 
                     self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                     self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
