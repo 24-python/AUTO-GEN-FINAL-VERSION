@@ -47,6 +47,10 @@ createApp({
             objectGroups: [],
             cleaningMethods: [],
 
+            // Поиск для свойств и групп
+            searchPropertyQuery: '',
+            searchGroupQuery: '',
+
             showPropertyForm: false,
             showGroupForm: false,
             showMethodForm: false,
@@ -99,6 +103,29 @@ createApp({
                 if (valA > valB) return this.sortDir === 'asc' ? 1 : -1;
                 return 0;
             });
+            return result;
+        },
+        filteredObjectProperties() {
+            let result = [...this.objectProperties];
+            if (this.searchPropertyQuery) {
+                const q = this.searchPropertyQuery.toLowerCase();
+                result = result.filter(p =>
+                    (p.object_name || '').toLowerCase().includes(q) ||
+                    (p.normalized_name || '').toLowerCase().includes(q)
+                );
+            }
+            return result;
+        },
+        filteredObjectGroups() {
+            let result = [...this.objectGroups];
+            if (this.searchGroupQuery) {
+                const q = this.searchGroupQuery.toLowerCase();
+                result = result.filter(g =>
+                    (g.group_name || '').toLowerCase().includes(q) ||
+                    (g.object_name || '').toLowerCase().includes(q) ||
+                    (g.normalized_name || '').toLowerCase().includes(q)
+                );
+            }
             return result;
         }
     },
@@ -559,16 +586,6 @@ createApp({
                 special_product_type: this.propertyForm.special_product_type
             };
             try {
-                // Проверяем, существует ли уже свойство для этого объекта (в API мы не делаем проверку, можно создать дубликат)
-                // Предполагаем, что API для создания свойства нет, но у нас есть endpoint для создания? Пока нет.
-                // Добавим создание через POST /api/object-properties? В API мы не добавили POST для object-properties.
-                // Значит, мы можем использовать импорт или здесь сделать обновление, если нашли по object_id.
-                // Но для простоты добавим отправку на создание через универсальный эндпоинт, но у нас его нет.
-                // Нужно или добавить POST /api/object-properties, или в админ-панели не делать создание нового свойства.
-                // Так как мы хотим упростить, предложим только редактирование существующих, а добавление через импорт.
-                // В текущем API POST нет. Поэтому изменим логику: если открываем форму для добавления, то создаём через PUT на специальный URL? Не будем усложнять.
-                // Лучше добавить POST endpoint в app.py, но так как код app.py уже внедрён, допустим, что он есть.
-                // В реальном коде мы бы добавили. Здесь для ответа просто сделаем fetch на '/api/object-properties' с POST.
                 const url = this.editingProperty ? `/api/object-properties/${this.editingProperty.id}` : '/api/object-properties';
                 const method = this.editingProperty ? 'PUT' : 'POST';
                 const res = await fetch(url, {

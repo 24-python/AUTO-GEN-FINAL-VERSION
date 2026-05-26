@@ -97,19 +97,21 @@ class ImportStats:
 class CSVImporter:
     """Импортер CSV в БД"""
 
-    MODE_ADD_NEW = 1
-    MODE_CLEAR_DATA = 2
-    MODE_RECREATE_DB = 3
-    MODE_EXIT = 4
+    MODE_ADD_ONLY = 1        # Только добавление новых (существующие пропускаются)
+    MODE_UPDATE_ONLY = 2     # Только обновление существующих (новые не добавляются)
+    MODE_CLEAR_AND_IMPORT = 3  # Очистка данных и полный импорт (аналог старого режима 2)
+    MODE_RECREATE_DB = 4     # Полное пересоздание БД и импорт (старый режим 3)
+    MODE_EXIT = 5            # Выход без импорта
 
     MODE_NAMES = {
-        MODE_ADD_NEW: "Добавление новых (пропуск дубликатов)",
-        MODE_CLEAR_DATA: "Очистка данных перед импортом",
-        MODE_RECREATE_DB: "Полное пересоздание БД",
+        MODE_ADD_ONLY: "Только добавление новых объектов и инструкций",
+        MODE_UPDATE_ONLY: "Только обновление существующих записей",
+        MODE_CLEAR_AND_IMPORT: "Очистка данных и полный импорт",
+        MODE_RECREATE_DB: "Полное пересоздание БД и импорт",
         MODE_EXIT: "Выход без импорта",
     }
 
-    def __init__(self, csv_path: str, mode: int = MODE_ADD_NEW, progress_callback: Callable = None):
+    def __init__(self, csv_path: str, mode: int = MODE_ADD_ONLY, progress_callback: Callable = None):
         self.csv_path = Path(csv_path)
         self.mode = mode
         self.progress_callback = progress_callback
@@ -297,11 +299,26 @@ class CSVImporter:
                 continue
 
             existing = self.session.query(Object).filter(Object.normalized_name == norm_name).first()
-            if existing:
-                if self.mode == self.MODE_ADD_NEW:
+
+            # --- Логика в зависимости от режима ---
+            if self.mode == self.MODE_ADD_ONLY:
+                if existing:
                     obj = existing
                     self.stats.objects_skipped += 1
                 else:
+                    obj = Object(
+                        normalized_name=norm_name,
+                        display_name=display_name,
+                        base_name=base_name or display_name,
+                        modifier=modifier,
+                        category_id=category_id,
+                        sort_priority=sort_priority
+                    )
+                    self.session.add(obj)
+                    self.session.flush()
+                    self.stats.objects_created += 1
+            elif self.mode == self.MODE_UPDATE_ONLY:
+                if existing:
                     existing.display_name = display_name
                     existing.base_name = base_name
                     existing.modifier = modifier
@@ -309,18 +326,32 @@ class CSVImporter:
                     existing.sort_priority = sort_priority
                     obj = existing
                     self.stats.objects_updated += 1
-            else:
-                obj = Object(
-                    normalized_name=norm_name,
-                    display_name=display_name,
-                    base_name=base_name or display_name,
-                    modifier=modifier,
-                    category_id=category_id,
-                    sort_priority=sort_priority
-                )
-                self.session.add(obj)
-                self.session.flush()
-                self.stats.objects_created += 1
+                else:
+                    self.stats.errors.append(f"Объект '{norm_name}' не найден для обновления, пропущен")
+                    continue  # Пропускаем весь объект, если он не существует
+            else:  # MODE_CLEAR_AND_IMPORT, MODE_RECREATE_DB
+                if existing:
+                    # Эти режимы предварительно очищают БД, поэтому существовать не должно,
+                    # но на всякий случай обновим
+                    existing.display_name = display_name
+                    existing.base_name = base_name
+                    existing.modifier = modifier
+                    existing.category_id = category_id
+                    existing.sort_priority = sort_priority
+                    obj = existing
+                    self.stats.objects_updated += 1
+                else:
+                    obj = Object(
+                        normalized_name=norm_name,
+                        display_name=display_name,
+                        base_name=base_name or display_name,
+                        modifier=modifier,
+                        category_id=category_id,
+                        sort_priority=sort_priority
+                    )
+                    self.session.add(obj)
+                    self.session.flush()
+                    self.stats.objects_created += 1
 
             # Загружаем существующие инструкции для объекта
             existing_instructions = self.session.query(Instruction).filter(Instruction.object_id == obj.id).all()
@@ -350,10 +381,33 @@ class CSVImporter:
                     room_category_id, norm_maintenance, norm_surface
                 )
 
-                if existing_instr:
-                    if self.mode == self.MODE_ADD_NEW:
+                if self.mode == self.MODE_ADD_ONLY:
+                    if existing_instr:
                         self.stats.instructions_skipped += 1
                     else:
+                        instr = Instruction(
+                            object_id=obj.id,
+                            room_category_id=room_category_id,
+                            maintenance_type=maintenance_type,
+                            surface_type=surface_type,
+                            application_method=application_method,
+                            cleaning_method=cleaning_method or None,
+                            instruction_number=instr_row.get('instruction_number', '').strip() or None,
+                            product_name=product_name or None,
+                            cleaning_technique=instr_row.get('cleaning_technique', '').strip() or None,
+                            concentration=instr_row.get('concentration', '').strip() or None,
+                            temperature=instr_row.get('temperature', '').strip() or None,
+                            exposure_time=instr_row.get('exposure_time', '').strip() or None,
+                            inventory=instr_row.get('inventory', '').strip() or None,
+                            frequency=instr_row.get('frequency', '').strip() or None,
+                            executor=instr_row.get('executor', '').strip() or None,
+                            control_method=instr_row.get('control_method', '').strip() or None
+                        )
+                        self.session.add(instr)
+                        self.stats.instructions_created += 1
+
+                elif self.mode == self.MODE_UPDATE_ONLY:
+                    if existing_instr:
                         existing_instr.room_category_id = room_category_id
                         existing_instr.maintenance_type = maintenance_type
                         existing_instr.surface_type = surface_type
@@ -368,27 +422,48 @@ class CSVImporter:
                         existing_instr.executor = instr_row.get('executor', '').strip() or None
                         existing_instr.control_method = instr_row.get('control_method', '').strip() or None
                         self.stats.instructions_updated += 1
+                    else:
+                        # При обновлении пропускаем инструкции, которых нет
+                        self.stats.instructions_skipped += 1
+                        # Можно добавить предупреждение, но не будем засорять ошибки
                 else:
-                    instr = Instruction(
-                        object_id=obj.id,
-                        room_category_id=room_category_id,
-                        maintenance_type=maintenance_type,
-                        surface_type=surface_type,
-                        application_method=application_method,
-                        cleaning_method=cleaning_method or None,
-                        instruction_number=instr_row.get('instruction_number', '').strip() or None,
-                        product_name=product_name or None,
-                        cleaning_technique=instr_row.get('cleaning_technique', '').strip() or None,
-                        concentration=instr_row.get('concentration', '').strip() or None,
-                        temperature=instr_row.get('temperature', '').strip() or None,
-                        exposure_time=instr_row.get('exposure_time', '').strip() or None,
-                        inventory=instr_row.get('inventory', '').strip() or None,
-                        frequency=instr_row.get('frequency', '').strip() or None,
-                        executor=instr_row.get('executor', '').strip() or None,
-                        control_method=instr_row.get('control_method', '').strip() or None
-                    )
-                    self.session.add(instr)
-                    self.stats.instructions_created += 1
+                    # Режимы 3 и 4 – полный импорт, обновление или создание
+                    if existing_instr:
+                        existing_instr.room_category_id = room_category_id
+                        existing_instr.maintenance_type = maintenance_type
+                        existing_instr.surface_type = surface_type
+                        existing_instr.application_method = application_method
+                        existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
+                        existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
+                        existing_instr.concentration = instr_row.get('concentration', '').strip() or None
+                        existing_instr.temperature = instr_row.get('temperature', '').strip() or None
+                        existing_instr.exposure_time = instr_row.get('exposure_time', '').strip() or None
+                        existing_instr.inventory = instr_row.get('inventory', '').strip() or None
+                        existing_instr.frequency = instr_row.get('frequency', '').strip() or None
+                        existing_instr.executor = instr_row.get('executor', '').strip() or None
+                        existing_instr.control_method = instr_row.get('control_method', '').strip() or None
+                        self.stats.instructions_updated += 1
+                    else:
+                        instr = Instruction(
+                            object_id=obj.id,
+                            room_category_id=room_category_id,
+                            maintenance_type=maintenance_type,
+                            surface_type=surface_type,
+                            application_method=application_method,
+                            cleaning_method=cleaning_method or None,
+                            instruction_number=instr_row.get('instruction_number', '').strip() or None,
+                            product_name=product_name or None,
+                            cleaning_technique=instr_row.get('cleaning_technique', '').strip() or None,
+                            concentration=instr_row.get('concentration', '').strip() or None,
+                            temperature=instr_row.get('temperature', '').strip() or None,
+                            exposure_time=instr_row.get('exposure_time', '').strip() or None,
+                            inventory=instr_row.get('inventory', '').strip() or None,
+                            frequency=instr_row.get('frequency', '').strip() or None,
+                            executor=instr_row.get('executor', '').strip() or None,
+                            control_method=instr_row.get('control_method', '').strip() or None
+                        )
+                        self.session.add(instr)
+                        self.stats.instructions_created += 1
 
             if processed % 100 == 0:
                 self.session.commit()
@@ -419,7 +494,7 @@ class CSVImporter:
 
             if self.mode == self.MODE_RECREATE_DB:
                 self._recreate_database()
-            elif self.mode == self.MODE_CLEAR_DATA:
+            elif self.mode == self.MODE_CLEAR_AND_IMPORT:
                 self._clear_data()
 
             rows = self._read_csv()
@@ -451,18 +526,19 @@ def select_mode() -> int:
     print("📥 ИМПОРТ CSV В БАЗУ ДАННЫХ")
     print("=" * 60)
     print("\nВыберите режим импорта:")
-    print(f"  1. {CSVImporter.MODE_NAMES[CSVImporter.MODE_ADD_NEW]}")
-    print(f"  2. {CSVImporter.MODE_NAMES[CSVImporter.MODE_CLEAR_DATA]}")
-    print(f"  3. {CSVImporter.MODE_NAMES[CSVImporter.MODE_RECREATE_DB]}")
-    print(f"  4. {CSVImporter.MODE_NAMES[CSVImporter.MODE_EXIT]}")
+    print(f"  1. {CSVImporter.MODE_NAMES[CSVImporter.MODE_ADD_ONLY]}")
+    print(f"  2. {CSVImporter.MODE_NAMES[CSVImporter.MODE_UPDATE_ONLY]}")
+    print(f"  3. {CSVImporter.MODE_NAMES[CSVImporter.MODE_CLEAR_AND_IMPORT]}")
+    print(f"  4. {CSVImporter.MODE_NAMES[CSVImporter.MODE_RECREATE_DB]}")
+    print(f"  5. {CSVImporter.MODE_NAMES[CSVImporter.MODE_EXIT]}")
 
     while True:
         try:
-            choice = input("\n🔢 Ваш выбор (1-4): ").strip()
+            choice = input("\n🔢 Ваш выбор (1-5): ").strip()
             mode = int(choice)
-            if mode in [1, 2, 3, 4]:
+            if mode in [1, 2, 3, 4, 5]:
                 return mode
-            print("❌ Введите число от 1 до 4")
+            print("❌ Введите число от 1 до 5")
         except ValueError:
             print("❌ Введите корректное число")
         except KeyboardInterrupt:
@@ -475,8 +551,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="Импорт CSV в базу данных")
     parser.add_argument("file", nargs="?", help="Путь к CSV файлу")
-    parser.add_argument("--mode", "-m", type=int, choices=[1, 2, 3, 4],
-                        help="Режим импорта (1-добавление, 2-очистка, 3-пересоздание, 4-выход)")
+    parser.add_argument("--mode", "-m", type=int, choices=[1, 2, 3, 4, 5],
+                        help="Режим импорта (1-добавление, 2-обновление, 3-очистка и импорт, 4-пересоздание, 5-выход)")
     parser.add_argument("--yes", "-y", action="store_true", help="Пропустить подтверждение")
     args = parser.parse_args()
 
@@ -514,7 +590,7 @@ def main():
         print("👋 Выход")
         return
 
-    if mode in [CSVImporter.MODE_CLEAR_DATA, CSVImporter.MODE_RECREATE_DB] and not args.yes:
+    if mode in [CSVImporter.MODE_CLEAR_AND_IMPORT, CSVImporter.MODE_RECREATE_DB] and not args.yes:
         print(f"\n⚠️ ВНИМАНИЕ! Выбран режим: {CSVImporter.MODE_NAMES[mode]}")
         print("   Все существующие данные будут УДАЛЕНЫ!")
         confirm = input("\n   Продолжить? (yes/no): ").strip().lower()

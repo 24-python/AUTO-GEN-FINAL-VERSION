@@ -915,7 +915,52 @@ def api_import_object_properties_csv():
         'errors': errors
     })
 
+@app.route('/api/object-properties', methods=['POST'])
+def api_create_object_property():
+    data = request.get_json()
+    object_id = data.get('object_id')
+    if not object_id:
+        return jsonify({'success': False, 'error': 'object_id обязателен'}), 400
 
+    session = SessionLocal()
+    try:
+        obj = session.get(Object, object_id)
+        if not obj:
+            return jsonify({'success': False, 'error': 'Объект не найден'}), 404
+
+        existing = session.query(ObjectProperty).filter_by(object_id=object_id).first()
+        if existing:
+            return jsonify({'success': False, 'error': 'Свойство для этого объекта уже существует'}), 400
+
+        prop = ObjectProperty(
+            object_id=object_id,
+            is_split=data.get('is_split', False),
+            is_multi_method=data.get('is_multi_method', False),
+            has_support_maintenance=data.get('has_support_maintenance', False),
+            special_product_type=data.get('special_product_type', '') or None
+        )
+        session.add(prop)
+        session.commit()
+        session.refresh(prop)
+        return jsonify({'success': True, 'id': prop.id})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/object-properties/<int:prop_id>', methods=['DELETE'])
+def api_delete_object_property(prop_id):
+    session = SessionLocal()
+    prop = session.get(ObjectProperty, prop_id)
+    if prop:
+        session.delete(prop)
+        session.commit()
+        session.close()
+        return jsonify({'success': True})
+    session.close()
+    return jsonify({'success': False, 'error': 'Не найдено'}), 404
 # ============================================================
 # API: ГРУППЫ ОБЪЕКТОВ (ObjectGroup)
 # ============================================================

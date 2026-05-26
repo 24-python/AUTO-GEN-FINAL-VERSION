@@ -8,90 +8,89 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
-<style>
-    .admin-layout {
-        display: flex;
-        height: calc(100vh - 70px);   /* вместо min-height */
-        overflow-y: auto;
-    }
-    .admin-sidebar {
-        width: 220px;
-        background: var(--ct-surface);
-        border-right: 1px solid var(--ct-border);
-        box-shadow: var(--ct-shadow);
-        padding: 12px 0;
-        flex-shrink: 0;
-        position: sticky;
-        top: 0;                       /* теперь sticky внутри admin-layout */
-        align-self: flex-start;
-        max-height: 100vh;
-        overflow-y: auto;
-    }
-    .admin-sidebar .nav-item {
-        display: block;
-        padding: 10px 16px;
-        color: var(--ct-text);
-        text-decoration: none;
-        font-size: 0.9rem;
-        font-weight: 500;
-        transition: all 0.2s;
-        border-left: 3px solid transparent;
-        cursor: pointer;
-    }
-    .admin-sidebar .nav-item:hover {
-        background: var(--ct-primary-light);
-        color: var(--ct-primary);
-        border-left-color: var(--ct-primary);
-    }
-    .admin-sidebar .nav-item.active {
-        background: var(--ct-primary-light);
-        color: var(--ct-primary);
-        border-left-color: var(--ct-primary);
-        font-weight: 600;
-    }
-    .admin-content {
-        flex: 1;
-        padding: 20px 24px;
-        /* overflow-y убран, прокрутка на admin-layout */
-    }
-    .section-header {
-        position: sticky;
-        top: 0;
-        z-index: 5;
-        background: var(--ct-bg);
-        padding-bottom: 12px;
-        margin-bottom: 0 !important;
-    }
-    .modal-header-ct {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 10 !important;
-        background: var(--ct-surface) !important;
-        border-bottom: 1px solid var(--ct-border) !important;
-    }
-    @media (max-width: 768px) {
+    <style>
         .admin-layout {
-            flex-direction: column;
-            height: auto;
-            overflow-y: visible;
+            display: flex;
+            height: calc(100vh - 70px);
+            overflow-y: auto;
         }
         .admin-sidebar {
-            width: 100%;
-            display: flex;
-            flex-wrap: wrap;
-            border-right: none;
-            border-bottom: 1px solid var(--ct-border);
-            box-shadow: none;
-            position: static;
-            max-height: none;
+            width: 220px;
+            background: var(--ct-surface);
+            border-right: 1px solid var(--ct-border);
+            box-shadow: var(--ct-shadow);
+            padding: 12px 0;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            max-height: 100vh;
+            overflow-y: auto;
         }
         .admin-sidebar .nav-item {
-            flex: 1 1 auto;
-            text-align: center;
-            padding: 8px 6px;
+            display: block;
+            padding: 10px 16px;
+            color: var(--ct-text);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            cursor: pointer;
         }
-    }
-</style>
+        .admin-sidebar .nav-item:hover {
+            background: var(--ct-primary-light);
+            color: var(--ct-primary);
+            border-left-color: var(--ct-primary);
+        }
+        .admin-sidebar .nav-item.active {
+            background: var(--ct-primary-light);
+            color: var(--ct-primary);
+            border-left-color: var(--ct-primary);
+            font-weight: 600;
+        }
+        .admin-content {
+            flex: 1;
+            padding: 20px 24px;
+        }
+        .section-header {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: var(--ct-bg);
+            padding-bottom: 12px;
+            margin-bottom: 0 !important;
+        }
+        .modal-header-ct {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 10 !important;
+            background: var(--ct-surface) !important;
+            border-bottom: 1px solid var(--ct-border) !important;
+        }
+        @media (max-width: 768px) {
+            .admin-layout {
+                flex-direction: column;
+                height: auto;
+                overflow-y: visible;
+            }
+            .admin-sidebar {
+                width: 100%;
+                display: flex;
+                flex-wrap: wrap;
+                border-right: none;
+                border-bottom: 1px solid var(--ct-border);
+                box-shadow: none;
+                position: static;
+                max-height: none;
+            }
+            .admin-sidebar .nav-item {
+                flex: 1 1 auto;
+                text-align: center;
+                padding: 8px 6px;
+            }
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar-ct navbar navbar-expand-lg sticky-top">
@@ -151,12 +150,10 @@
                             <button class="btn-ct-primary btn-sm" @click="openAddModal"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         </div>
                     </div>
-
                     <div class="search-box mb-3">
                         <span class="search-icon"><i class="bi bi-search"></i></span>
                         <input type="text" class="form-control-ct" placeholder="Поиск по названию, категории..." v-model="searchQuery" style="padding-left:32px">
                     </div>
-
                     <div class="card-ct">
                         <div class="card-body p-0">
                             <table class="table table-hover m-0">
@@ -206,12 +203,6 @@
                         </button>
                     </div>
                     <div class="card-ct mb-4">
-                        <!--<div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-building me-2"></i>Категории помещений</span>
-                            <button class="btn-ct-primary btn-sm" @click="openRoomCatForm()">
-                                <i class="bi bi-plus-circle me-1"></i>Добавить
-                            </button>
-                        </div>-->
                         <div class="card-body">
                             <div v-if="roomCategories.length === 0" class="text-muted text-center py-2">
                                 Нет категорий помещений. Нажмите «Добавить».
@@ -246,20 +237,6 @@
                         </div>
                     </div>
                     <div class="card-ct mb-4">
-                        <!--<div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-droplet me-2"></i>Средства (цветовое кодирование)</span>
-                            <div>
-                                <a href="/api/products/export_csv" class="btn-ct-outline btn-sm me-2">
-                                    <i class="bi bi-download me-1"></i>Экспорт CSV
-                                </a>
-                                <button class="btn-ct-outline btn-sm me-2" @click="openProductImportModal()">
-                                    <i class="bi bi-upload me-1"></i>Импорт CSV
-                                </button>
-                                <button class="btn-ct-primary btn-sm" @click="openProductForm()">
-                                    <i class="bi bi-plus-circle me-1"></i>Добавить
-                                </button>
-                            </div>
-                        </div>-->
                         <div class="card-body">
                             <div v-if="products.length === 0" class="text-muted text-center py-2">
                                 Нет средств. Нажмите «Добавить».
@@ -288,6 +265,10 @@
                             <button class="btn-ct-primary btn-sm" @click="openPropertyForm()"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         </div>
                     </div>
+                    <div class="search-box mb-3">
+                        <span class="search-icon"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control-ct" placeholder="Поиск по названию объекта..." v-model="searchPropertyQuery" style="padding-left:32px">
+                    </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
                             <table class="table table-hover m-0">
@@ -302,7 +283,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="prop in objectProperties" :key="prop.id">
+                                    <tr v-for="prop in filteredObjectProperties" :key="prop.id">
                                         <td v-text="prop.object_name || prop.normalized_name"></td>
                                         <td>
                                             <input type="checkbox" v-model="prop.is_split" @change="updateProperty(prop)">
@@ -341,6 +322,10 @@
                             <button class="btn-ct-primary btn-sm" @click="openGroupForm()"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         </div>
                     </div>
+                    <div class="search-box mb-3">
+                        <span class="search-icon"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control-ct" placeholder="Поиск по группе или объекту..." v-model="searchGroupQuery" style="padding-left:32px">
+                    </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
                             <table class="table table-hover m-0">
@@ -348,7 +333,7 @@
                                     <tr><th>Группа</th><th>Объект</th><th style="width:120px">Действия</th></tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="group in objectGroups" :key="group.id">
+                                    <tr v-for="group in filteredObjectGroups" :key="group.id">
                                         <td v-text="group.group_name"></td>
                                         <td v-text="group.object_name || group.normalized_name"></td>
                                         <td>
@@ -600,27 +585,27 @@
             </div>
         </div>
 
-        <!-- МОДАЛКА: Импорт CSV -->
-        <div class="modal-overlay" v-if="showImportModal">
-            <div class="modal-content-ct">
-                <div class="modal-header-ct"><span>Импорт CSV</span><button class="btn-ct-outline btn-sm" @click="showImportModal = false">✕</button></div>
-                <div class="modal-body-ct">
-                    <div class="mb-2"><label class="form-label-ct">Файл CSV</label><input type="file" accept=".csv" class="form-control-ct" @change="handleImportFile"></div>
-                    <div class="mb-2"><label class="form-label-ct">Режим</label>
-                        <select class="form-select-ct" v-model="importMode">
-                            <option value="1">1 — Добавление новых (пропуск дубликатов)</option>
-                            <option value="2">2 — Очистка данных + добавление</option>
-                            <option value="3">3 — Пересоздание БД</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer-ct">
-                    <button class="btn-ct-outline btn-sm" @click="showImportModal = false">Отмена</button>
-                    <button class="btn-ct-primary btn-sm" @click="doImport" :disabled="!importFile">Загрузить</button>
-                </div>
+<!-- МОДАЛКА: Импорт CSV -->
+<div class="modal-overlay" v-if="showImportModal">
+    <div class="modal-content-ct">
+        <div class="modal-header-ct"><span>Импорт CSV</span><button class="btn-ct-outline btn-sm" @click="showImportModal = false">✕</button></div>
+        <div class="modal-body-ct">
+            <div class="mb-2"><label class="form-label-ct">Файл CSV</label><input type="file" accept=".csv" class="form-control-ct" @change="handleImportFile"></div>
+            <div class="mb-2"><label class="form-label-ct">Режим</label>
+                <select class="form-select-ct" v-model="importMode">
+                    <option value="1">1 — Только добавление новых объектов и инструкций</option>
+                    <option value="2">2 — Только обновление существующих записей</option>
+                    <option value="3">3 — Очистка данных и полный импорт</option>
+                    <option value="4">4 — Полное пересоздание БД и импорт</option>
+                </select>
             </div>
         </div>
-
+        <div class="modal-footer-ct">
+            <button class="btn-ct-outline btn-sm" @click="showImportModal = false">Отмена</button>
+            <button class="btn-ct-primary btn-sm" @click="doImport" :disabled="!importFile">Загрузить</button>
+        </div>
+    </div>
+</div>
         <!-- МОДАЛКА: Средство -->
         <div class="modal-overlay" v-if="showProductForm">
             <div class="modal-content-ct" style="max-width:400px">
