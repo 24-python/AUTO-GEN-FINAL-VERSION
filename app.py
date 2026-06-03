@@ -1350,4 +1350,4 @@ if __name__ == '__main__':
     print("🚀 Запуск сервера на http://localhost:5000")
     print(f"📂 Папка техкарт: {app.config['TECH_CARDS_FOLDER']}")
     print(f"🧹 Автоочистка uploads: 24 часа")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
