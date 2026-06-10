@@ -405,8 +405,8 @@ class SDTChecklistParser:
         """
         Извлекает моющие и дезинфицирующие средства из раздела "Дополнительная информация",
         а также цвет инвентаря из выпадающего списка.
-        Цвет инвентаря может находиться в любом месте среди выпадающих списков,
-        поэтому сначала выделяем его, а оставшиеся значения обрабатываем как средства.
+        Цвет инвентаря всегда первый после категории помещения, остальные 15 – средства.
+        Пустые списки сохраняются как None, чтобы не сбивать индексы.
         """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
@@ -425,98 +425,66 @@ class SDTChecklistParser:
             if sdt_content is not None:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
-                if value:
-                    # Пропускаем категории помещений (в любом регистре)
-                    if value.lower() in self.ROOM_CATEGORIES:
-                        continue
-                    all_values.append(value)
+                # Пропускаем категории помещений (в любом регистре)
+                if value.lower() in self.ROOM_CATEGORIES:
+                    continue
+                # Добавляем значение всегда, даже если оно пустое (None)
+                all_values.append(value if value else None)
 
         print(f"  📦 Найдено выпадающих списков: {len(all_values)}")
 
-        # Ищем цвет инвентаря среди всех значений, исключая заглушки
+        # Первое значение в all_values – цвет инвентаря
         inventory_color = None
-        dropdown_values = []
-        for v in all_values:
-            # Сначала проверяем, является ли значение реальным цветом
-            if v.lower() in self.ALLOWED_INVENTORY_COLORS:
-                if inventory_color is None:
-                    inventory_color = v.lower()
-                    print(f"  🎨 Найден цвет инвентаря: {inventory_color}")
-                # Реальный цвет не добавляем в список средств
-            elif v in self.INVENTORY_COLOR_PLACEHOLDERS:
-                # Это заглушка цвета – не добавляем в средства и не меняем цвет
-                if inventory_color is None:
-                    print(f"  🎨 Цвет инвентаря не выбран (заглушка), будет 'промаркированный'")
+        if len(all_values) >= 1:
+            first_val = all_values[0]
+            if first_val and first_val.lower() in self.ALLOWED_INVENTORY_COLORS:
+                inventory_color = first_val.lower()
+                print(f"  🎨 Найден цвет инвентаря: {inventory_color}")
+            elif first_val in self.INVENTORY_COLOR_PLACEHOLDERS or first_val is None:
+                print(f"  🎨 Цвет инвентаря не выбран (заглушка), будет 'промаркированный'")
             else:
-                dropdown_values.append(v)
+                print(f"  ⚠️ Не удалось определить цвет инвентаря: '{first_val}', будет 'промаркированный'")
+        else:
+            print("  ⚠️ Списки не найдены, цвет не определён")
 
-        # Сохраняем цвет инвентаря в данные
         data.inventory_color = inventory_color
         if inventory_color is None:
             print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
 
-        # Функция для извлечения тройки значений (средство, концентрация, метод) из части массива
-        def extract_triplet(start_index, values):
-            product = None
-            concentration = None
-            method = None
-            # Ищем продукт
-            for i in range(start_index, min(start_index+3, len(values))):
-                if i >= len(values):
-                    break
-                if self._is_product_name(values[i]):
-                    product = values[i]
-                    # Следующие за продуктом значения могут быть концентрацией и методом
-                    next_idx = i+1
-                    if next_idx < len(values) and not self._is_product_name(values[next_idx]):
-                        concentration = values[next_idx]
-                    if next_idx+1 < len(values) and not self._is_product_name(values[next_idx+1]):
-                        method = values[next_idx+1]
-                    break
-            # Если продукт не найден, берём первое значение как концентрацию? Нет, оставляем None
-            return product, concentration, method
+        # Все остальные значения – 15 полей для средств
+        dropdown_values = all_values[1:] if len(all_values) > 1 else []
 
-        # Теперь нужно разобрать dropdown_values на пять групп (общее моющее, дезинфекция, пол/трапы, тепловое, стекло).
-        # Ожидаемый порядок: 0-2: общее моющее, 3-5: дезинфекция, 6-8: пол/трапы, 9-11: тепловое, 12-14: стекло.
-        # Но при пропусках могут быть сдвиги. Применим эвристику: будем искать подряд идущие тройки, используя extract_triplet.
-        # Начнём с индекса 0.
-        idx = 0
-        # Общее моющее
-        data.cleaning_product, data.cleaning_concentration, data.cleaning_method_text = extract_triplet(idx, dropdown_values)
-        if data.cleaning_product is None:
-            # Если не нашли, возможно, первая тройка не продукт, пропускаем
-            # попробуем просто взять первые три, если продукт не распознан
-            if len(dropdown_values) >= 1 and not self._is_product_name(dropdown_values[0]):
-                # первое значение не продукт, это может быть концентрация без продукта
-                # мы не можем определить, поэтому оставляем None для продукта
-                pass
-            idx += 3
-        else:
-            idx += 3  # сдвигаемся на 3
+        # Если значений меньше 15, дополняем None до 15 (чтобы индексы не смещались)
+        while len(dropdown_values) < 15:
+            dropdown_values.append(None)
+            print("  ⚠️ Недостаточно выпадающих списков для средств, добавлен пустой элемент")
 
-        # Дезинфекция
-        data.disinfection_product, data.disinfection_concentration, data.disinfection_method_text = extract_triplet(idx, dropdown_values)
-        if data.disinfection_product is None:
-            idx += 3
-        else:
-            idx += 3
+        # Фиксированная структура: 5 групп по 3 элемента
+        groups = [
+            ('cleaning', 0),      # общее моющее
+            ('disinfection', 3),  # дезинфекция
+            ('floor', 6),         # пол/трапы
+            ('thermal', 9),       # тепловое
+            ('glass', 12)         # стекло/зеркала/мониторы
+        ]
 
-        # Пол/трапы
-        data.floor_cleaning_product, data.floor_cleaning_concentration, data.floor_cleaning_method_text = extract_triplet(idx, dropdown_values)
-        if data.floor_cleaning_product is None:
-            idx += 3
-        else:
-            idx += 3
+        for group_name, start_idx in groups:
+            p_val = dropdown_values[start_idx]
+            c_val = dropdown_values[start_idx + 1] if start_idx + 1 < len(dropdown_values) else None
+            m_val = dropdown_values[start_idx + 2] if start_idx + 2 < len(dropdown_values) else None
 
-        # Тепловое
-        data.thermal_cleaning_product, data.thermal_cleaning_concentration, data.thermal_cleaning_method_text = extract_triplet(idx, dropdown_values)
-        if data.thermal_cleaning_product is None:
-            idx += 3
-        else:
-            idx += 3
+            if p_val and self._is_product_name(p_val):
+                product = p_val
+                concentration = c_val if c_val and not self._is_product_name(c_val) else None
+                method = m_val if m_val and not self._is_product_name(m_val) else None
+            else:
+                product = None
+                concentration = None
+                method = None
 
-        # Стекло
-        data.glass_cleaning_product, data.glass_cleaning_concentration, data.glass_cleaning_method_text = extract_triplet(idx, dropdown_values)
+            setattr(data, f'{group_name}_product', product)
+            setattr(data, f'{group_name}_concentration', concentration)
+            setattr(data, f'{group_name}_method_text', method)
 
         # Вывод информации
         if data.cleaning_product:
