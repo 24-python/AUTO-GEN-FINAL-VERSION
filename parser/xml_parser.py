@@ -402,6 +402,11 @@ class SDTChecklistParser:
         print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
 
     def _parse_additional_info(self, root, data: ChecklistData):
+        """
+        Извлекает моющие и дезинфицирующие средства, цвет инвентаря.
+        Строгий порядок: 1 цвет + 15 средств (5 групп по 3).
+        В каждой тройке: [0] – средство, [1] – концентрация, [2] – метод.
+        """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
         all_values = []
@@ -443,40 +448,36 @@ class SDTChecklistParser:
             dropdown_values.append(None)
         dropdown_values = dropdown_values[:15]
 
-        def extract_triplet(triplet):
-            product = None
-            concentration = None
-            method = None
-            for i, val in enumerate(triplet):
-                if val and self._is_product_name(val):
-                    product = val
-                    if i + 1 < len(triplet) and triplet[i + 1] and not self._is_product_name(triplet[i + 1]):
-                        concentration = triplet[i + 1]
-                    if i + 2 < len(triplet) and triplet[i + 2] and not self._is_product_name(triplet[i + 2]):
-                        method = triplet[i + 2]
-                    break
-            return product, concentration, method
-
+        # Группы с правильными именами полей
         groups = [
-            ('cleaning', 0),
-            ('disinfection', 3),
-            ('floor', 6),
-            ('thermal', 9),
-            ('glass', 12)
+            ('cleaning', 0, False),  # без _cleaning
+            ('disinfection', 3, False),
+            ('floor', 6, True),
+            ('thermal', 9, True),
+            ('glass', 12, True)
         ]
 
-        for group_name, start_idx in groups:
-            triplet = dropdown_values[start_idx:start_idx + 3]
-            product, concentration, method = extract_triplet(triplet)
-            # Корректные имена полей
-            if group_name in ('cleaning', 'disinfection'):
-                setattr(data, f'{group_name}_product', product)
-                setattr(data, f'{group_name}_concentration', concentration)
-                setattr(data, f'{group_name}_method_text', method)
-            else:
+        for group_name, start_idx, use_cleaning_suffix in groups:
+            product = dropdown_values[start_idx]
+            concentration = dropdown_values[start_idx + 1] if start_idx + 1 < len(dropdown_values) else None
+            method = dropdown_values[start_idx + 2] if start_idx + 2 < len(dropdown_values) else None
+
+            # Если средство пустое или заглушка – считаем, что ничего не выбрано
+            if not product or product in self.INVENTORY_COLOR_PLACEHOLDERS:
+                product = None
+                concentration = None
+                method = None
+
+            # Присваиваем данные
+            if use_cleaning_suffix:
                 setattr(data, f'{group_name}_cleaning_product', product)
                 setattr(data, f'{group_name}_cleaning_concentration', concentration)
                 setattr(data, f'{group_name}_cleaning_method_text', method)
+            else:
+                setattr(data, f'{group_name}_product', product)
+                setattr(data, f'{group_name}_concentration', concentration)
+                setattr(data, f'{group_name}_method_text', method)
+
             print(f"  [DEBUG] {group_name}: product={product}, conc={concentration}, method={method}")
 
         # Вывод результатов
