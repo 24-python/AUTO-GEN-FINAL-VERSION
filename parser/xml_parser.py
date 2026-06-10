@@ -402,10 +402,6 @@ class SDTChecklistParser:
         print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
 
     def _parse_additional_info(self, root, data: ChecklistData):
-        """
-        Извлекает моющие и дезинфицирующие средства, а также цвет инвентаря.
-        Жёсткая привязка к индексам: 1 цвет + 15 средств (5 групп по 3).
-        """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
         all_values = []
@@ -426,7 +422,7 @@ class SDTChecklistParser:
 
         print(f"  📦 Найдено выпадающих списков: {len(all_values)}")
 
-        # ------------------- ЦВЕТ ИНВЕНТАРЯ -------------------
+        # --- Цвет инвентаря ---
         inventory_color = None
         if all_values:
             first_val = all_values[0]
@@ -441,13 +437,12 @@ class SDTChecklistParser:
         if inventory_color is None:
             print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
 
-        # ------------------- СРЕДСТВА (15 элементов) -------------------
+        # --- Средства (15 элементов) ---
         dropdown_values = all_values[1:] if len(all_values) > 1 else []
         while len(dropdown_values) < 15:
             dropdown_values.append(None)
         dropdown_values = dropdown_values[:15]
 
-        # Локальная функция извлечения продукта из тройки
         def extract_triplet(triplet):
             product = None
             concentration = None
@@ -462,7 +457,6 @@ class SDTChecklistParser:
                     break
             return product, concentration, method
 
-        # Группы с фиксированными начальными индексами
         groups = [
             ('cleaning', 0),
             ('disinfection', 3),
@@ -474,14 +468,18 @@ class SDTChecklistParser:
         for group_name, start_idx in groups:
             triplet = dropdown_values[start_idx:start_idx + 3]
             product, concentration, method = extract_triplet(triplet)
-            setattr(data, f'{group_name}_product', product)
-            setattr(data, f'{group_name}_concentration', concentration)
-            setattr(data, f'{group_name}_method_text', method)
-            # Отладочный вывод
-            print(
-                f"  [DEBUG] {group_name}: triplet={triplet}, product={product}, conc={concentration}, method={method}")
+            # Корректные имена полей
+            if group_name in ('cleaning', 'disinfection'):
+                setattr(data, f'{group_name}_product', product)
+                setattr(data, f'{group_name}_concentration', concentration)
+                setattr(data, f'{group_name}_method_text', method)
+            else:
+                setattr(data, f'{group_name}_cleaning_product', product)
+                setattr(data, f'{group_name}_cleaning_concentration', concentration)
+                setattr(data, f'{group_name}_cleaning_method_text', method)
+            print(f"  [DEBUG] {group_name}: product={product}, conc={concentration}, method={method}")
 
-        # Вывод результатов (как и раньше)
+        # Вывод результатов
         if data.cleaning_product:
             print(f"  🧴 Общее моющее средство: {data.cleaning_product}")
             print(f"     Концентрация: {data.cleaning_concentration or 'не указана'}")
@@ -512,6 +510,7 @@ class SDTChecklistParser:
             print(f"     Способ разведения: {data.glass_cleaning_method_text or 'не указан'}")
         else:
             print("  🪞 Моющее для стекол/зеркал/мониторов не выбрано")
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
