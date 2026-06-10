@@ -76,6 +76,14 @@ class TechCardGenerator:
             elif prop.special_product_type == 'thermal':
                 self.thermal_objects.add(name)
 
+        # DEBUG: выводим загруженные множества
+        print(f"[DEBUG] split_objects: {self.split_objects}")
+        print(f"[DEBUG] multi_method_objects: {self.multi_method_objects}")
+        print(f"[DEBUG] support_objects: {self.support_objects}")
+        print(f"[DEBUG] floor_objects: {self.floor_objects}")
+        print(f"[DEBUG] glass_objects: {self.glass_objects}")
+        print(f"[DEBUG] thermal_objects: {self.thermal_objects}")
+
         # 3. Группы объектов
         groups = session.query(ObjectGroup).all()
         self.group_headers = {}  # frozenset -> header
@@ -574,6 +582,9 @@ class TechCardGenerator:
             sort_priority = obj.sort_priority if obj else 999
             normalized_name = item.name
 
+            # DEBUG: проверка вхождения в спецгруппы
+            print(f"[DEBUG] Объект: {normalized_name}, в floor: {normalized_name in self.floor_objects}, в glass: {normalized_name in self.glass_objects}, в thermal: {normalized_name in self.thermal_objects}")
+
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
 
@@ -635,6 +646,8 @@ class TechCardGenerator:
                 unmatched_objects.append(item.name)
 
         session.close()
+
+        # ... (дальше код формирования строк и генерации без изменений, можно не дублировать)
 
         rows_data = []
         merge_info_object = []
