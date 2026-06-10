@@ -451,7 +451,7 @@ class SDTChecklistParser:
         # ------------------- СРЕДСТВА -------------------
         # Оставшиеся значения (индексы 1..15) – 15 полей для средств
         dropdown_values = all_values[1:] if len(all_values) > 1 else []
-        # Гарантируем ровно 15 элементов
+        # Гарантируем ровно 15 элементов (дополняем None, если не хватает)
         while len(dropdown_values) < 15:
             dropdown_values.append(None)
         # Используем только первые 15 (на случай, если больше)
@@ -467,30 +467,30 @@ class SDTChecklistParser:
                 if val and self._is_product_name(val):
                     product = val
                     # Концентрация и метод – следующие элементы, если они не продукты
-                    if i + 1 < len(triplet) and triplet[i+1] and not self._is_product_name(triplet[i+1]):
-                        concentration = triplet[i+1]
-                    if i + 2 < len(triplet) and triplet[i+2] and not self._is_product_name(triplet[i+2]):
-                        method = triplet[i+2]
+                    if i + 1 < len(triplet) and triplet[i + 1] and not self._is_product_name(triplet[i + 1]):
+                        concentration = triplet[i + 1]
+                    if i + 2 < len(triplet) and triplet[i + 2] and not self._is_product_name(triplet[i + 2]):
+                        method = triplet[i + 2]
                     break
             return product, concentration, method
 
         # Фиксированные группы
         groups = [
-            ('cleaning', 0),      # общее моющее
+            ('cleaning', 0),  # общее моющее
             ('disinfection', 3),  # дезинфекция
-            ('floor', 6),         # пол/трапы
-            ('thermal', 9),       # тепловое
-            ('glass', 12)         # стекло/зеркала
+            ('floor', 6),  # пол/трапы
+            ('thermal', 9),  # тепловое
+            ('glass', 12)  # стекло/зеркала
         ]
 
         for group_name, start_idx in groups:
-            triplet = dropdown_values[start_idx:start_idx+3]
+            triplet = dropdown_values[start_idx:start_idx + 3]
             product, concentration, method = extract_triplet_from_slice(triplet)
             setattr(data, f'{group_name}_product', product)
             setattr(data, f'{group_name}_concentration', concentration)
             setattr(data, f'{group_name}_method_text', method)
 
-        # Вывод информации (без изменений)
+        # Вывод информации
         if data.cleaning_product:
             print(f"  🧴 Общее моющее средство: {data.cleaning_product}")
             print(f"     Концентрация: {data.cleaning_concentration or 'не указана'}")
@@ -521,7 +521,7 @@ class SDTChecklistParser:
             print(f"     Способ разведения: {data.glass_cleaning_method_text or 'не указан'}")
         else:
             print("  🪞 Моющее для стекол/зеркал/мониторов не выбрано")
-
+            
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
