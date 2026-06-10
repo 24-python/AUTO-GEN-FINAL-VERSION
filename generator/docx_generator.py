@@ -76,14 +76,6 @@ class TechCardGenerator:
             elif prop.special_product_type == 'thermal':
                 self.thermal_objects.add(name)
 
-        # DEBUG: выводим загруженные множества
-        print(f"[DEBUG] split_objects: {self.split_objects}")
-        print(f"[DEBUG] multi_method_objects: {self.multi_method_objects}")
-        print(f"[DEBUG] support_objects: {self.support_objects}")
-        print(f"[DEBUG] floor_objects: {self.floor_objects}")
-        print(f"[DEBUG] glass_objects: {self.glass_objects}")
-        print(f"[DEBUG] thermal_objects: {self.thermal_objects}")
-
         # 3. Группы объектов
         groups = session.query(ObjectGroup).all()
         self.group_headers = {}  # frozenset -> header
@@ -582,9 +574,6 @@ class TechCardGenerator:
             sort_priority = obj.sort_priority if obj else 999
             normalized_name = item.name
 
-            # DEBUG: проверка вхождения в спецгруппы
-            print(f"[DEBUG] Объект: {normalized_name}, в floor: {normalized_name in self.floor_objects}, в glass: {normalized_name in self.glass_objects}, в thermal: {normalized_name in self.thermal_objects}")
-
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
 
@@ -646,8 +635,6 @@ class TechCardGenerator:
                 unmatched_objects.append(item.name)
 
         session.close()
-
-        # ... (дальше код формирования строк и генерации без изменений, можно не дублировать)
 
         rows_data = []
         merge_info_object = []
@@ -868,7 +855,7 @@ class TechCardGenerator:
                     cleaning_method = self._clean_text(instr.cleaning_method or "")
                     cleaning_technique = self._clean_text(instr.cleaning_technique or "")
 
-                    # ---------- НОВАЯ ЛОГИКА: определение product_name, concentration, extra_method ----------
+                    # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
                     db_product = self._clean_text(instr.product_name or "")
                     db_concentration = self._clean_text(instr.concentration or "")
                     db_method = self._clean_text(instr.application_method or "")
@@ -928,17 +915,14 @@ class TechCardGenerator:
 
                     # Колонка 6: концентрация + метод разведения (с переносом строки)
                     para = row.cells[5].paragraphs[0]
-                    # Очищаем старые runs
                     for r in para.runs:
                         para._p.remove(r._r)
 
-                    # Сначала выводим концентрацию (или прочерк)
                     conc_text = final_concentration if final_concentration else "___________________"
                     run_conc = para.add_run(conc_text)
                     run_conc.font.name = 'Arial'
                     run_conc.font.size = Pt(7)
 
-                    # Если есть метод разведения, добавляем разрыв строки и метод
                     if final_extra_method:
                         run_br = para.add_run()
                         br = OxmlElement('w:br')
