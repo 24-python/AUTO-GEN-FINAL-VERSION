@@ -456,7 +456,10 @@ class SDTChecklistParser:
             dropdown_values.append(None)
         # Используем только первые 15 (на случай, если больше)
         dropdown_values = dropdown_values[:15]
-
+        # ОТЛАДКА: печатаем содержимое всех 15 элементов
+        print("  [DEBUG] Содержимое dropdown_values (индексы 0-14):")
+        for i, val in enumerate(dropdown_values):
+            print(f"    [{i}] = {repr(val)}")
         # Функция для извлечения тройки (без изменения индексов)
         def extract_triplet_from_slice(triplet):
             product = None
@@ -521,7 +524,7 @@ class SDTChecklistParser:
             print(f"     Способ разведения: {data.glass_cleaning_method_text or 'не указан'}")
         else:
             print("  🪞 Моющее для стекол/зеркал/мониторов не выбрано")
-            
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
