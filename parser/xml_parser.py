@@ -33,13 +33,19 @@ from db.models import Object as DBObject
 # НОРМАЛИЗАЦИЯ
 # ============================================================
 def normalize_name(name: str) -> str:
-    """Нормализует имя для поиска в БД"""
+    """Нормализует имя для поиска в БД, гарантируя единообразие пробелов вокруг скобок"""
     if not name:
         return ""
+    # Вставляем пробел перед открывающей скобкой, если его нет
+    name = re.sub(r'(?<!\s)\(', ' (', name)
+    # Вставляем пробел после закрывающей скобки, если его нет
+    name = re.sub(r'\)(?!\s)', ') ', name)
+    # Удаляем всё, кроме букв, цифр, пробелов, дефиса, подчёркивания, скобок
     normalized = re.sub(r'[^\w\s\-\(\)]', '', name)
     normalized = normalized.lower()
-    normalized = re.sub(r'\s+', ' ', normalized)
-    return normalized.strip()
+    # Схлопываем множественные пробелы
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
 
 
 def normalize_potolok_name(name: str) -> str:
@@ -477,8 +483,6 @@ class SDTChecklistParser:
                 setattr(data, f'{group_name}_product', product)
                 setattr(data, f'{group_name}_concentration', concentration)
                 setattr(data, f'{group_name}_method_text', method)
-
-            print(f"  [DEBUG] {group_name}: product={product}, conc={concentration}, method={method}")
 
         # Вывод результатов
         if data.cleaning_product:
