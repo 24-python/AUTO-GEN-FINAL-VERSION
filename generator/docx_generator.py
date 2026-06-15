@@ -76,9 +76,6 @@ class TechCardGenerator:
             elif prop.special_product_type == 'thermal':
                 self.thermal_objects.add(name)
 
-        # ===== ОТЛАДКА =====
-        print(f"[DEBUG] multi_method_objects: {sorted(self.multi_method_objects)}")
-
         # 3. Группы объектов
         groups = session.query(ObjectGroup).all()
         self.group_headers = {}  # frozenset -> header
@@ -525,7 +522,7 @@ class TechCardGenerator:
         return True
 
     def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1,
-                 enterprise_products_path: str = None) -> str:
+                 enterprise_products_path: str = None, progress_callback=None) -> str:
         doc = Document(self.template_path)
         main_table = doc.tables[1]
 
@@ -587,10 +584,6 @@ class TechCardGenerator:
             display_name = obj.display_name if obj else item.name
             sort_priority = obj.sort_priority if obj else 999
             normalized_name = item.name
-
-            # ===== ОТЛАДКА: проверка для каждого объекта =====
-            is_multi = normalized_name in self.multi_method_objects
-            print(f"[DEBUG] Object: {normalized_name}, in multi_method_objects: {is_multi}")
 
             if obj and obj.id in instructions_dict:
                 all_instrs = instructions_dict[obj.id]
