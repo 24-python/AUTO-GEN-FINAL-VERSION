@@ -277,7 +277,7 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        # 1. Отбираем инструкции с учётом категории помещения и уровня
+        # 1. Отбираем инструкции с учётом категории помещения и уровня (все уровни)
         by_method = defaultdict(list)
         for instr in all_instructions:
             method = instr.cleaning_method or ""
@@ -285,19 +285,14 @@ class TechCardGenerator:
 
         selected = []
         for method, instrs in by_method.items():
-            best_maints = []
-            for maint_level in ["основная", "поддерживающая", "генеральная"]:
-                specific = [i for i in instrs if (i.maintenance_type or "").lower() == maint_level and i.room_category_id == room_category_id]
-                if specific:
-                    best_maints.extend(specific)
-                    break
-            if not best_maints:
-                for maint_level in ["основная", "поддерживающая", "генеральная"]:
-                    common = [i for i in instrs if (i.maintenance_type or "").lower() == maint_level and i.room_category_id is None]
-                    if common:
-                        best_maints.extend(common)
-                        break
-            selected.extend(best_maints)
+            # Сначала пробуем найти инструкции, специфичные для помещения
+            specific_instrs = [i for i in instrs if i.room_category_id == room_category_id]
+            if specific_instrs:
+                selected.extend(specific_instrs)
+            else:
+                # Если нет специфичных, берём все общие
+                common_instrs = [i for i in instrs if i.room_category_id is None]
+                selected.extend(common_instrs)
 
         # 2. Группируем по уровню обслуживания
         level_groups = defaultdict(list)
