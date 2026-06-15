@@ -190,87 +190,59 @@ class SDTChecklistParser:
 
         return Category.OTHER
 
+    # ===================== ИСПРАВЛЕННЫЕ МЕТОДЫ СБОРКИ ТЕКСТА =====================
     def _parse_sdt_cell(self, cell, data: ChecklistData):
-        """Парсит ячейку с SDT чек-боксами"""
+        """Парсит ячейку с SDT чек-боксами (сбор полного текста, а не по runs)"""
         sdt_elements = cell.xpath('.//w:sdt', namespaces=self.NAMESPACES)
         if not sdt_elements:
             return
 
-        elements = []
-        checkbox_count = 0
+        # Собираем полный текст ячейки через XPath string()
+        full_text = cell.xpath('string()', namespaces=self.NAMESPACES)
+        full_text = full_text.strip()
 
-        for para in cell.xpath('.//w:p', namespaces=self.NAMESPACES):
-            for child in para.getchildren():
-                tag = child.tag.split('}')[-1]
-
-                if tag == 'sdt':
-                    checkbox_count += 1
-                    elements.append({
-                        'type': 'checkbox',
-                        'checked': self._get_checkbox_state(child)
-                    })
-                elif tag == 'r':
-                    texts = child.xpath('.//w:t', namespaces=self.NAMESPACES)
-                    for t in texts:
-                        if t.text:
-                            text = t.text.strip()
-                            if text and text not in ['☒', '☐']:
-                                elements.append({
-                                    'type': 'text',
-                                    'value': text
-                                })
-
-        if not elements:
+        if not full_text or ('☒' not in full_text and '☐' not in full_text):
             return
 
+        checkbox_count = full_text.count('☒') + full_text.count('☐')
+
+        # Разбиваем строку на чекбоксы и текст
+        parts = re.split(r'([☐☒])', full_text)
         current_obj = None
-        current_state = False
         text_parts = []
+        current_state = False
+        modifiers = []
 
-        for elem in elements:
-            if elem['type'] == 'checkbox':
+        for part in parts:
+            if part in ('☒', '☐'):
                 if text_parts:
-                    full_text = self._clean_text(''.join(text_parts))
-                    if full_text:
+                    text = self._clean_text(''.join(text_parts))
+                    if text:
                         if current_obj is None:
-                            current_obj = {
-                                'name': full_text,
-                                'checked': current_state,
-                                'modifiers': []
-                            }
+                            current_obj = {'name': text, 'checked': current_state, 'modifiers': []}
                         else:
-                            current_obj['modifiers'].append({
-                                'name': full_text,
-                                'checked': current_state
-                            })
+                            modifiers.append({'name': text, 'checked': current_state})
                     text_parts = []
-                current_state = elem['checked']
-            elif elem['type'] == 'text':
-                text_parts.append(elem['value'])
+                current_state = (part == '☒')
+            else:
+                text_parts.append(part)
 
+        # Последний фрагмент после последнего чекбокса
         if text_parts:
-            full_text = self._clean_text(''.join(text_parts))
-            if full_text:
+            text = self._clean_text(''.join(text_parts))
+            if text:
                 if current_obj is None:
-                    current_obj = {
-                        'name': full_text,
-                        'checked': current_state,
-                        'modifiers': []
-                    }
+                    current_obj = {'name': text, 'checked': current_state, 'modifiers': []}
                 else:
-                    current_obj['modifiers'].append({
-                        'name': full_text,
-                        'checked': current_state
-                    })
+                    modifiers.append({'name': text, 'checked': current_state})
 
         if current_obj:
+            current_obj['modifiers'] = modifiers
             self._add_object_to_data(current_obj, checkbox_count, data)
 
     def _parse_unicode_cell(self, cell, data: ChecklistData):
-        """Парсит ячейку с Unicode-символами ☒/☐ (без SDT)"""
-        texts = cell.xpath('.//w:t', namespaces=self.NAMESPACES)
-        full_text = ''.join([t.text for t in texts if t.text])
-
+        """Парсит ячейку с Unicode-символами ☒/☐ (полный текст)"""
+        full_text = cell.xpath('string()', namespaces=self.NAMESPACES).strip()
         if not full_text or ('☒' not in full_text and '☐' not in full_text):
             return
 
@@ -280,44 +252,32 @@ class SDTChecklistParser:
         current_obj = None
         text_parts = []
         current_state = False
+        modifiers = []
 
-        for i in range(1, len(parts)):
-            if parts[i] in ['☒', '☐']:
+        for part in parts:
+            if part in ('☒', '☐'):
                 if text_parts:
-                    full_text = self._clean_text(''.join(text_parts))
-                    if full_text:
+                    text = self._clean_text(''.join(text_parts))
+                    if text:
                         if current_obj is None:
-                            current_obj = {
-                                'name': full_text,
-                                'checked': current_state,
-                                'modifiers': []
-                            }
+                            current_obj = {'name': text, 'checked': current_state, 'modifiers': []}
                         else:
-                            current_obj['modifiers'].append({
-                                'name': full_text,
-                                'checked': current_state
-                            })
+                            modifiers.append({'name': text, 'checked': current_state})
                     text_parts = []
-                current_state = (parts[i] == '☒')
+                current_state = (part == '☒')
             else:
-                text_parts.append(parts[i])
+                text_parts.append(part)
 
         if text_parts:
-            full_text = self._clean_text(''.join(text_parts))
-            if full_text:
+            text = self._clean_text(''.join(text_parts))
+            if text:
                 if current_obj is None:
-                    current_obj = {
-                        'name': full_text,
-                        'checked': current_state,
-                        'modifiers': []
-                    }
+                    current_obj = {'name': text, 'checked': current_state, 'modifiers': []}
                 else:
-                    current_obj['modifiers'].append({
-                        'name': full_text,
-                        'checked': current_state
-                    })
+                    modifiers.append({'name': text, 'checked': current_state})
 
         if current_obj:
+            current_obj['modifiers'] = modifiers
             self._add_object_to_data(current_obj, checkbox_count, data)
 
     def _add_object_to_data(self, obj: dict, checkbox_count: int, data: ChecklistData):
