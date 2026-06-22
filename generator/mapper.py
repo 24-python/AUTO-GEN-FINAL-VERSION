@@ -26,6 +26,7 @@ class CategoryMapper:
         ParserCategory.OFFICE_EQUIPMENT: "Офисная техника",
         ParserCategory.SANITARY_POST: "Санитарный пост",
         ParserCategory.PPE: "Многоразовые резиновые СИЗ",
+        ParserCategory.CONTACT_SURFACES: "Контактные поверхности",
         ParserCategory.OTHER: "Прочее",
     }
 

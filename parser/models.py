@@ -20,6 +20,7 @@ class Category(Enum):
     OFFICE_EQUIPMENT = "Офисная техника"
     SANITARY_POST = "Санитарный пост"
     PPE = "Многоразовые резиновые СИЗ"
+    CONTACT_SURFACES = "Контактные поверхности"   # <-- новая категория
     OTHER = "Прочее"
 
     @classmethod

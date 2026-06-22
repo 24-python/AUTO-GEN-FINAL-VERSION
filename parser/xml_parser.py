@@ -93,6 +93,7 @@ class SDTChecklistParser:
         "Тепловое оборудование": Category.THERMAL_EQUIPMENT,
         "Технологическое оборудование": Category.TECH_EQUIPMENT,
         "Упаковочное оборудование": Category.PACKAGING_EQUIPMENT,
+        "Контактные поверхности": Category.CONTACT_SURFACES,
     }
 
     # Категории помещений (в нижнем регистре для единообразия)
