@@ -220,6 +220,15 @@ def initialize_database():
             seed_cleaning_method_order()
         else:
             print(f"✅ БД содержит {cm_count} способов обработки")
+
+        # ====== Добавляем новую категорию «Контактные поверхности», если её ещё нет ======
+        contact = session.query(DBCategory).filter_by(name="Контактные поверхности").first()
+        if not contact:
+            max_order = session.query(DBCategory).order_by(DBCategory.sort_order.desc()).first()
+            new_order = (max_order.sort_order + 1) if max_order else 16
+            session.add(DBCategory(name="Контактные поверхности", sort_order=new_order))
+            session.commit()
+            print("✅ Добавлена категория «Контактные поверхности»")
     finally:
         session.close()
 
