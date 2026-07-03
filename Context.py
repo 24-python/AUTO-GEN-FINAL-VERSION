@@ -38,7 +38,7 @@ class ProjectExporter:
         self.root.title("Экспорт проекта")
         self.root.geometry("800x800")
 
-        # Текущая директория проекта
+        # Текущая директория проекта (по умолчанию - папка скрипта)
         self.project_root = Path(__file__).parent.resolve()
 
         # Расширения для экспорта
@@ -52,6 +52,9 @@ class ProjectExporter:
         self.setup_ui()
         self.bind_shortcuts()
 
+        # Заполняем дерево текущей папкой
+        self.populate_tree()
+
     def bind_shortcuts(self):
         """Привязка клавиатурных сокращений"""
         self.root.bind('<Delete>', lambda e: self.remove_selected_from_list())
@@ -63,7 +66,14 @@ class ProjectExporter:
         info_frame = ttk.LabelFrame(self.root, text="Информация", padding=10)
         info_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(info_frame, text=f"Папка проекта: {self.project_root}").pack(anchor=tk.W)
+        # Строка с путём и кнопкой выбора
+        path_frame = ttk.Frame(info_frame)
+        path_frame.pack(fill=tk.X, pady=2)
+        self.path_label = ttk.Label(path_frame, text=f"Папка проекта: {self.project_root}")
+        self.path_label.pack(side=tk.LEFT, anchor=tk.W)
+        ttk.Button(path_frame, text="📂 Выбрать папку проекта",
+                   command=self.choose_project_folder).pack(side=tk.RIGHT, padx=5)
+
         ttk.Label(info_frame, text=f"Поддерживаемые расширения: {', '.join(sorted(self.extensions))}").pack(anchor=tk.W)
         ttk.Label(info_frame, text="💡 Советы: Ctrl+A - выделить всё, Delete - удалить выбранные").pack(anchor=tk.W)
 
@@ -79,9 +89,6 @@ class ProjectExporter:
         scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.config(yscrollcommand=scrollbar.set)
-
-        # Заполняем дерево
-        self.populate_tree()
 
         # Кнопки для работы с выбранным
         buttons_frame = ttk.Frame(self.root)
@@ -121,11 +128,29 @@ class ProjectExporter:
         ttk.Button(bottom_frame, text="🚀 Экспортировать", command=self.export_project).pack(side=tk.RIGHT, padx=5)
         ttk.Button(bottom_frame, text="❌ Выход", command=self.root.quit).pack(side=tk.RIGHT, padx=5)
 
+    def choose_project_folder(self):
+        """Открывает диалог выбора папки и обновляет дерево"""
+        folder = filedialog.askdirectory(
+            title="Выберите корневую папку проекта",
+            initialdir=str(self.project_root)
+        )
+        if folder:
+            self.project_root = Path(folder).resolve()
+            self.path_label.config(text=f"Папка проекта: {self.project_root}")
+            # Очищаем список выбранных файлов, так как пути изменились
+            self.clear_all()
+            # Перестраиваем дерево
+            self.populate_tree()
+            messagebox.showinfo("Папка выбрана", f"Теперь корневая папка: {self.project_root}")
+
     def populate_tree(self, parent="", path=None):
-        """Заполняет дерево проектом"""
+        """Заполняет дерево проектом (рекурсивно)"""
         if path is None:
             path = self.project_root
             self.tree.delete(*self.tree.get_children())
+            if not path.exists():
+                messagebox.showerror("Ошибка", f"Папка {path} не существует!")
+                return
             node = self.tree.insert(parent, "end", text=path.name, open=True, tags=("dir", str(path)))
             self.populate_tree(node, path)
         else:
@@ -204,7 +229,6 @@ class ProjectExporter:
 
     def highlight_file_in_tree(self, file_path):
         """Рекурсивно ищет и подсвечивает файл в дереве"""
-
         def find_in_tree(parent=""):
             for item in self.tree.get_children(parent):
                 tags = self.tree.item(item, "tags")
