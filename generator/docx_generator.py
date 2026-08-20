@@ -984,13 +984,64 @@ class TechCardGenerator:
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
+        # ===== ИСПРАВЛЕНИЕ ОШИБКИ 2: РАЗДЕЛЬНОЕ ОБЪЕДИНЕНИЕ КОЛОНКИ "№ ИНСТРУКЦИИ" =====
+        # Сначала объединяем колонки 8,9,10,11 как раньше (по всей группе)
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
             if actual_end > actual_start:
-                for col in [2, 8, 9, 10, 11]:
+                for col in [8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
+        # Для колонки 2 (№ инструкции) используем отдельную логику с разбиением по уровням
+        for group_start, group_end in merge_info_columns:
+            actual_start = start_row + group_start
+            actual_end = start_row + group_end
+            if actual_end > actual_start:
+                # Определяем, есть ли в этом диапазоне разные maintenance_type
+                levels = []
+                for row_idx in range(actual_start, actual_end + 1):
+                    row_data_index = row_idx - start_row
+                    if row_data_index < len(rows_data):
+                        row_data = rows_data[row_data_index]
+                        instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                        if instr:
+                            levels.append((instr.maintenance_type or "").lower())
+                        else:
+                            levels.append(None)
+                    else:
+                        levels.append(None)
+
+                unique_levels = set([l for l in levels if l is not None])
+                if len(unique_levels) <= 1:
+                    # Все строки одного уровня или нет инструкций – объединяем колонку 2 целиком
+                    self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
+                else:
+                    # Разбиваем на поддиапазоны по смене уровня
+                    current_level = None
+                    sub_start = actual_start
+                    for row_idx in range(actual_start, actual_end + 1):
+                        row_data_index = row_idx - start_row
+                        if row_data_index < len(rows_data):
+                            row_data = rows_data[row_data_index]
+                            instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                            level = (instr.maintenance_type or "").lower() if instr else None
+                        else:
+                            level = None
+
+                        if level != current_level:
+                            # Закрываем предыдущий поддиапазон
+                            if current_level is not None:
+                                if sub_start <= row_idx - 1:
+                                    self._merge_adjacent_equal_cells(main_table, 2, sub_start, row_idx - 1)
+                            current_level = level
+                            sub_start = row_idx
+                    # Закрываем последний поддиапазон
+                    if current_level is not None:
+                        if sub_start <= actual_end:
+                            self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
+
+        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ (не меняется) ===
         for group_start, group_end in surface_merge_info:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
