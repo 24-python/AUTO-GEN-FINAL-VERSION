@@ -13,6 +13,7 @@
 Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
 Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
 Добавлено: парсинг цвета инвентаря из выпадающего списка.
+Доработано: категории помещений и цвета инвентаря загружаются из БД (справочники).
 """
 
 import zipfile
@@ -26,7 +27,7 @@ from parser.models import ChecklistData, ChecklistItem, Category
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import SessionLocal
-from db.models import Object as DBObject
+from db.models import Object as DBObject, RoomCategory, InventoryColor
 
 
 # ============================================================
@@ -96,17 +97,8 @@ class SDTChecklistParser:
         "Контактные поверхности": Category.CONTACT_SURFACES,
     }
 
-    # Категории помещений (в нижнем регистре для единообразия)
-    ROOM_CATEGORIES = [
-        'производственное', 'бытовое', 'складское', 'санитарное',
-        'вспомогательное', 'моечное', 'техническое', 'офисное',
-        'общего назначения'
-    ]
-
-    # Разрешённые цвета инвентаря (для фильтрации)
-    ALLOWED_INVENTORY_COLORS = [
-        'черный', 'красный', 'желтый', 'зеленый', 'синий', 'голубой'
-    ]
+    # ===== УДАЛЕНЫ ЖЁСТКИЕ СПИСКИ ROOM_CATEGORIES и ALLOWED_INVENTORY_COLORS =====
+    # Теперь они загружаются из БД в __init__
 
     # Заглушки, которые могут быть выбраны вместо цвета инвентаря
     INVENTORY_COLOR_PLACEHOLDERS = {
@@ -136,6 +128,29 @@ class SDTChecklistParser:
 
     def __init__(self):
         self._category_cache = {}
+        # ===== ДОБАВЛЕНО: кэши для категорий и цветов =====
+        self._room_categories = set()      # допустимые категории помещений (нижний регистр)
+        self._inventory_colors = set()     # допустимые цвета инвентаря (нижний регистр)
+        self._load_room_categories()
+        self._load_inventory_colors()
+
+    def _load_room_categories(self):
+        """Загружает список допустимых категорий помещений из БД."""
+        session = SessionLocal()
+        try:
+            categories = session.query(RoomCategory).all()
+            self._room_categories = {c.name.lower() for c in categories}
+        finally:
+            session.close()
+
+    def _load_inventory_colors(self):
+        """Загружает список допустимых цветов инвентаря из БД."""
+        session = SessionLocal()
+        try:
+            colors = session.query(InventoryColor).all()
+            self._inventory_colors = {c.name.lower() for c in colors}
+        finally:
+            session.close()
 
     def _is_product_name(self, value: str) -> bool:
         """Проверяет, похоже ли значение на название средства (а не концентрацию/метод/заглушку)"""
@@ -342,7 +357,10 @@ class SDTChecklistParser:
                     data.room_name = ' '.join([t.text for t in texts if t.text]).strip()
 
     def _parse_room_category(self, root, data: ChecklistData):
-        """Извлекает категорию помещения из выпадающего списка (dropDownList SDT)"""
+        """
+        Извлекает категорию помещения из выпадающего списка (dropDownList SDT).
+        Проверяет значение по БД (таблица room_categories).
+        """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
         for sdt in sdt_elements:
@@ -359,20 +377,21 @@ class SDTChecklistParser:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
                 if value:
-                    # Приводим к нижнему регистру
                     value_lower = value.lower()
-                    if value_lower in self.ROOM_CATEGORIES:
+                    # ===== ЗАМЕНА ЖЁСТКОГО СПИСКА НА ПРОВЕРКУ ПО БД =====
+                    if value_lower in self._room_categories:
                         data.room_category = value_lower
                         print(f"  📋 Категория помещения (из выпадающего списка): «{value_lower}»")
                         return
 
-        print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует в чек-листе)")
+        print("  ⚠️ Категория помещения не найдена (выпадающий список отсутствует или значение не в БД)")
 
     def _parse_additional_info(self, root, data: ChecklistData):
         """
         Извлекает моющие и дезинфицирующие средства, цвет инвентаря.
         Строгий порядок: 1 цвет + 15 средств (5 групп по 3).
         В каждой тройке: [0] – средство, [1] – концентрация, [2] – метод.
+        Цвет инвентаря проверяется по БД (таблица inventory_colors).
         """
         sdt_elements = root.xpath('.//w:sdt', namespaces=self.NAMESPACES)
 
@@ -388,7 +407,8 @@ class SDTChecklistParser:
             if sdt_content is not None:
                 texts = sdt_content.findall('.//w:t', namespaces=self.NAMESPACES)
                 value = ''.join(t.text or '' for t in texts).strip()
-                if value.lower() in self.ROOM_CATEGORIES:
+                # Пропускаем значения, которые являются категориями помещений
+                if value.lower() in self._room_categories:
                     continue
                 all_values.append(value if value else None)
 
@@ -398,7 +418,8 @@ class SDTChecklistParser:
         inventory_color = None
         if all_values:
             first_val = all_values[0]
-            if first_val and first_val.lower() in self.ALLOWED_INVENTORY_COLORS:
+            # ===== ЗАМЕНА ЖЁСТКОГО СПИСКА НА ПРОВЕРКУ ПО БД =====
+            if first_val and first_val.lower() in self._inventory_colors:
                 inventory_color = first_val.lower()
                 print(f"  🎨 Найден цвет инвентаря: {inventory_color}")
             elif first_val in self.INVENTORY_COLOR_PLACEHOLDERS or first_val is None:

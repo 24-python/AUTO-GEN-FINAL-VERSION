@@ -8,7 +8,7 @@ from pathlib import Path
 from parser.models import ChecklistData
 from db.models import (Instruction, Category as DBCategory, Object as DBObject,
                        RoomCategory, Product, ObjectProperty, ObjectGroup,
-                       CleaningMethodOrder)
+                       CleaningMethodOrder, InventoryColor)
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -18,16 +18,6 @@ import copy
 class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
-
-    # Цвета для инвентаря
-    INVENTORY_COLORS = {
-        "черный": "969696",
-        "красный": "FFCCCC",
-        "желтый": "FFFFCC",
-        "зеленый": "99FF99",
-        "синий": "99CCFF",
-        "голубой": "CCECFF",
-    }
 
     # Порядок уровней обработки для вывода
     LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
@@ -42,6 +32,18 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
         # Кэши конфигурации, загружаемые из БД
         self._config_loaded = False
+        # ===== Кэш цветов инвентаря =====
+        self._inventory_colors = {}  # {name: hex_color}
+        self._load_inventory_colors()
+
+    def _load_inventory_colors(self):
+        """Загружает цвета инвентаря из БД в словарь {name: hex_color}."""
+        session = SessionLocal()
+        try:
+            colors = session.query(InventoryColor).all()
+            self._inventory_colors = {c.name: c.hex_color for c in colors}
+        finally:
+            session.close()
 
     def _load_config(self, session):
         """Загружает конфигурацию из БД (CleaningMethodOrder, ObjectProperty, ObjectGroup)"""
@@ -940,15 +942,25 @@ class TechCardGenerator:
                     self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                     self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
+                    # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
                     if normalized_name and normalized_name in self.split_objects:
+                        # Для split-объектов инвентарь берётся из инструкции
                         inv_text = self._clean_text(instr.inventory or "")
-                        self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
-                    else:
-                        if checklist_data.inventory_color and checklist_data.inventory_color in self.INVENTORY_COLORS:
-                            inv_text = checklist_data.inventory_color
-                            inv_color = self.INVENTORY_COLORS[checklist_data.inventory_color]
+                        if inv_text and inv_text.lower() in self._inventory_colors:
+                            inv_color = self._inventory_colors[inv_text.lower()]
                             self._set_cell_text(row.cells[8], inv_text, bold=True)
                             self._set_cell_background(row.cells[8], inv_color)
+                        else:
+                            self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
+                    else:
+                        # Для обычных объектов – цвет из чек-листа
+                        if checklist_data.inventory_color:
+                            inv_color = self._inventory_colors.get(checklist_data.inventory_color)
+                            if inv_color:
+                                self._set_cell_text(row.cells[8], checklist_data.inventory_color, bold=True)
+                                self._set_cell_background(row.cells[8], inv_color)
+                            else:
+                                self._set_cell_text(row.cells[8], "промаркированный", bold=True)
                         else:
                             self._set_cell_text(row.cells[8], "промаркированный", bold=True)
 

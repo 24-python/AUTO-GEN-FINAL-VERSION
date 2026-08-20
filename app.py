@@ -14,6 +14,7 @@ import uuid
 import zipfile
 import tempfile
 import time
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from io import StringIO
@@ -24,7 +25,7 @@ from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
 from db.models import (Object, Instruction, Category as DBCategory, RoomCategory, Product,
-                       ObjectProperty, ObjectGroup, CleaningMethodOrder)
+                       ObjectProperty, ObjectGroup, CleaningMethodOrder, InventoryColor)
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
@@ -110,6 +111,8 @@ def process_single_file(file, mode, generator):
 
         checklist_data = parse_checklist(filepath)
         room_name = checklist_data.room_name or Path(filepath).stem
+        # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
+        room_name = re.sub(r'\s+', ' ', room_name).strip()
         safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
         output_filename = f"{safe_name}_tech_card.docx"
         output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
@@ -146,6 +149,8 @@ def process_zip_file(file, mode, generator):
             try:
                 checklist_data = parse_checklist(str(docx_path))
                 room_name = checklist_data.room_name or docx_path.stem
+                # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
+                room_name = re.sub(r'\s+', ' ', room_name).strip()
                 safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
                 output_filename = f"{safe_name}_tech_card.docx"
                 output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
@@ -229,6 +234,11 @@ def initialize_database():
             session.add(DBCategory(name="Контактные поверхности", sort_order=new_order))
             session.commit()
             print("✅ Добавлена категория «Контактные поверхности»")
+
+        # ====== ДОБАВЛЕНО: первичная инициализация цветов инвентаря ======
+        from db.init_db import seed_inventory_colors
+        seed_inventory_colors()
+
     finally:
         session.close()
 
@@ -598,6 +608,141 @@ def api_delete_room_category(rc_id):
         return jsonify({'success': True})
     session.close()
     return jsonify({'success': False, 'error': 'Не найдена'}), 404
+
+
+# ============================================================
+# API: ЦВЕТА ИНВЕНТАРЯ (ДОБАВЛЕНО)
+# ============================================================
+
+@app.route('/api/inventory-colors', methods=['GET'])
+def api_get_inventory_colors():
+    session = SessionLocal()
+    colors = session.query(InventoryColor).order_by(InventoryColor.name).all()
+    result = [{"id": c.id, "name": c.name, "hex_color": c.hex_color} for c in colors]
+    session.close()
+    return jsonify({"colors": result})
+
+
+@app.route('/api/inventory-colors', methods=['POST'])
+def api_create_inventory_color():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    hex_color = data.get('hex_color', '').strip()
+    if not name or not hex_color:
+        return jsonify({"success": False, "error": "Название и HEX-код обязательны"}), 400
+
+    session = SessionLocal()
+    existing = session.query(InventoryColor).filter(InventoryColor.name == name).first()
+    if existing:
+        session.close()
+        return jsonify({"success": False, "error": "Цвет с таким названием уже существует"}), 400
+
+    color = InventoryColor(name=name, hex_color=hex_color)
+    session.add(color)
+    session.commit()
+    session.refresh(color)
+    color_id = color.id
+    session.close()
+    return jsonify({"success": True, "id": color_id})
+
+
+@app.route('/api/inventory-colors/<int:color_id>', methods=['PUT'])
+def api_update_inventory_color(color_id):
+    data = request.get_json()
+    session = SessionLocal()
+    color = session.query(InventoryColor).get(color_id)
+    if not color:
+        session.close()
+        return jsonify({"success": False, "error": "Цвет не найден"}), 404
+
+    name = data.get('name', '').strip()
+    hex_color = data.get('hex_color', '').strip()
+    if name:
+        existing = session.query(InventoryColor).filter(InventoryColor.name == name, InventoryColor.id != color_id).first()
+        if existing:
+            session.close()
+            return jsonify({"success": False, "error": "Цвет с таким названием уже существует"}), 400
+        color.name = name
+    if hex_color:
+        color.hex_color = hex_color
+    session.commit()
+    session.close()
+    return jsonify({"success": True})
+
+
+@app.route('/api/inventory-colors/<int:color_id>', methods=['DELETE'])
+def api_delete_inventory_color(color_id):
+    session = SessionLocal()
+    color = session.query(InventoryColor).get(color_id)
+    if color:
+        session.delete(color)
+        session.commit()
+        session.close()
+        return jsonify({"success": True})
+    session.close()
+    return jsonify({"success": False, "error": "Цвет не найден"}), 404
+
+
+@app.route('/api/inventory-colors/export_csv')
+def api_export_inventory_colors_csv():
+    session = SessionLocal()
+    colors = session.query(InventoryColor).order_by(InventoryColor.name).all()
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['name', 'hex_color'])
+    for c in colors:
+        writer.writerow([c.name, c.hex_color])
+    session.close()
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=inventory_colors_export.csv'}
+    )
+
+
+@app.route('/api/inventory-colors/import_csv', methods=['POST'])
+def api_import_inventory_colors_csv():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "Нет файла"}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({"success": False, "error": "Файл должен быть CSV"}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_colors_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    updated = 0
+    errors = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                name = row.get('name', '').strip()
+                hex_color = row.get('hex_color', '').strip()
+                if not name or not hex_color:
+                    continue
+                existing = session.query(InventoryColor).filter(InventoryColor.name == name).first()
+                if existing:
+                    existing.hex_color = hex_color
+                    updated += 1
+                else:
+                    session.add(InventoryColor(name=name, hex_color=hex_color))
+                    created += 1
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({"success": True, "created": created, "updated": updated, "errors": errors})
 
 
 # ============================================================

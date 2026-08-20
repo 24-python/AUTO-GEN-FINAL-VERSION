@@ -163,6 +163,20 @@ class CleaningMethodOrder(Base):
         return f"<CleaningMethodOrder(method='{self.method_name}', order={self.sort_order})>"
 
 
+# ===================== ДОБАВЛЕНО: ЦВЕТА ИНВЕНТАРЯ =====================
+
+class InventoryColor(Base):
+    """Цвета уборочного инвентаря (редактируемый справочник)"""
+    __tablename__ = 'inventory_colors'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False, unique=True)      # название цвета (чёрный, жёлтый, ...)
+    hex_color = Column(String(7), nullable=False)               # HEX-код (например, #000000)
+
+    def __repr__(self):
+        return f"<InventoryColor(id={self.id}, name='{self.name}', hex='{self.hex_color}')>"
+
+
 # Индексы для ускорения поиска
 Index('idx_object_normalized_name', Object.normalized_name)
 Index('idx_object_category', Object.category_id)

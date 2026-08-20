@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import engine, SessionLocal
-from db.models import Base, Category, RoomCategory, CleaningMethodOrder
+from db.models import Base, Category, RoomCategory, CleaningMethodOrder, InventoryColor
 
 
 def create_tables():
@@ -130,6 +130,46 @@ def seed_cleaning_method_order():
     print(f"✅ Добавлено {len(methods)} методов")
 
 
+# ===================== ДОБАВЛЕНО: SEED-ЗАПОЛНЕНИЕ ЦВЕТОВ ИНВЕНТАРЯ =====================
+
+def seed_inventory_colors():
+    """Заполняет таблицу inventory_colors стандартными цветами, если она пуста."""
+    print("🔄 Проверка цветов инвентаря...")
+
+    session = SessionLocal()
+    try:
+        existing_count = session.query(InventoryColor).count()
+        if existing_count > 0:
+            print(f"✅ Цвета инвентаря уже существуют ({existing_count} шт.), пропускаем")
+            return
+
+        standard_colors = [
+            {"name": "чёрный", "hex": "#000000"},
+            {"name": "красный", "hex": "#FF0000"},
+            {"name": "жёлтый", "hex": "#FFFF00"},
+            {"name": "зелёный", "hex": "#008000"},
+            {"name": "синий", "hex": "#0000FF"},
+            {"name": "голубой", "hex": "#00FFFF"},
+            {"name": "белый", "hex": "#FFFFFF"},
+            {"name": "коричневый", "hex": "#8B4513"},
+            {"name": "лаймовый", "hex": "#32CD32"},
+            {"name": "оранжевый", "hex": "#FFA500"},
+            {"name": "розовый", "hex": "#FFC0CB"},
+            {"name": "серый", "hex": "#808080"},
+            {"name": "сиреневый", "hex": "#C8A2C8"},
+            {"name": "фиолетовый", "hex": "#800080"},
+        ]
+
+        for color in standard_colors:
+            session.add(InventoryColor(name=color["name"], hex_color=color["hex"]))
+            print(f"  ➕ {color['name']} – {color['hex']}")
+
+        session.commit()
+        print(f"✅ Добавлено {len(standard_colors)} цветов инвентаря")
+    finally:
+        session.close()
+
+
 def main():
     print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
     print("=" * 50)
@@ -138,6 +178,7 @@ def main():
     seed_categories()
     seed_room_categories()
     seed_cleaning_method_order()
+    seed_inventory_colors()   # <-- ДОБАВЛЕН ВЫЗОВ
 
     print(f"\n📁 Файл БД: {engine.url.database}")
     print("🎉 Готово!")

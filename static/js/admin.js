@@ -21,6 +21,14 @@ createApp({
             productForm: { name: '', product_type: '', color: '' },
             productImportFile: null,
 
+            // ===== ДОБАВЛЕНО: ЦВЕТА ИНВЕНТАРЯ =====
+            inventoryColors: [],
+            showColorForm: false,
+            showColorImportModal: false,
+            editingColor: null,
+            colorForm: { name: '', hex_color: '' },
+            colorImportFile: null,
+
             currentSection: 'objects',
 
             editObject: null,
@@ -134,6 +142,8 @@ createApp({
         this.loadCategories();
         this.loadRoomCategories();
         this.loadProducts();
+        // ===== ДОБАВЛЕНО: загрузка цветов инвентаря =====
+        this.loadInventoryColors();
         this.loadObjectProperties();
         this.loadObjectGroups();
         this.loadCleaningMethods();
@@ -169,6 +179,16 @@ createApp({
                 const data = await res.json();
                 this.products = data.products || [];
             } catch (e) {}
+        },
+        // ===== ДОБАВЛЕНО: загрузка цветов инвентаря =====
+        async loadInventoryColors() {
+            try {
+                const res = await fetch('/api/inventory-colors');
+                const data = await res.json();
+                this.inventoryColors = data.colors || [];
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка загрузки цветов', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
         },
         async loadObjectProperties() {
             try {
@@ -227,6 +247,8 @@ createApp({
                 await this.loadObjectProperties();
                 await this.loadObjectGroups();
                 await this.loadCleaningMethods();
+                // ===== ДОБАВЛЕНО: перезагрузка цветов =====
+                await this.loadInventoryColors();
             } catch (e) {
                 Toastify({ text: '❌ Ошибка очистки БД', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
@@ -423,12 +445,17 @@ createApp({
             }
         },
 
-        // ========== Инструкции ==========
+        // ========== Инструкции (ИСПРАВЛЕНО) ==========
         async openInstructions(obj) {
             try {
                 const res = await fetch(`/api/objects/${obj.id}/instructions`);
+                if (!res.ok) {
+                    throw new Error(`Ошибка сервера: ${res.status} ${res.statusText}`);
+                }
                 const data = await res.json();
-                this.currentInstructions = (data.instructions || []).map(i => ({
+                // Гарантируем, что instructions — это массив
+                const instructionsArray = Array.isArray(data.instructions) ? data.instructions : [];
+                this.currentInstructions = instructionsArray.map(i => ({
                     ...i,
                     isNew: false,
                     room_category_id: i.room_category_id || null,
@@ -438,8 +465,15 @@ createApp({
                 }));
                 this.editObject = obj;
                 this.showInstructionsModal = true;
-            } catch (e) {
-                Toastify({ text: '❌ Ошибка загрузки инструкций', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            } catch (error) {
+                console.error('Ошибка загрузки инструкций:', error);
+                Toastify({
+                    text: '❌ Ошибка загрузки инструкций. Проверьте соединение с сервером.',
+                    duration: 5000,
+                    gravity: 'bottom',
+                    position: 'right',
+                    style: { background: '#DC2626' }
+                }).showToast();
             }
         },
         addInstruction() {
@@ -536,6 +570,7 @@ createApp({
                     await this.loadObjectProperties();
                     await this.loadObjectGroups();
                     await this.loadCleaningMethods();
+                    await this.loadInventoryColors();
                 } else {
                     Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
                 }
@@ -763,6 +798,84 @@ createApp({
                 }
             } catch (e) {
                 Toastify({ text: '❌ Ошибка импорта методов', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ================= ДОБАВЛЕНО: ЦВЕТА ИНВЕНТАРЯ =================
+        openColorForm() {
+            this.editingColor = null;
+            this.colorForm = { name: '', hex_color: '' };
+            this.showColorForm = true;
+        },
+        editColor(color) {
+            this.editingColor = color;
+            this.colorForm = { name: color.name, hex_color: color.hex_color };
+            this.showColorForm = true;
+        },
+        async saveColor() {
+            const payload = {
+                name: this.colorForm.name.trim(),
+                hex_color: this.colorForm.hex_color.trim()
+            };
+            if (!payload.name || !payload.hex_color) {
+                Toastify({ text: '⚠️ Заполните все поля', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            try {
+                const url = this.editingColor ? `/api/inventory-colors/${this.editingColor.id}` : '/api/inventory-colors';
+                const method = this.editingColor ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Toastify({ text: '✅ Цвет сохранён', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showColorForm = false;
+                    this.editingColor = null;
+                    this.colorForm = { name: '', hex_color: '' };
+                    await this.loadInventoryColors();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        async deleteColor(color) {
+            if (!confirm(`Удалить цвет «${color.name}»?`)) return;
+            try {
+                await fetch(`/api/inventory-colors/${color.id}`, { method: 'DELETE' });
+                Toastify({ text: '✅ Цвет удалён', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                await this.loadInventoryColors();
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка удаления', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        openColorImportModal() {
+            this.colorImportFile = null;
+            this.showColorImportModal = true;
+        },
+        handleColorImportFile(e) {
+            this.colorImportFile = e.target.files[0];
+        },
+        async doColorImport() {
+            if (!this.colorImportFile) return;
+            const formData = new FormData();
+            formData.append('file', this.colorImportFile);
+            try {
+                const res = await fetch('/api/inventory-colors/import_csv', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    Toastify({ text: `✅ Импорт цветов: создано ${data.created || 0}, обновлено ${data.updated || 0}`, duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showColorImportModal = false;
+                    await this.loadInventoryColors();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка импорта цветов', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         }
     }
