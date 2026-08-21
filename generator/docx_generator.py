@@ -676,7 +676,7 @@ class TechCardGenerator:
                                 rows_data.append(('section_header', sf_label, None))
                             surface_start = len(rows_data)
                             for instr in sf_instrs:
-                                rows_data.append(('object', "", instr, normalized_name))
+                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup))
                             surface_end = len(rows_data) - 1
                             if surface_end >= surface_start:
                                 surface_merge_info.append((surface_start, surface_end))
@@ -687,9 +687,9 @@ class TechCardGenerator:
                         if instructions:
                             for i, instr in enumerate(instructions):
                                 cell_text = display_name if i == 0 else ""
-                                rows_data.append(('object', cell_text, instr, normalized_name))
+                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup))
                         else:
-                            rows_data.append(('object', display_name, None, normalized_name))
+                            rows_data.append(('object', display_name, None, normalized_name, None))
                         group_end_row = len(rows_data) - 1
                         if group_end_row > group_start_row:
                             merge_info_object.append((group_start_row, group_end_row))
@@ -715,7 +715,7 @@ class TechCardGenerator:
                             rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, normalized_name))
+                            rows_data.append(('object', "", instr, normalized_name, instr.subgroup))
                         surface_end = len(rows_data) - 1
                         if surface_end >= surface_start:
                             surface_merge_info.append((surface_start, surface_end))
@@ -726,9 +726,9 @@ class TechCardGenerator:
                     if instructions:
                         for i, instr in enumerate(instructions):
                             cell_text = display_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, normalized_name))
+                            rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup))
                     else:
-                        rows_data.append(('object', display_name, None, normalized_name))
+                        rows_data.append(('object', display_name, None, normalized_name, None))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info_object.append((group_start_row, group_end_row))
@@ -763,9 +763,9 @@ class TechCardGenerator:
                     if data["instructions"]:
                         for i, instr in enumerate(data["instructions"]):
                             cell_text = merged_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, data["normalized_name"]))
+                            rows_data.append(('object', cell_text, instr, data["normalized_name"], instr.subgroup))
                     else:
-                        rows_data.append(('object', merged_name, None, data["normalized_name"]))
+                        rows_data.append(('object', merged_name, None, data["normalized_name"], None))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info_object.append((group_start_row, group_end_row))
@@ -794,7 +794,7 @@ class TechCardGenerator:
                             rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, nn))
+                            rows_data.append(('object', "", instr, nn, instr.subgroup))
                         surface_end = len(rows_data) - 1
                         if surface_end >= surface_start:
                             surface_merge_info.append((surface_start, surface_end))
@@ -804,7 +804,7 @@ class TechCardGenerator:
         if unmatched_objects:
             rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
             for name in sorted(unmatched_objects):
-                rows_data.append(('object', name, None, None))
+                rows_data.append(('object', name, None, None, None))
 
         # === ОЧИСТКА ТАБЛИЦЫ ===
         start_row = 8
@@ -984,8 +984,7 @@ class TechCardGenerator:
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-        # ===== ИСПРАВЛЕНИЕ ОШИБКИ 2: РАЗДЕЛЬНОЕ ОБЪЕДИНЕНИЕ КОЛОНКИ "№ ИНСТРУКЦИИ" =====
-        # Сначала объединяем колонки 8,9,10,11 как раньше (по всей группе)
+        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 (как раньше) =====
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -993,51 +992,55 @@ class TechCardGenerator:
                 for col in [8, 9, 10, 11]:
                     self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
-        # Для колонки 2 (№ инструкции) используем отдельную логику с разбиением по уровням
+        # ===== КОЛОНКА 2: ОБЪЕДИНЕНИЕ ПО (maintenance_type, subgroup) =====
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
             if actual_end > actual_start:
-                # Определяем, есть ли в этом диапазоне разные maintenance_type
-                levels = []
+                # Собираем для каждой строки ключ группировки (maintenance_type, subgroup)
+                keys = []
                 for row_idx in range(actual_start, actual_end + 1):
                     row_data_index = row_idx - start_row
                     if row_data_index < len(rows_data):
                         row_data = rows_data[row_data_index]
                         instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
                         if instr:
-                            levels.append((instr.maintenance_type or "").lower())
+                            maint = (instr.maintenance_type or "").lower()
+                            subgroup = (instr.subgroup or "").strip() or "_default_"
+                            keys.append((maint, subgroup))
                         else:
-                            levels.append(None)
+                            keys.append(None)
                     else:
-                        levels.append(None)
+                        keys.append(None)
 
-                unique_levels = set([l for l in levels if l is not None])
-                if len(unique_levels) <= 1:
-                    # Все строки одного уровня или нет инструкций – объединяем колонку 2 целиком
+                unique_keys = set([k for k in keys if k is not None])
+                if len(unique_keys) <= 1:
+                    # Все строки одного ключа – объединяем колонку 2 целиком
                     self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
                 else:
-                    # Разбиваем на поддиапазоны по смене уровня
-                    current_level = None
+                    # Разбиваем на поддиапазоны по смене ключа
+                    current_key = None
                     sub_start = actual_start
                     for row_idx in range(actual_start, actual_end + 1):
                         row_data_index = row_idx - start_row
                         if row_data_index < len(rows_data):
                             row_data = rows_data[row_data_index]
                             instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
-                            level = (instr.maintenance_type or "").lower() if instr else None
+                            key = None
+                            if instr:
+                                maint = (instr.maintenance_type or "").lower()
+                                subgroup = (instr.subgroup or "").strip() or "_default_"
+                                key = (maint, subgroup)
                         else:
-                            level = None
+                            key = None
 
-                        if level != current_level:
-                            # Закрываем предыдущий поддиапазон
-                            if current_level is not None:
+                        if key != current_key:
+                            if current_key is not None:
                                 if sub_start <= row_idx - 1:
                                     self._merge_adjacent_equal_cells(main_table, 2, sub_start, row_idx - 1)
-                            current_level = level
+                            current_key = key
                             sub_start = row_idx
-                    # Закрываем последний поддиапазон
-                    if current_level is not None:
+                    if current_key is not None:
                         if sub_start <= actual_end:
                             self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
 

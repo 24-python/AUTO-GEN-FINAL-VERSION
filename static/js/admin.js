@@ -21,7 +21,6 @@ createApp({
             productForm: { name: '', product_type: '', color: '' },
             productImportFile: null,
 
-            // ===== ДОБАВЛЕНО: ЦВЕТА ИНВЕНТАРЯ =====
             inventoryColors: [],
             showColorForm: false,
             showColorImportModal: false,
@@ -50,12 +49,10 @@ createApp({
             editingRoomCat: null,
             roomCatForm: { name: '' },
 
-            // ===== Новые секции =====
             objectProperties: [],
             objectGroups: [],
             cleaningMethods: [],
 
-            // Поиск для свойств и групп
             searchPropertyQuery: '',
             searchGroupQuery: '',
 
@@ -142,7 +139,6 @@ createApp({
         this.loadCategories();
         this.loadRoomCategories();
         this.loadProducts();
-        // ===== ДОБАВЛЕНО: загрузка цветов инвентаря =====
         this.loadInventoryColors();
         this.loadObjectProperties();
         this.loadObjectGroups();
@@ -180,7 +176,6 @@ createApp({
                 this.products = data.products || [];
             } catch (e) {}
         },
-        // ===== ДОБАВЛЕНО: загрузка цветов инвентаря =====
         async loadInventoryColors() {
             try {
                 const res = await fetch('/api/inventory-colors');
@@ -247,7 +242,6 @@ createApp({
                 await this.loadObjectProperties();
                 await this.loadObjectGroups();
                 await this.loadCleaningMethods();
-                // ===== ДОБАВЛЕНО: перезагрузка цветов =====
                 await this.loadInventoryColors();
             } catch (e) {
                 Toastify({ text: '❌ Ошибка очистки БД', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
@@ -445,7 +439,7 @@ createApp({
             }
         },
 
-        // ========== Инструкции (ИСПРАВЛЕНО) ==========
+        // ========== Инструкции ==========
         async openInstructions(obj) {
             try {
                 const res = await fetch(`/api/objects/${obj.id}/instructions`);
@@ -453,13 +447,13 @@ createApp({
                     throw new Error(`Ошибка сервера: ${res.status} ${res.statusText}`);
                 }
                 const data = await res.json();
-                // Гарантируем, что instructions — это массив
                 const instructionsArray = Array.isArray(data.instructions) ? data.instructions : [];
                 this.currentInstructions = instructionsArray.map(i => ({
                     ...i,
                     isNew: false,
                     room_category_id: i.room_category_id || null,
                     maintenance_type: i.maintenance_type || 'основная',
+                    subgroup: i.subgroup || '',  // <-- ДОБАВЛЕНО
                     surface_type: i.surface_type || null,
                     application_method: i.application_method || ''
                 }));
@@ -481,6 +475,7 @@ createApp({
                 id: null, isNew: true,
                 room_category_id: null,
                 maintenance_type: 'основная',
+                subgroup: '',  // <-- ДОБАВЛЕНО
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', application_method: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
@@ -500,6 +495,7 @@ createApp({
                 const payload = {
                     room_category_id: instr.room_category_id || null,
                     maintenance_type: instr.maintenance_type,
+                    subgroup: instr.subgroup || null,  // <-- ДОБАВЛЕНО
                     cleaning_method: instr.cleaning_method,
                     product_name: instr.product_name,
                     cleaning_technique: instr.cleaning_technique,
@@ -640,7 +636,6 @@ createApp({
                 Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         },
-        // Импорт/экспорт свойств
         handlePropertyImportFile(e) { this.propertyImportFile = e.target.files[0]; },
         async doPropertyImport() {
             if (!this.propertyImportFile) return;
@@ -801,7 +796,7 @@ createApp({
             }
         },
 
-        // ================= ДОБАВЛЕНО: ЦВЕТА ИНВЕНТАРЯ =================
+        // ================= ЦВЕТА ИНВЕНТАРЯ =================
         openColorForm() {
             this.editingColor = null;
             this.colorForm = { name: '', hex_color: '' };

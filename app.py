@@ -6,6 +6,7 @@
 Добавлена поддержка категорий помещений (room_categories), maintenance_type и surface_type.
 Добавлена таблица средств (products) с управлением через API и импортом/экспортом CSV.
 Добавлены таблицы конфигурации генератора: object_properties, object_groups, cleaning_method_order.
+Добавлены поля enterprise и subgroup для инструкций.
 """
 
 import csv
@@ -238,6 +239,25 @@ def initialize_database():
         # ====== ДОБАВЛЕНО: первичная инициализация цветов инвентаря ======
         from db.init_db import seed_inventory_colors
         seed_inventory_colors()
+
+        # ====== ДОБАВЛЕНО: миграция колонок enterprise и subgroup ======
+        # Добавляем колонку enterprise, если её нет
+        try:
+            session.execute("ALTER TABLE instructions ADD COLUMN enterprise VARCHAR(200) NULL")
+            session.commit()
+            print("✅ Добавлена колонка enterprise в instructions")
+        except Exception as e:
+            # Колонка уже существует или ошибка – игнорируем
+            pass
+
+        # Добавляем колонку subgroup, если её нет
+        try:
+            session.execute("ALTER TABLE instructions ADD COLUMN subgroup VARCHAR(50) NULL")
+            session.commit()
+            print("✅ Добавлена колонка subgroup в instructions")
+        except Exception as e:
+            # Колонка уже существует или ошибка – игнорируем
+            pass
 
     finally:
         session.close()
@@ -611,7 +631,7 @@ def api_delete_room_category(rc_id):
 
 
 # ============================================================
-# API: ЦВЕТА ИНВЕНТАРЯ (ДОБАВЛЕНО)
+# API: ЦВЕТА ИНВЕНТАРЯ
 # ============================================================
 
 @app.route('/api/inventory-colors', methods=['GET'])
@@ -819,7 +839,7 @@ def api_delete_object(obj_id):
 
 
 # ============================================================
-# API: ИНСТРУКЦИИ
+# API: ИНСТРУКЦИИ (с поддержкой enterprise и subgroup)
 # ============================================================
 
 @app.route('/api/objects/<int:obj_id>/instructions')
@@ -833,6 +853,8 @@ def api_object_instructions(obj_id):
             'room_category_id': i.room_category_id,
             'room_category_name': room_cats.get(i.room_category_id, 'Общая') if i.room_category_id else 'Общая',
             'maintenance_type': i.maintenance_type or '',
+            'subgroup': i.subgroup or '',           # <-- ДОБАВЛЕНО
+            'enterprise': i.enterprise or '',       # <-- ДОБАВЛЕНО
             'cleaning_method': i.cleaning_method or '',
             'product_name': i.product_name or '',
             'cleaning_technique': i.cleaning_technique or '',
@@ -866,11 +888,15 @@ def api_create_instruction(obj_id):
             room_category_id = None
 
     maintenance_type = data.get('maintenance_type', '')
+    subgroup = data.get('subgroup', '').strip() or None           # <-- ДОБАВЛЕНО
+    enterprise = data.get('enterprise', '').strip() or None       # <-- ДОБАВЛЕНО
 
     instr = Instruction(
         object_id=obj_id,
         room_category_id=room_category_id,
         maintenance_type=maintenance_type,
+        subgroup=subgroup,           # <-- ДОБАВЛЕНО
+        enterprise=enterprise,       # <-- ДОБАВЛЕНО
         cleaning_method=data.get('cleaning_method', ''),
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
@@ -908,9 +934,11 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
+        # Добавлены subgroup и enterprise в список полей
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
-                  'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory', 'frequency',
-                  'executor', 'control_method', 'instruction_number', 'surface_type']
+                  'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory',
+                  'frequency', 'executor', 'control_method', 'instruction_number', 'surface_type',
+                  'subgroup', 'enterprise']  # <-- ДОБАВЛЕНО
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])

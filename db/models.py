@@ -74,12 +74,15 @@ class Instruction(Base):
     room_category_id = Column(Integer, ForeignKey('room_categories.id'), nullable=True)
 
     maintenance_type = Column(String(50), nullable=True)
+    # ===== ДОБАВЛЕНО: предприятие и подуровень (группа) =====
+    enterprise = Column(String(200), nullable=True)          # <-- ДОБАВЛЕНО
+    subgroup = Column(String(50), nullable=True)             # <-- ДОБАВЛЕНО
     cleaning_method = Column(String(100), nullable=True)
     instruction_number = Column(String(50), nullable=True)
     product_name = Column(String(200), nullable=True)
     cleaning_technique = Column(String(200), nullable=True)
     concentration = Column(String(200), nullable=True)
-    application_method = Column(String(200), nullable=True)      # новое поле
+    application_method = Column(String(200), nullable=True)
     temperature = Column(String(50), nullable=True)
     exposure_time = Column(String(50), nullable=True)
     inventory = Column(String(100), nullable=True)
