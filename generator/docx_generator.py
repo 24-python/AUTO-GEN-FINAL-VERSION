@@ -196,6 +196,54 @@ class TechCardGenerator:
         rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
         return rc.id if rc else None
 
+    # ===== ДОБАВЛЕНО: метод для определения приоритета инструкции =====
+    def _get_instruction_priority(self, instr, target_enterprise: str = None,
+                                  target_room_name: str = None, target_room_category_id: int = None) -> int:
+        """
+        Возвращает числовой приоритет инструкции (чем меньше, тем выше приоритет).
+        Учитывает совпадение enterprise, room_name и room_category_id.
+        """
+        ent_match = (instr.enterprise or "") == (target_enterprise or "")
+        room_match = (instr.room_name or "") == (target_room_name or "")
+        cat_match = (instr.room_category_id == target_room_category_id)
+
+        if ent_match and room_match and cat_match:
+            return 1
+        elif ent_match and room_match:
+            return 2
+        elif ent_match and cat_match and instr.room_name is None:
+            return 3
+        elif ent_match and instr.room_name is None and instr.room_category_id is None:
+            return 4
+        elif not ent_match and room_match and cat_match:
+            return 5
+        elif not ent_match and room_match:
+            return 6
+        elif not ent_match and cat_match and instr.room_name is None:
+            return 7
+        elif not ent_match and instr.room_name is None and instr.room_category_id is None:
+            return 8
+        else:
+            return 99  # не должно использоваться
+
+    # ===== ДОБАВЛЕНО: фильтрация инструкций по enterprise, room_name, room_category_id =====
+    def _filter_instructions(self, instructions: list, target_enterprise: str = None,
+                             target_room_name: str = None, target_room_category_id: int = None) -> list:
+        """
+        Фильтрует список инструкций, оставляя только те, которые могут быть применимы
+        к заданным enterprise, room_name и room_category_id.
+        """
+        if not instructions:
+            return []
+        filtered = []
+        for instr in instructions:
+            ent_ok = (instr.enterprise or "") == (target_enterprise or "") or instr.enterprise is None
+            room_ok = (instr.room_name or "") == (target_room_name or "") or instr.room_name is None
+            cat_ok = instr.room_category_id == target_room_category_id or instr.room_category_id is None
+            if ent_ok and room_ok and cat_ok:
+                filtered.append(instr)
+        return filtered
+
     def _get_instruction_signature(self, instructions: list) -> tuple:
         if not instructions:
             return (("empty",),)
@@ -221,6 +269,11 @@ class TechCardGenerator:
                 instr.executor or "",
                 instr.control_method or "",
                 instr.surface_type or "",
+                # ===== ДОБАВЛЕНО: поля, влияющие на группировку =====
+                instr.enterprise or "",
+                instr.subgroup or "",
+                instr.room_name or "",
+                instr.room_category_id or 0,
             )
             signatures.append(sig)
         return tuple(signatures)
@@ -238,31 +291,37 @@ class TechCardGenerator:
             result.append((merged_name, data["instructions"]))
         return result
 
-    def _select_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
+    def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
+                                      enterprise: str = None, room_name: str = None) -> list:
         if not all_instructions:
             return []
+
+        # Фильтруем инструкции по enterprise, room_name, room_category_id
+        filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
+        if not filtered:
+            return []
+
         by_method = defaultdict(list)
-        for instr in all_instructions:
+        for instr in filtered:
             method = instr.cleaning_method or ""
             by_method[method].append(instr)
+
         selected = []
         for method, instrs in by_method.items():
+            # Сортируем инструкции по приоритету
+            sorted_instrs = sorted(
+                instrs,
+                key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
+            )
             best = None
+            # Берём первую, у которой maintenance_type совпадает с желаемым порядком
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
-                for instr in instrs:
-                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
+                for instr in sorted_instrs:
+                    if (instr.maintenance_type or "").lower() == maint_level:
                         best = instr
                         break
                 if best:
                     break
-            if not best:
-                for maint_level in ["основная", "поддерживающая", "генеральная"]:
-                    for instr in instrs:
-                        if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
-                            best = instr
-                            break
-                    if best:
-                        break
             if best:
                 selected.append(best)
         selected.sort(
@@ -272,33 +331,29 @@ class TechCardGenerator:
         )
         return selected
 
-    def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int) -> list:
-        """Выбирает все подходящие инструкции (может быть несколько на один метод).
-        Порядок вывода: сначала по уровню обслуживания, внутри уровня – чередование методов.
-        """
+    def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int,
+                                          enterprise: str = None, room_name: str = None) -> list:
         if not all_instructions:
             return []
 
-        # 1. Отбираем инструкции с учётом категории помещения и уровня (все уровни)
-        by_method = defaultdict(list)
-        for instr in all_instructions:
-            method = instr.cleaning_method or ""
-            by_method[method].append(instr)
+        # Фильтруем инструкции
+        filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
+        if not filtered:
+            return []
 
-        selected = []
-        for method, instrs in by_method.items():
-            # Сначала пробуем найти инструкции, специфичные для помещения
-            specific_instrs = [i for i in instrs if i.room_category_id == room_category_id]
-            if specific_instrs:
-                selected.extend(specific_instrs)
-            else:
-                # Если нет специфичных, берём все общие
-                common_instrs = [i for i in instrs if i.room_category_id is None]
-                selected.extend(common_instrs)
+        # Сортируем по приоритету, уровню и методу
+        sorted_instrs = sorted(
+            filtered,
+            key=lambda i: (
+                self._get_instruction_priority(i, enterprise, room_name, room_category_id),
+                self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
+                self.cleaning_method_order.get((i.cleaning_method or "").lower().strip(), 99)
+            )
+        )
 
-        # 2. Группируем по уровню обслуживания
+        # Группируем по уровню обслуживания
         level_groups = defaultdict(list)
-        for instr in selected:
+        for instr in sorted_instrs:
             level = (instr.maintenance_type or "").lower()
             level_groups[level].append(instr)
 
@@ -307,18 +362,14 @@ class TechCardGenerator:
             instrs = level_groups.get(level, [])
             if not instrs:
                 continue
-
-            # Группируем инструкции одного уровня по методам
+            # Группируем по методам для чередования
             method_groups = defaultdict(list)
             for instr in instrs:
                 method = instr.cleaning_method or ""
                 method_groups[method].append(instr)
 
-            # Сортируем методы по CLEANING_METHOD_ORDER
             ordered_methods = sorted(method_groups.keys(),
                                      key=lambda m: self.cleaning_method_order.get(m.lower().strip(), 99))
-
-            # Чередуем инструкции внутри уровня
             while True:
                 added = False
                 for method in ordered_methods:
@@ -330,15 +381,15 @@ class TechCardGenerator:
 
         return result
 
-    def _select_split_instructions(self, all_instructions: list, room_category_id: int) -> dict:
-        """Для split-объектов: группирует инструкции по surface_type с логикой уровня обслуживания."""
+    def _select_split_instructions(self, all_instructions: list, room_category_id: int,
+                                   enterprise: str = None, room_name: str = None) -> dict:
         result = {}
         surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
         for sf in surface_types:
             sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
             if not sf_instrs:
                 continue
-            selected = self._select_instructions_for_room(sf_instrs, room_category_id)
+            selected = self._select_instructions_for_room(sf_instrs, room_category_id, enterprise, room_name)
             if selected:
                 result[sf] = selected
         return result
@@ -545,6 +596,10 @@ class TechCardGenerator:
         category_priority = self._get_category_priority(session)
         product_colors = self._load_product_colors(session)
 
+        # ===== Получаем enterprise и room_name из чек-листа =====
+        target_enterprise = checklist_data.enterprise
+        target_room_name = checklist_data.room_name
+
         room_category_id = None
         if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
             room_category_id = self._get_room_category_id(session, checklist_data.room_category)
@@ -586,7 +641,8 @@ class TechCardGenerator:
                 all_instrs = instructions_dict[obj.id]
 
                 if normalized_name in self.split_objects:
-                    instructions = self._select_split_instructions(all_instrs, room_category_id)
+                    instructions = self._select_split_instructions(all_instrs, room_category_id,
+                                                                   target_enterprise, target_room_name)
                     if instructions:
                         category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name))
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
@@ -603,17 +659,21 @@ class TechCardGenerator:
                             best = None
                             for instr in instrs:
                                 if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
-                                    best = instr
-                                    break
+                                    # Проверяем enterprise и room_name через приоритет
+                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                        best = instr
+                                        break
                             if not best:
                                 for instr in instrs:
                                     if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
-                                        best = instr
-                                        break
+                                        if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                            best = instr
+                                            break
                             if best:
                                 instructions.append(best)
                     instructions.sort(
                         key=lambda x: (
+                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
                             self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
                             self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
                         )
@@ -624,14 +684,16 @@ class TechCardGenerator:
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.multi_method_objects:
-                    instructions = self._select_all_instructions_for_room(all_instrs, room_category_id)
+                    instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
+                                                                          target_enterprise, target_room_name)
                     if instructions:
                         category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
                     else:
                         unmatched_objects.append(display_name)
                 else:
-                    instructions = self._select_instructions_for_room(all_instrs, room_category_id)
+                    instructions = self._select_instructions_for_room(all_instrs, room_category_id,
+                                                                      target_enterprise, target_room_name)
                     if instructions:
                         category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
                         all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))

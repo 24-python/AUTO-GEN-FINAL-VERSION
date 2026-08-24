@@ -453,7 +453,9 @@ createApp({
                     isNew: false,
                     room_category_id: i.room_category_id || null,
                     maintenance_type: i.maintenance_type || 'основная',
-                    subgroup: i.subgroup || '',  // <-- ДОБАВЛЕНО
+                    subgroup: i.subgroup || '',
+                    enterprise: i.enterprise || '',       // <-- ДОБАВЛЕНО
+                    room_name: i.room_name || '',         // <-- ДОБАВЛЕНО
                     surface_type: i.surface_type || null,
                     application_method: i.application_method || ''
                 }));
@@ -475,7 +477,9 @@ createApp({
                 id: null, isNew: true,
                 room_category_id: null,
                 maintenance_type: 'основная',
-                subgroup: '',  // <-- ДОБАВЛЕНО
+                subgroup: '',
+                enterprise: '',           // <-- ДОБАВЛЕНО
+                room_name: '',             // <-- ДОБАВЛЕНО
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', application_method: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
@@ -495,7 +499,9 @@ createApp({
                 const payload = {
                     room_category_id: instr.room_category_id || null,
                     maintenance_type: instr.maintenance_type,
-                    subgroup: instr.subgroup || null,  // <-- ДОБАВЛЕНО
+                    subgroup: instr.subgroup || null,
+                    enterprise: instr.enterprise || null,   // <-- ДОБАВЛЕНО
+                    room_name: instr.room_name || null,     // <-- ДОБАВЛЕНО
                     cleaning_method: instr.cleaning_method,
                     product_name: instr.product_name,
                     cleaning_technique: instr.cleaning_technique,

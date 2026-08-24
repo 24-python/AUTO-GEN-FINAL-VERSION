@@ -11,6 +11,7 @@ import_csv_to_db.py
 - Импорт поля maintenance_type (основная/поддерживающая/генеральная)
 - Импорт поля surface_type (внешняя/внутренняя/очистка от мин. отложений)
 - Импорт поля application_method (метод разведения)
+- Импорт полей enterprise, subgroup и room_name (добавлено)
 """
 
 import csv
@@ -238,16 +239,28 @@ class CSVImporter:
         cleaned = val.strip().lower()
         return cleaned if cleaned else None
 
-    def _find_existing_instruction(self, existing_instructions: List[Instruction], norm_method: Optional[str],
-                                   norm_product: Optional[str], room_category_id: Optional[int],
-                                   norm_maintenance: Optional[str], norm_surface: Optional[str]) -> Optional[Instruction]:
-        """Ищет инструкцию среди существующих по нормализованным ключам"""
+    def _find_existing_instruction(self, existing_instructions: List[Instruction],
+                                   norm_method: Optional[str],
+                                   norm_product: Optional[str],
+                                   room_category_id: Optional[int],
+                                   norm_maintenance: Optional[str],
+                                   norm_surface: Optional[str],
+                                   norm_enterprise: Optional[str],
+                                   norm_subgroup: Optional[str],
+                                   norm_room_name: Optional[str]) -> Optional[Instruction]:
+        """
+        Ищет инструкцию среди существующих по нормализованным ключам,
+        включая enterprise, subgroup и room_name.
+        """
         for instr in existing_instructions:
             if (self._normalize_key(instr.cleaning_method) == norm_method and
                 self._normalize_key(instr.product_name) == norm_product and
                 instr.room_category_id == room_category_id and
                 self._normalize_key(instr.maintenance_type) == norm_maintenance and
-                self._normalize_key(instr.surface_type) == norm_surface):
+                self._normalize_key(instr.surface_type) == norm_surface and
+                self._normalize_key(instr.enterprise) == norm_enterprise and
+                self._normalize_key(instr.subgroup) == norm_subgroup and
+                self._normalize_key(instr.room_name) == norm_room_name):
                 return instr
         return None
 
@@ -368,17 +381,31 @@ class CSVImporter:
                 maintenance_type = instr_row.get('maintenance_type', '').strip() or None
                 surface_type = instr_row.get('surface_type', '').strip() or None
                 application_method = instr_row.get('application_method', '').strip() or None
+                # ===== ДОБАВЛЕНО: чтение enterprise, subgroup, room_name =====
+                enterprise = instr_row.get('enterprise', '').strip() or None
+                subgroup = instr_row.get('subgroup', '').strip() or None
+                room_name = instr_row.get('room_name', '').strip() or None
 
                 # Нормализуем ключевые поля
                 norm_method = self._normalize_key(cleaning_method) if cleaning_method else None
                 norm_product = self._normalize_key(product_name) if product_name else None
                 norm_maintenance = self._normalize_key(maintenance_type) if maintenance_type else None
                 norm_surface = self._normalize_key(surface_type) if surface_type else None
+                norm_enterprise = self._normalize_key(enterprise) if enterprise else None
+                norm_subgroup = self._normalize_key(subgroup) if subgroup else None
+                norm_room_name = self._normalize_key(room_name) if room_name else None
 
-                # Ищем существующую инструкцию с учётом нормализации
+                # Ищем существующую инструкцию с учётом новых полей
                 existing_instr = self._find_existing_instruction(
-                    existing_instructions, norm_method, norm_product,
-                    room_category_id, norm_maintenance, norm_surface
+                    existing_instructions,
+                    norm_method,
+                    norm_product,
+                    room_category_id,
+                    norm_maintenance,
+                    norm_surface,
+                    norm_enterprise,
+                    norm_subgroup,
+                    norm_room_name
                 )
 
                 if self.mode == self.MODE_ADD_ONLY:
@@ -391,6 +418,9 @@ class CSVImporter:
                             maintenance_type=maintenance_type,
                             surface_type=surface_type,
                             application_method=application_method,
+                            enterprise=enterprise,          # <-- ДОБАВЛЕНО
+                            subgroup=subgroup,              # <-- ДОБАВЛЕНО
+                            room_name=room_name,            # <-- ДОБАВЛЕНО
                             cleaning_method=cleaning_method or None,
                             instruction_number=instr_row.get('instruction_number', '').strip() or None,
                             product_name=product_name or None,
@@ -412,6 +442,9 @@ class CSVImporter:
                         existing_instr.maintenance_type = maintenance_type
                         existing_instr.surface_type = surface_type
                         existing_instr.application_method = application_method
+                        existing_instr.enterprise = enterprise      # <-- ДОБАВЛЕНО
+                        existing_instr.subgroup = subgroup          # <-- ДОБАВЛЕНО
+                        existing_instr.room_name = room_name        # <-- ДОБАВЛЕНО
                         existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
                         existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
                         existing_instr.concentration = instr_row.get('concentration', '').strip() or None
@@ -423,9 +456,7 @@ class CSVImporter:
                         existing_instr.control_method = instr_row.get('control_method', '').strip() or None
                         self.stats.instructions_updated += 1
                     else:
-                        # При обновлении пропускаем инструкции, которых нет
                         self.stats.instructions_skipped += 1
-                        # Можно добавить предупреждение, но не будем засорять ошибки
                 else:
                     # Режимы 3 и 4 – полный импорт, обновление или создание
                     if existing_instr:
@@ -433,6 +464,9 @@ class CSVImporter:
                         existing_instr.maintenance_type = maintenance_type
                         existing_instr.surface_type = surface_type
                         existing_instr.application_method = application_method
+                        existing_instr.enterprise = enterprise      # <-- ДОБАВЛЕНО
+                        existing_instr.subgroup = subgroup          # <-- ДОБАВЛЕНО
+                        existing_instr.room_name = room_name        # <-- ДОБАВЛЕНО
                         existing_instr.instruction_number = instr_row.get('instruction_number', '').strip() or None
                         existing_instr.cleaning_technique = instr_row.get('cleaning_technique', '').strip() or None
                         existing_instr.concentration = instr_row.get('concentration', '').strip() or None
@@ -450,6 +484,9 @@ class CSVImporter:
                             maintenance_type=maintenance_type,
                             surface_type=surface_type,
                             application_method=application_method,
+                            enterprise=enterprise,          # <-- ДОБАВЛЕНО
+                            subgroup=subgroup,              # <-- ДОБАВЛЕНО
+                            room_name=room_name,            # <-- ДОБАВЛЕНО
                             cleaning_method=cleaning_method or None,
                             instruction_number=instr_row.get('instruction_number', '').strip() or None,
                             product_name=product_name or None,
