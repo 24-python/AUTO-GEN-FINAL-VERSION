@@ -5,7 +5,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt
 from pathlib import Path
-from parser.models import ChecklistData
+from parser.models import ChecklistData, ChecklistItem, Category
 from db.models import (Instruction, Category as DBCategory, Object as DBObject,
                        RoomCategory, Product, ObjectProperty, ObjectGroup,
                        CleaningMethodOrder, InventoryColor)
@@ -644,8 +644,8 @@ class TechCardGenerator:
                     instructions = self._select_split_instructions(all_instrs, room_category_id,
                                                                    target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                        category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.support_objects:
@@ -659,7 +659,6 @@ class TechCardGenerator:
                             best = None
                             for instr in instrs:
                                 if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
-                                    # Проверяем enterprise и room_name через приоритет
                                     if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
                                         best = instr
                                         break
@@ -679,24 +678,24 @@ class TechCardGenerator:
                         )
                     )
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.multi_method_objects:
                     instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
                                                                           target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 else:
                     instructions = self._select_instructions_for_room(all_instrs, room_category_id,
                                                                       target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name))
+                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
             elif obj:
@@ -719,7 +718,7 @@ class TechCardGenerator:
                     continue
                 items.sort(key=lambda x: x[1])
                 rows_data.append(('category', cat_name, None))
-                for typ, display_name, instructions, normalized_name in items:
+                for typ, display_name, instructions, normalized_name, item in items:
                     if typ == 'split':
                         surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
                         first_surface = True
@@ -738,7 +737,7 @@ class TechCardGenerator:
                                 rows_data.append(('section_header', sf_label, None))
                             surface_start = len(rows_data)
                             for instr in sf_instrs:
-                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup))
+                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item))
                             surface_end = len(rows_data) - 1
                             if surface_end >= surface_start:
                                 surface_merge_info.append((surface_start, surface_end))
@@ -749,16 +748,16 @@ class TechCardGenerator:
                         if instructions:
                             for i, instr in enumerate(instructions):
                                 cell_text = display_name if i == 0 else ""
-                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup))
+                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item))
                         else:
-                            rows_data.append(('object', display_name, None, normalized_name, None))
+                            rows_data.append(('object', display_name, None, normalized_name, None, item))
                         group_end_row = len(rows_data) - 1
                         if group_end_row > group_start_row:
                             merge_info_object.append((group_start_row, group_end_row))
                             merge_info_columns.append((group_start_row, group_end_row))
         elif mode == 2:
             all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
+            for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
                 if isinstance(instructions, dict):
                     surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
                     first_surface = True
@@ -777,7 +776,7 @@ class TechCardGenerator:
                             rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, normalized_name, instr.subgroup))
+                            rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item))
                         surface_end = len(rows_data) - 1
                         if surface_end >= surface_start:
                             surface_merge_info.append((surface_start, surface_end))
@@ -788,9 +787,9 @@ class TechCardGenerator:
                     if instructions:
                         for i, instr in enumerate(instructions):
                             cell_text = display_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup))
+                            rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item))
                     else:
-                        rows_data.append(('object', display_name, None, normalized_name, None))
+                        rows_data.append(('object', display_name, None, normalized_name, None, item))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info_object.append((group_start_row, group_end_row))
@@ -798,23 +797,24 @@ class TechCardGenerator:
         elif mode == 3:
             inserted_headers = set()
             priority_groups = defaultdict(list)
-            for display_name, instructions, sort_priority, normalized_name in all_object_instructions:
-                priority_groups[sort_priority].append((display_name, instructions, normalized_name))
+            for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
+                priority_groups[sort_priority].append((display_name, instructions, normalized_name, item))
 
             for priority in sorted(priority_groups.keys()):
                 items = priority_groups[priority]
-                normal_items = [(dn, instr, nn) for dn, instr, nn in items if not isinstance(instr, dict)]
-                split_items = [(dn, instr, nn) for dn, instr, nn in items if isinstance(instr, dict)]
+                normal_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if not isinstance(instr, dict)]
+                split_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if isinstance(instr, dict)]
 
                 groups = {}
-                for dn, instr, nn in normal_items:
+                for dn, instr, nn, it in normal_items:
                     signature = self._get_instruction_signature(instr)
                     if signature not in groups:
-                        groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn}
+                        groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn, "item": it}
                     groups[signature]["names"].append(dn)
 
                 for sig, data in groups.items():
                     current_nn = data["normalized_name"]
+                    item = data["item"]
                     for group_set, header_text in self.group_headers.items():
                         if current_nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
@@ -825,15 +825,15 @@ class TechCardGenerator:
                     if data["instructions"]:
                         for i, instr in enumerate(data["instructions"]):
                             cell_text = merged_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, data["normalized_name"], instr.subgroup))
+                            rows_data.append(('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
                     else:
-                        rows_data.append(('object', merged_name, None, data["normalized_name"], None))
+                        rows_data.append(('object', merged_name, None, data["normalized_name"], None, item))
                     group_end_row = len(rows_data) - 1
                     if group_end_row > group_start_row:
                         merge_info_object.append((group_start_row, group_end_row))
                         merge_info_columns.append((group_start_row, group_end_row))
 
-                for dn, split_instr, nn in split_items:
+                for dn, split_instr, nn, item in split_items:
                     for group_set, header_text in self.group_headers.items():
                         if nn in group_set and group_set not in inserted_headers:
                             rows_data.append(('group_header', header_text, None))
@@ -856,7 +856,7 @@ class TechCardGenerator:
                             rows_data.append(('section_header', sf_label, None))
                         surface_start = len(rows_data)
                         for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, nn, instr.subgroup))
+                            rows_data.append(('object', "", instr, nn, instr.subgroup, item))
                         surface_end = len(rows_data) - 1
                         if surface_end >= surface_start:
                             surface_merge_info.append((surface_start, surface_end))
@@ -866,7 +866,7 @@ class TechCardGenerator:
         if unmatched_objects:
             rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
             for name in sorted(unmatched_objects):
-                rows_data.append(('object', name, None, None, None))
+                rows_data.append(('object', name, None, None, None, None))
 
         # === ОЧИСТКА ТАБЛИЦЫ ===
         start_row = 8
@@ -919,6 +919,7 @@ class TechCardGenerator:
             elif row_info[0] == 'object':
                 obj_name, instr = row_info[1], row_info[2]
                 normalized_name = row_info[3] if len(row_info) > 3 else None
+                item = row_info[5] if len(row_info) > 5 else None
                 self._set_cell_text(row.cells[0], obj_name)
 
                 if instr:
@@ -1027,7 +1028,41 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[8], "промаркированный", bold=True)
 
                     self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
-                    self._set_cell_text(row.cells[10], self._clean_text(instr.executor or ""))
+
+                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
+                    executor_value = None
+
+                    # 1. Если в инструкции есть исполнитель – используем его (всегда)
+                    if instr.executor:
+                        executor_value = instr.executor
+                    else:
+                        # 2. Определяем зону объекта, если есть item
+                        if item and isinstance(item, ChecklistItem):
+                            markers_lower = [m.lower() for m in item.markers]
+                            name_lower = item.name.lower()
+
+                            is_surface = (item.category == Category.SURFACE)
+                            equipment_categories = {
+                                Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
+                                Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
+                                Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT,
+                                Category.HOUSEHOLD_APPLIANCES
+                            }
+                            is_equipment = (item.category in equipment_categories)
+
+                            if is_surface and ('выше 2 м' in name_lower or any('выше 2 м' in m for m in markers_lower)):
+                                executor_value = checklist_data.executor_high
+                            elif is_surface and ('до 2 м' in name_lower or any('до 2 м' in m for m in markers_lower)):
+                                executor_value = checklist_data.executor_low
+                            elif is_equipment:
+                                executor_value = checklist_data.executor_equipment
+
+                    # 3. Если ничего не нашлось – пустая строка
+                    if not executor_value:
+                        executor_value = ""
+
+                    self._set_cell_text(row.cells[10], self._clean_text(executor_value))
+
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
                     if final_product:

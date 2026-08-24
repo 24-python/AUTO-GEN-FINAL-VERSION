@@ -14,6 +14,7 @@
 Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
 Добавлено: парсинг цвета инвентаря из выпадающего списка.
 Доработано: категории помещений и цвета инвентаря загружаются из БД (справочники).
+Добавлено: парсинг зональных исполнителей (поверхности выше 2 м, до 2 м, оборудование).
 """
 
 import zipfile
@@ -498,6 +499,54 @@ class SDTChecklistParser:
         else:
             print("  🪞 Моющее для стекол/зеркал/мониторов не выбрано")
 
+    # ===================== ДОБАВЛЕНО: ПАРСИНГ ЗОНАЛЬНЫХ ИСПОЛНИТЕЛЕЙ =====================
+    def _parse_executors(self, root, data: ChecklistData):
+        """
+        Извлекает зональных исполнителей из строк вида:
+        «поверхности выше 2 м – Иванов И.И.»
+        «поверхности до 2 м – Петров П.П.»
+        «оборудование – Сидоров С.С.»
+
+        Ищет по всему документу (в параграфах).
+        """
+        # Ищем все текстовые узлы (параграфы) в документе
+        paragraphs = root.xpath('.//w:p', namespaces=self.NAMESPACES)
+        for p in paragraphs:
+            text = p.xpath('string()', namespaces=self.NAMESPACES).strip()
+            if not text:
+                continue
+
+            # Приводим к нижнему регистру для поиска шаблонов, но сохраняем оригинал для извлечения
+            text_lower = text.lower()
+
+            # Шаблон: поверхности выше 2 м
+            if 'поверхности выше 2 м' in text_lower:
+                # Ищем разделитель – или :
+                parts = re.split(r'[–\-:]', text, maxsplit=1)
+                if len(parts) > 1:
+                    val = parts[1].strip()
+                    if val:
+                        data.executor_high = val
+                        print(f"  👤 Исполнитель для поверхностей выше 2 м: {val}")
+
+            # Шаблон: поверхности до 2 м
+            if 'поверхности до 2 м' in text_lower:
+                parts = re.split(r'[–\-:]', text, maxsplit=1)
+                if len(parts) > 1:
+                    val = parts[1].strip()
+                    if val:
+                        data.executor_low = val
+                        print(f"  👤 Исполнитель для поверхностей до 2 м: {val}")
+
+            # Шаблон: оборудование (ищем только если есть разделитель)
+            if 'оборудование' in text_lower and ('–' in text or '-' in text or ':' in text):
+                parts = re.split(r'[–\-:]', text, maxsplit=1)
+                if len(parts) > 1:
+                    val = parts[1].strip()
+                    if val:
+                        data.executor_equipment = val
+                        print(f"  👤 Исполнитель для оборудования: {val}")
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
@@ -512,6 +561,8 @@ class SDTChecklistParser:
                 self._parse_header(root, data)
                 self._parse_room_category(root, data)
                 self._parse_additional_info(root, data)
+                # ===== ДОБАВЛЕНО: парсинг исполнителей =====
+                self._parse_executors(root, data)
 
                 cells = root.xpath('.//w:tc', namespaces=self.NAMESPACES)
                 print(f"📊 Найдено ячеек: {len(cells)}")
@@ -567,6 +618,12 @@ class SDTChecklistParser:
             print(f"   Цвет инвентаря: {data.inventory_color}")
         else:
             print("   Цвет инвентаря: промаркированный")
+        if data.executor_high:
+            print(f"   Исполнитель (выше 2 м): {data.executor_high}")
+        if data.executor_low:
+            print(f"   Исполнитель (до 2 м): {data.executor_low}")
+        if data.executor_equipment:
+            print(f"   Исполнитель (оборудование): {data.executor_equipment}")
 
 
 def parse_checklist(file_path: str) -> ChecklistData:

@@ -20,7 +20,7 @@ class Category(Enum):
     OFFICE_EQUIPMENT = "Офисная техника"
     SANITARY_POST = "Санитарный пост"
     PPE = "Многоразовые резиновые СИЗ"
-    CONTACT_SURFACES = "Контактные поверхности"   # <-- новая категория
+    CONTACT_SURFACES = "Контактные поверхности"
     OTHER = "Прочее"
 
     @classmethod
@@ -57,23 +57,25 @@ class ChecklistData:
     disinfection_method_text: Optional[str] = None
 
     # Специализированные моющие средства
-    # Для пола и трапов
     floor_cleaning_product: Optional[str] = None
     floor_cleaning_concentration: Optional[str] = None
     floor_cleaning_method_text: Optional[str] = None
 
-    # Для теплового оборудования
     thermal_cleaning_product: Optional[str] = None
     thermal_cleaning_concentration: Optional[str] = None
     thermal_cleaning_method_text: Optional[str] = None
 
-    # Для стеклянных/зеркальных поверхностей (зеркала, окна, мониторы)
     glass_cleaning_product: Optional[str] = None
     glass_cleaning_concentration: Optional[str] = None
     glass_cleaning_method_text: Optional[str] = None
 
     # Цветовое кодирование инвентаря (из выпадающего списка)
     inventory_color: Optional[str] = None
+
+    # ===== ДОБАВЛЕНО: зональные исполнители =====
+    executor_high: Optional[str] = None      # поверхности выше 2 м
+    executor_low: Optional[str] = None       # поверхности до 2 м
+    executor_equipment: Optional[str] = None # оборудование
 
     items: List[ChecklistItem] = field(default_factory=list)
 
