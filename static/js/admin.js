@@ -28,6 +28,14 @@ createApp({
             colorForm: { name: '', hex_color: '' },
             colorImportFile: null,
 
+            // ===== ДОБАВЛЕНО: МЕТОДЫ УБОРКИ =====
+            cleaningTechniques: [],
+            showCleaningTechniqueForm: false,
+            showCleaningTechniqueImportModal: false,
+            editingCleaningTechnique: null,
+            cleaningTechniqueForm: { name: '' },
+            cleaningTechniqueImportFile: null,
+
             currentSection: 'objects',
 
             editObject: null,
@@ -140,6 +148,7 @@ createApp({
         this.loadRoomCategories();
         this.loadProducts();
         this.loadInventoryColors();
+        this.loadCleaningTechniques(); // <-- ДОБАВЛЕНО
         this.loadObjectProperties();
         this.loadObjectGroups();
         this.loadCleaningMethods();
@@ -183,6 +192,16 @@ createApp({
                 this.inventoryColors = data.colors || [];
             } catch (e) {
                 Toastify({ text: '❌ Ошибка загрузки цветов', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        // ===== ДОБАВЛЕНО: загрузка методов уборки =====
+        async loadCleaningTechniques() {
+            try {
+                const res = await fetch('/api/cleaning-techniques');
+                const data = await res.json();
+                this.cleaningTechniques = data.techniques || [];
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка загрузки методов уборки', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         },
         async loadObjectProperties() {
@@ -243,6 +262,7 @@ createApp({
                 await this.loadObjectGroups();
                 await this.loadCleaningMethods();
                 await this.loadInventoryColors();
+                await this.loadCleaningTechniques(); // <-- ДОБАВЛЕНО
             } catch (e) {
                 Toastify({ text: '❌ Ошибка очистки БД', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
@@ -454,8 +474,8 @@ createApp({
                     room_category_id: i.room_category_id || null,
                     maintenance_type: i.maintenance_type || 'основная',
                     subgroup: i.subgroup || '',
-                    enterprise: i.enterprise || '',       // <-- ДОБАВЛЕНО
-                    room_name: i.room_name || '',         // <-- ДОБАВЛЕНО
+                    enterprise: i.enterprise || '',
+                    room_name: i.room_name || '',
                     surface_type: i.surface_type || null,
                     application_method: i.application_method || ''
                 }));
@@ -478,8 +498,8 @@ createApp({
                 room_category_id: null,
                 maintenance_type: 'основная',
                 subgroup: '',
-                enterprise: '',           // <-- ДОБАВЛЕНО
-                room_name: '',             // <-- ДОБАВЛЕНО
+                enterprise: '',
+                room_name: '',
                 cleaning_method: '', product_name: '', cleaning_technique: '',
                 concentration: '', application_method: '', temperature: '', exposure_time: '',
                 inventory: '', frequency: '', executor: '', control_method: '',
@@ -500,8 +520,8 @@ createApp({
                     room_category_id: instr.room_category_id || null,
                     maintenance_type: instr.maintenance_type,
                     subgroup: instr.subgroup || null,
-                    enterprise: instr.enterprise || null,   // <-- ДОБАВЛЕНО
-                    room_name: instr.room_name || null,     // <-- ДОБАВЛЕНО
+                    enterprise: instr.enterprise || null,
+                    room_name: instr.room_name || null,
                     cleaning_method: instr.cleaning_method,
                     product_name: instr.product_name,
                     cleaning_technique: instr.cleaning_technique,
@@ -573,6 +593,7 @@ createApp({
                     await this.loadObjectGroups();
                     await this.loadCleaningMethods();
                     await this.loadInventoryColors();
+                    await this.loadCleaningTechniques(); // <-- ДОБАВЛЕНО
                 } else {
                     Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
                 }
@@ -877,6 +898,101 @@ createApp({
                 }
             } catch (e) {
                 Toastify({ text: '❌ Ошибка импорта цветов', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ================= ДОБАВЛЕНО: МЕТОДЫ УБОРКИ =================
+        openCleaningTechniqueForm() {
+            this.editingCleaningTechnique = null;
+            this.cleaningTechniqueForm = { name: '' };
+            this.showCleaningTechniqueForm = true;
+        },
+        openCleaningTechniqueFormFromInstruction() {
+            // Вызывается из кнопки "+" в модалке инструкций
+            this.editingCleaningTechnique = null;
+            this.cleaningTechniqueForm = { name: '' };
+            this.showCleaningTechniqueForm = true;
+        },
+        editCleaningTechnique(t) {
+            this.editingCleaningTechnique = t;
+            this.cleaningTechniqueForm = { name: t.name };
+            this.showCleaningTechniqueForm = true;
+        },
+        async saveCleaningTechnique() {
+            const name = this.cleaningTechniqueForm.name.trim();
+            if (!name) {
+                Toastify({ text: '⚠️ Введите название', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            try {
+                const url = this.editingCleaningTechnique
+                    ? `/api/cleaning-techniques/${this.editingCleaningTechnique.id}`
+                    : '/api/cleaning-techniques';
+                const method = this.editingCleaningTechnique ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    Toastify({ text: '✅ Метод уборки сохранён', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showCleaningTechniqueForm = false;
+                    this.editingCleaningTechnique = null;
+                    this.cleaningTechniqueForm = { name: '' };
+                    await this.loadCleaningTechniques();
+                    // Если модалка инструкций открыта, обновим список, чтобы новый метод появился в выпадающем списке
+                    // и автоматически выберем его (опционально)
+                    if (this.showInstructionsModal) {
+                        // Выберем новый метод в текущей инструкции (если есть)
+                        if (this.currentInstructions.length > 0) {
+                            // Найдём последнюю добавленную или активную инструкцию
+                            const lastInstr = this.currentInstructions[this.currentInstructions.length - 1];
+                            if (lastInstr) {
+                                lastInstr.cleaning_technique = name;
+                            }
+                        }
+                    }
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        async deleteCleaningTechnique(t) {
+            if (!confirm(`Удалить метод уборки «${t.name}»?`)) return;
+            try {
+                await fetch(`/api/cleaning-techniques/${t.id}`, { method: 'DELETE' });
+                Toastify({ text: '✅ Метод уборки удалён', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                await this.loadCleaningTechniques();
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка удаления', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+        openCleaningTechniqueImportModal() {
+            this.cleaningTechniqueImportFile = null;
+            this.showCleaningTechniqueImportModal = true;
+        },
+        handleCleaningTechniqueImportFile(e) {
+            this.cleaningTechniqueImportFile = e.target.files[0];
+        },
+        async doCleaningTechniqueImport() {
+            if (!this.cleaningTechniqueImportFile) return;
+            const formData = new FormData();
+            formData.append('file', this.cleaningTechniqueImportFile);
+            try {
+                const res = await fetch('/api/cleaning-techniques/import_csv', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    Toastify({ text: `✅ Импорт методов уборки: создано ${data.created || 0}, обновлено ${data.updated || 0}`, duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#00A650' } }).showToast();
+                    this.showCleaningTechniqueImportModal = false;
+                    await this.loadCleaningTechniques();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка импорта методов уборки', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         }
     }

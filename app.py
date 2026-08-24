@@ -7,6 +7,7 @@
 Добавлена таблица средств (products) с управлением через API и импортом/экспортом CSV.
 Добавлены таблицы конфигурации генератора: object_properties, object_groups, cleaning_method_order.
 Добавлены поля enterprise, subgroup и room_name для инструкций.
+Добавлен справочник методов уборки (cleaning_techniques).
 """
 
 import csv
@@ -26,7 +27,8 @@ from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
 from db.models import (Object, Instruction, Category as DBCategory, RoomCategory, Product,
-                       ObjectProperty, ObjectGroup, CleaningMethodOrder, InventoryColor)
+                       ObjectProperty, ObjectGroup, CleaningMethodOrder, InventoryColor,
+                       CleaningTechnique)
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
@@ -239,6 +241,10 @@ def initialize_database():
         # ====== ДОБАВЛЕНО: первичная инициализация цветов инвентаря ======
         from db.init_db import seed_inventory_colors
         seed_inventory_colors()
+
+        # ====== ДОБАВЛЕНО: первичная инициализация методов уборки ======
+        from db.init_db import seed_cleaning_techniques
+        seed_cleaning_techniques()
 
         # ====== ДОБАВЛЕНО: миграция колонок enterprise, subgroup и room_name ======
         # Добавляем колонку enterprise, если её нет
@@ -775,6 +781,139 @@ def api_import_inventory_colors_csv():
 
 
 # ============================================================
+# API: МЕТОДЫ УБОРКИ (ДОБАВЛЕНО)
+# ============================================================
+
+@app.route('/api/cleaning-techniques', methods=['GET'])
+def api_get_cleaning_techniques():
+    session = SessionLocal()
+    techniques = session.query(CleaningTechnique).order_by(CleaningTechnique.name).all()
+    result = [{"id": t.id, "name": t.name} for t in techniques]
+    session.close()
+    return jsonify({"techniques": result})
+
+
+@app.route('/api/cleaning-techniques', methods=['POST'])
+def api_create_cleaning_technique():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({"success": False, "error": "Название обязательно"}), 400
+
+    session = SessionLocal()
+    existing = session.query(CleaningTechnique).filter(CleaningTechnique.name == name).first()
+    if existing:
+        session.close()
+        return jsonify({"success": False, "error": "Метод с таким названием уже существует"}), 400
+
+    technique = CleaningTechnique(name=name)
+    session.add(technique)
+    session.commit()
+    session.refresh(technique)
+    tech_id = technique.id
+    session.close()
+    return jsonify({"success": True, "id": tech_id})
+
+
+@app.route('/api/cleaning-techniques/<int:tech_id>', methods=['PUT'])
+def api_update_cleaning_technique(tech_id):
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({"success": False, "error": "Название обязательно"}), 400
+
+    session = SessionLocal()
+    technique = session.query(CleaningTechnique).get(tech_id)
+    if not technique:
+        session.close()
+        return jsonify({"success": False, "error": "Метод не найден"}), 404
+
+    existing = session.query(CleaningTechnique).filter(CleaningTechnique.name == name, CleaningTechnique.id != tech_id).first()
+    if existing:
+        session.close()
+        return jsonify({"success": False, "error": "Метод с таким названием уже существует"}), 400
+
+    technique.name = name
+    session.commit()
+    session.close()
+    return jsonify({"success": True})
+
+
+@app.route('/api/cleaning-techniques/<int:tech_id>', methods=['DELETE'])
+def api_delete_cleaning_technique(tech_id):
+    session = SessionLocal()
+    technique = session.query(CleaningTechnique).get(tech_id)
+    if technique:
+        session.delete(technique)
+        session.commit()
+        session.close()
+        return jsonify({"success": True})
+    session.close()
+    return jsonify({"success": False, "error": "Метод не найден"}), 404
+
+
+@app.route('/api/cleaning-techniques/export_csv')
+def api_export_cleaning_techniques_csv():
+    session = SessionLocal()
+    techniques = session.query(CleaningTechnique).order_by(CleaningTechnique.name).all()
+    si = StringIO()
+    writer = csv.writer(si, delimiter=';')
+    writer.writerow(['name'])
+    for t in techniques:
+        writer.writerow([t.name])
+    session.close()
+    output = si.getvalue().encode('utf-8-sig')
+    si.close()
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=cleaning_techniques_export.csv'}
+    )
+
+
+@app.route('/api/cleaning-techniques/import_csv', methods=['POST'])
+def api_import_cleaning_techniques_csv():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "Нет файла"}), 400
+    file = request.files['file']
+    if not file.filename.endswith('.csv'):
+        return jsonify({"success": False, "error": "Файл должен быть CSV"}), 400
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"import_cleaning_techniques_{timestamp}_{file.filename}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    created = 0
+    updated = 0
+    errors = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            session = SessionLocal()
+            for row in reader:
+                name = row.get('name', '').strip()
+                if not name:
+                    continue
+                existing = session.query(CleaningTechnique).filter(CleaningTechnique.name == name).first()
+                if existing:
+                    # ничего не делаем – пропускаем
+                    updated += 1
+                else:
+                    session.add(CleaningTechnique(name=name))
+                    created += 1
+            session.commit()
+            session.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    return jsonify({"success": True, "created": created, "updated": updated, "errors": errors})
+
+
+# ============================================================
 # API: ОБЪЕКТЫ
 # ============================================================
 
@@ -864,7 +1003,7 @@ def api_object_instructions(obj_id):
             'maintenance_type': i.maintenance_type or '',
             'subgroup': i.subgroup or '',
             'enterprise': i.enterprise or '',
-            'room_name': i.room_name or '',  # <-- ДОБАВЛЕНО
+            'room_name': i.room_name or '',
             'cleaning_method': i.cleaning_method or '',
             'product_name': i.product_name or '',
             'cleaning_technique': i.cleaning_technique or '',
@@ -900,7 +1039,7 @@ def api_create_instruction(obj_id):
     maintenance_type = data.get('maintenance_type', '')
     subgroup = data.get('subgroup', '').strip() or None
     enterprise = data.get('enterprise', '').strip() or None
-    room_name = data.get('room_name', '').strip() or None  # <-- ДОБАВЛЕНО
+    room_name = data.get('room_name', '').strip() or None
 
     instr = Instruction(
         object_id=obj_id,
@@ -908,7 +1047,7 @@ def api_create_instruction(obj_id):
         maintenance_type=maintenance_type,
         subgroup=subgroup,
         enterprise=enterprise,
-        room_name=room_name,  # <-- ДОБАВЛЕНО
+        room_name=room_name,
         cleaning_method=data.get('cleaning_method', ''),
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
@@ -946,11 +1085,10 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
-        # Добавлены subgroup, enterprise и room_name в список полей
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
                   'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory',
                   'frequency', 'executor', 'control_method', 'instruction_number', 'surface_type',
-                  'subgroup', 'enterprise', 'room_name']  # <-- ДОБАВЛЕНО room_name
+                  'subgroup', 'enterprise', 'room_name']
         for key in fields:
             if key in data:
                 setattr(instr, key, data[key])

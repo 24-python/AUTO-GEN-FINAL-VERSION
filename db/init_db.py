@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import engine, SessionLocal
-from db.models import Base, Category, RoomCategory, CleaningMethodOrder, InventoryColor
+from db.models import Base, Category, RoomCategory, CleaningMethodOrder, InventoryColor, CleaningTechnique
 
 
 def create_tables():
@@ -170,6 +170,44 @@ def seed_inventory_colors():
         session.close()
 
 
+# ===================== ДОБАВЛЕНО: SEED-ЗАПОЛНЕНИЕ МЕТОДОВ УБОРКИ =====================
+
+def seed_cleaning_techniques():
+    """Заполняет таблицу cleaning_techniques стандартными методами уборки, если она пуста."""
+    print("🔄 Проверка методов уборки...")
+
+    session = SessionLocal()
+    try:
+        existing_count = session.query(CleaningTechnique).count()
+        if existing_count > 0:
+            print(f"✅ Методы уборки уже существуют ({existing_count} шт.), пропускаем")
+            return
+
+        standard_techniques = [
+            "протирка",
+            "обработка щёткой",
+            "распыление",
+            "погружение",
+            "замачивание",
+            "орошение",
+            "обработка ветошью",
+            "обработка губкой",
+            "обработка мопом",
+            "обработка скребком",
+            "обработка паром",
+            "обработка губкой с абразивным слоем",
+        ]
+
+        for name in standard_techniques:
+            session.add(CleaningTechnique(name=name))
+            print(f"  ➕ {name}")
+
+        session.commit()
+        print(f"✅ Добавлено {len(standard_techniques)} методов уборки")
+    finally:
+        session.close()
+
+
 def main():
     print("\n🔧 ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ")
     print("=" * 50)
@@ -178,7 +216,8 @@ def main():
     seed_categories()
     seed_room_categories()
     seed_cleaning_method_order()
-    seed_inventory_colors()   # <-- ДОБАВЛЕН ВЫЗОВ
+    seed_inventory_colors()
+    seed_cleaning_techniques()  # <-- ДОБАВЛЕН ВЫЗОВ
 
     print(f"\n📁 Файл БД: {engine.url.database}")
     print("🎉 Готово!")

@@ -126,7 +126,6 @@
                 <div class="nav-item" :class="{active: currentSection === 'room_categories'}" @click="currentSection = 'room_categories'">
                     <i class="bi bi-building me-2"></i> Категории помещений
                 </div>
-                <!-- ДОБАВЛЕНО: Цвета инвентаря -->
                 <div class="nav-item" :class="{active: currentSection === 'inventory_colors'}" @click="currentSection = 'inventory_colors'">
                     <i class="bi bi-palette me-2"></i> Цвета инвентаря
                 </div>
@@ -141,6 +140,10 @@
                 </div>
                 <div class="nav-item" :class="{active: currentSection === 'cleaning_methods'}" @click="currentSection = 'cleaning_methods'">
                     <i class="bi bi-sort-numeric-down me-2"></i> Порядок методов
+                </div>
+                <!-- ДОБАВЛЕНО: Методы уборки -->
+                <div class="nav-item" :class="{active: currentSection === 'cleaning_techniques'}" @click="currentSection = 'cleaning_techniques'">
+                    <i class="bi bi-brush me-2"></i> Методы уборки
                 </div>
                 <div class="nav-item" :class="{active: currentSection === 'import_export'}" @click="currentSection = 'import_export'">
                     <i class="bi bi-upload me-2"></i> Импорт / Экспорт
@@ -231,7 +234,7 @@
                     </div>
                 </div>
 
-                <!-- ==================== ЦВЕТА ИНВЕНТАРЯ (ДОБАВЛЕНО) ==================== -->
+                <!-- ==================== ЦВЕТА ИНВЕНТАРЯ ==================== -->
                 <div v-if="currentSection === 'inventory_colors'">
                     <div class="d-flex justify-content-between align-items-center mb-3 section-header">
                         <h3 class="fw-bold mb-0"><i class="bi bi-palette me-2"></i>Цвета уборочного инвентаря</h3>
@@ -443,6 +446,52 @@
                     </div>
                 </div>
 
+                <!-- ==================== МЕТОДЫ УБОРКИ (ДОБАВЛЕНО) ==================== -->
+                <div v-if="currentSection === 'cleaning_techniques'">
+                    <div class="d-flex justify-content-between align-items-center mb-3 section-header">
+                        <h3 class="fw-bold mb-0"><i class="bi bi-brush me-2"></i>Методы уборки</h3>
+                        <div>
+                            <a href="/api/cleaning-techniques/export_csv" class="btn-ct-outline btn-sm me-2">
+                                <i class="bi bi-download me-1"></i>Экспорт CSV
+                            </a>
+                            <button class="btn-ct-outline btn-sm me-2" @click="openCleaningTechniqueImportModal()">
+                                <i class="bi bi-upload me-1"></i>Импорт CSV
+                            </button>
+                            <button class="btn-ct-primary btn-sm" @click="openCleaningTechniqueForm()">
+                                <i class="bi bi-plus-circle me-1"></i>Добавить
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-ct">
+                        <div class="card-body p-0">
+                            <table class="table table-hover m-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Название</th>
+                                        <th style="width:120px">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(t, idx) in cleaningTechniques" :key="t.id">
+                                        <td v-text="idx + 1"></td>
+                                        <td v-text="t.name"></td>
+                                        <td>
+                                            <div class="d-flex gap-1">
+                                                <button class="btn-ct-outline btn-sm" @click="editCleaningTechnique(t)"><i class="bi bi-pencil"></i></button>
+                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteCleaningTechnique(t)"><i class="bi bi-trash"></i></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="cleaningTechniques.length === 0">
+                                        <td colspan="3" class="text-center text-muted py-4">Нет методов. Нажмите «Добавить».</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ==================== ИМПОРТ/ЭКСПОРТ ==================== -->
                 <div v-if="currentSection === 'import_export'">
                     <div class="row">
@@ -475,6 +524,23 @@
                                 <div class="card-header"><i class="bi bi-download me-2"></i>Экспорт средств</div>
                                 <div class="card-body">
                                     <a href="/api/products/export_csv" class="btn-ct-outline btn-sm"><i class="bi bi-download me-1"></i>Скачать CSV</a>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- ДОБАВЛЕНО: Импорт/экспорт методов уборки -->
+                        <div class="col-md-6">
+                            <div class="card-ct mb-4">
+                                <div class="card-header"><i class="bi bi-upload me-2"></i>Импорт методов уборки (CSV)</div>
+                                <div class="card-body">
+                                    <button class="btn-ct-outline btn-sm" @click="openCleaningTechniqueImportModal()"><i class="bi bi-upload me-1"></i>Выбрать CSV</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card-ct mb-4">
+                                <div class="card-header"><i class="bi bi-download me-2"></i>Экспорт методов уборки</div>
+                                <div class="card-body">
+                                    <a href="/api/cleaning-techniques/export_csv" class="btn-ct-outline btn-sm"><i class="bi bi-download me-1"></i>Скачать CSV</a>
                                 </div>
                             </div>
                         </div>
@@ -626,6 +692,7 @@
                             </div>
                             <div class="col-6"></div>
                         </div>
+
                         <div class="row">
                             <div class="col-6">
                                 <label class="form-label-ct">Средство</label>
@@ -634,8 +701,19 @@
                                     <option v-for="p in products" :value="p.name" v-text="p.name"></option>
                                 </select>
                             </div>
-                            <div class="col-6"><label class="form-label-ct">Метод уборки</label><input class="form-control-ct form-control-sm" v-model="instr.cleaning_technique"></div>
+                            <!-- ===== ИЗМЕНЕНО: Метод уборки – выпадающий список + кнопка добавления ===== -->
+                            <div class="col-6">
+                                <label class="form-label-ct">Метод уборки</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select-ct form-select-sm" v-model="instr.cleaning_technique">
+                                        <option value="">-- выберите --</option>
+                                        <option v-for="t in cleaningTechniques" :key="t.id" :value="t.name" v-text="t.name"></option>
+                                    </select>
+                                    <button class="btn-ct-outline btn-sm" @click="openCleaningTechniqueFormFromInstruction" title="Добавить новый метод"><i class="bi bi-plus-lg"></i></button>
+                                </div>
+                            </div>
                         </div>
+
                         <div class="row">
                             <div class="col-4">
                                 <label class="form-label-ct">Концентрация</label>
@@ -737,7 +815,7 @@
             </div>
         </div>
 
-        <!-- ====== ДОБАВЛЕНЫ МОДАЛКИ ДЛЯ ЦВЕТОВ ИНВЕНТАРЯ ====== -->
+        <!-- ====== МОДАЛКИ ДЛЯ ЦВЕТОВ ИНВЕНТАРЯ ====== -->
 
         <!-- МОДАЛКА: Цвет инвентаря -->
         <div class="modal-overlay" v-if="showColorForm">
@@ -783,6 +861,49 @@
                 <div class="modal-footer-ct">
                     <button class="btn-ct-outline btn-sm" @click="showColorImportModal = false">Отмена</button>
                     <button class="btn-ct-primary btn-sm" @click="doColorImport" :disabled="!colorImportFile">Загрузить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== МОДАЛКИ ДЛЯ МЕТОДОВ УБОРКИ (ДОБАВЛЕНО) ====== -->
+
+        <!-- МОДАЛКА: Метод уборки -->
+        <div class="modal-overlay" v-if="showCleaningTechniqueForm">
+            <div class="modal-content-ct" style="max-width:400px">
+                <div class="modal-header-ct">
+                    <span v-text="editingCleaningTechnique ? 'Редактировать метод' : 'Добавить метод уборки'"></span>
+                    <button class="btn-ct-outline btn-sm" @click="showCleaningTechniqueForm = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-2">
+                        <label class="form-label-ct">Название</label>
+                        <input class="form-control-ct" v-model="cleaningTechniqueForm.name" placeholder="например, протирка">
+                    </div>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showCleaningTechniqueForm = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="saveCleaningTechnique">Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- МОДАЛКА: Импорт CSV для методов уборки -->
+        <div class="modal-overlay" v-if="showCleaningTechniqueImportModal">
+            <div class="modal-content-ct" style="max-width:400px">
+                <div class="modal-header-ct">
+                    <span>Импорт методов уборки из CSV</span>
+                    <button class="btn-ct-outline btn-sm" @click="showCleaningTechniqueImportModal = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-2">
+                        <label class="form-label-ct">CSV файл (name)</label>
+                        <input type="file" accept=".csv" class="form-control-ct" @change="handleCleaningTechniqueImportFile">
+                    </div>
+                    <small class="text-muted d-block">Формат: name (разделитель ;)</small>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showCleaningTechniqueImportModal = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="doCleaningTechniqueImport" :disabled="!cleaningTechniqueImportFile">Загрузить</button>
                 </div>
             </div>
         </div>
