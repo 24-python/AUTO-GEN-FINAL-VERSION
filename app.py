@@ -476,7 +476,7 @@ def api_create_product():
 def api_update_product(product_id):
     data = request.get_json()
     session = SessionLocal()
-    product = session.query(Product).get(product_id)
+    product = session.get(Product, product_id)
     if product:
         if 'name' in data:
             product.name = data['name'].strip()
@@ -494,7 +494,7 @@ def api_update_product(product_id):
 @app.route('/api/products/<int:product_id>', methods=['DELETE'])
 def api_delete_product(product_id):
     session = SessionLocal()
-    product = session.query(Product).get(product_id)
+    product = session.get(Product, product_id)
     if product:
         session.delete(product)
         session.commit()
@@ -622,7 +622,7 @@ def api_update_room_category(rc_id):
         return jsonify({'success': False, 'error': 'Название обязательно'}), 400
 
     session = SessionLocal()
-    rc = session.query(RoomCategory).get(rc_id)
+    rc = session.get(RoomCategory, rc_id)
     if rc:
         rc.name = name
         session.commit()
@@ -635,7 +635,7 @@ def api_update_room_category(rc_id):
 @app.route('/api/room-categories/<int:rc_id>', methods=['DELETE'])
 def api_delete_room_category(rc_id):
     session = SessionLocal()
-    rc = session.query(RoomCategory).get(rc_id)
+    rc = session.get(RoomCategory, rc_id)
     if rc:
         session.delete(rc)
         session.commit()
@@ -685,7 +685,7 @@ def api_create_inventory_color():
 def api_update_inventory_color(color_id):
     data = request.get_json()
     session = SessionLocal()
-    color = session.query(InventoryColor).get(color_id)
+    color = session.get(InventoryColor, color_id)
     if not color:
         session.close()
         return jsonify({"success": False, "error": "Цвет не найден"}), 404
@@ -708,7 +708,7 @@ def api_update_inventory_color(color_id):
 @app.route('/api/inventory-colors/<int:color_id>', methods=['DELETE'])
 def api_delete_inventory_color(color_id):
     session = SessionLocal()
-    color = session.query(InventoryColor).get(color_id)
+    color = session.get(InventoryColor, color_id)
     if color:
         session.delete(color)
         session.commit()
@@ -823,7 +823,7 @@ def api_update_cleaning_technique(tech_id):
         return jsonify({"success": False, "error": "Название обязательно"}), 400
 
     session = SessionLocal()
-    technique = session.query(CleaningTechnique).get(tech_id)
+    technique = session.get(CleaningTechnique, tech_id)
     if not technique:
         session.close()
         return jsonify({"success": False, "error": "Метод не найден"}), 404
@@ -842,7 +842,7 @@ def api_update_cleaning_technique(tech_id):
 @app.route('/api/cleaning-techniques/<int:tech_id>', methods=['DELETE'])
 def api_delete_cleaning_technique(tech_id):
     session = SessionLocal()
-    technique = session.query(CleaningTechnique).get(tech_id)
+    technique = session.get(CleaningTechnique, tech_id)
     if technique:
         session.delete(technique)
         session.commit()
@@ -961,7 +961,7 @@ def api_create_object():
 def api_update_object(obj_id):
     data = request.get_json()
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         for key in ['display_name', 'normalized_name', 'base_name', 'modifier', 'sort_priority', 'category_id']:
             if key in data:
@@ -976,7 +976,7 @@ def api_update_object(obj_id):
 @app.route('/api/objects/<int:obj_id>', methods=['DELETE'])
 def api_delete_object(obj_id):
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         session.delete(obj)
         session.commit()
@@ -993,7 +993,7 @@ def api_delete_object(obj_id):
 @app.route('/api/objects/<int:obj_id>/instructions')
 def api_object_instructions(obj_id):
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
         result = [{
@@ -1036,10 +1036,16 @@ def api_create_instruction(obj_id):
         except (ValueError, TypeError):
             room_category_id = None
 
+    # Безопасное извлечение строковых полей с обрезкой пробелов
+    def safe_strip(value):
+        return value.strip() if isinstance(value, str) else None
+
     maintenance_type = data.get('maintenance_type', '')
-    subgroup = data.get('subgroup', '').strip() or None
-    enterprise = data.get('enterprise', '').strip() or None
-    room_name = data.get('room_name', '').strip() or None
+    subgroup = safe_strip(data.get('subgroup'))
+    enterprise = safe_strip(data.get('enterprise'))
+    room_name = safe_strip(data.get('room_name'))
+    surface_type = safe_strip(data.get('surface_type'))
+    application_method = safe_strip(data.get('application_method'))
 
     instr = Instruction(
         object_id=obj_id,
@@ -1052,7 +1058,7 @@ def api_create_instruction(obj_id):
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
         concentration=data.get('concentration', ''),
-        application_method=data.get('application_method', ''),
+        application_method=application_method,
         temperature=data.get('temperature', ''),
         exposure_time=data.get('exposure_time', ''),
         inventory=data.get('inventory', ''),
@@ -1060,7 +1066,7 @@ def api_create_instruction(obj_id):
         executor=data.get('executor', ''),
         control_method=data.get('control_method', ''),
         instruction_number=data.get('instruction_number', ''),
-        surface_type=data.get('surface_type')
+        surface_type=surface_type
     )
     session.add(instr)
     session.commit()
@@ -1074,7 +1080,7 @@ def api_create_instruction(obj_id):
 def api_update_instruction(instr_id):
     data = request.get_json()
     session = SessionLocal()
-    instr = session.query(Instruction).get(instr_id)
+    instr = session.get(Instruction, instr_id)
     if instr:
         if 'room_category_id' in data:
             rc_id = data['room_category_id']
@@ -1085,13 +1091,26 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
+        # Обычные поля (безопасно присваиваем как есть, либо обрезаем пробелы для строк)
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
-                  'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory',
-                  'frequency', 'executor', 'control_method', 'instruction_number', 'surface_type',
-                  'subgroup', 'enterprise', 'room_name']
+                  'concentration', 'temperature', 'exposure_time', 'inventory',
+                  'frequency', 'executor', 'control_method', 'instruction_number']
         for key in fields:
             if key in data:
-                setattr(instr, key, data[key])
+                # Если значение строка — обрезаем пробелы, иначе оставляем как есть (может быть None)
+                val = data[key]
+                if isinstance(val, str):
+                    val = val.strip()
+                setattr(instr, key, val)
+
+        # Поля, требующие особой обработки (могут быть None, обрезаем пробелы)
+        for key in ['subgroup', 'enterprise', 'room_name', 'surface_type', 'application_method']:
+            if key in data:
+                val = data[key]
+                if isinstance(val, str):
+                    val = val.strip()
+                setattr(instr, key, val)
+
         session.commit()
         session.close()
         return jsonify({'success': True})
@@ -1102,7 +1121,7 @@ def api_update_instruction(instr_id):
 @app.route('/api/instructions/<int:instr_id>', methods=['DELETE'])
 def api_delete_instruction(instr_id):
     session = SessionLocal()
-    instr = session.query(Instruction).get(instr_id)
+    instr = session.get(Instruction, instr_id)
     if instr:
         session.delete(instr)
         session.commit()
@@ -1122,7 +1141,7 @@ def api_object_properties():
     props = session.query(ObjectProperty).all()
     result = []
     for p in props:
-        obj = session.query(Object).get(p.object_id)
+        obj = session.get(Object, p.object_id)
         result.append({
             'id': p.id,
             'object_id': p.object_id,
@@ -1141,7 +1160,7 @@ def api_object_properties():
 def api_update_object_property(prop_id):
     data = request.get_json()
     session = SessionLocal()
-    prop = session.query(ObjectProperty).get(prop_id)
+    prop = session.get(ObjectProperty, prop_id)
     if prop:
         for field in ['is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type']:
             if field in data:
@@ -1161,7 +1180,7 @@ def api_export_object_properties_csv():
     writer = csv.writer(si, delimiter=';')
     writer.writerow(['object_id', 'normalized_name', 'is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type'])
     for p in props:
-        obj = session.query(Object).get(p.object_id)
+        obj = session.get(Object, p.object_id)
         writer.writerow([
             p.object_id,
             obj.normalized_name if obj else '',
@@ -1210,7 +1229,7 @@ def api_import_object_properties_csv():
                     errors.append(f"Некорректный object_id: {row.get('object_id')}")
                     continue
 
-                obj = session.query(Object).get(obj_id)
+                obj = session.get(Object, obj_id)
                 if not obj:
                     errors.append(f"Объект с ID {obj_id} не найден")
                     continue
@@ -1303,7 +1322,7 @@ def api_object_groups():
     groups = session.query(ObjectGroup).all()
     result = []
     for g in groups:
-        obj = session.query(Object).get(g.object_id)
+        obj = session.get(Object, g.object_id)
         result.append({
             'id': g.id,
             'group_name': g.group_name,
@@ -1325,7 +1344,7 @@ def api_create_object_group():
 
     session = SessionLocal()
     # Проверка существования объекта
-    obj = session.query(Object).get(object_id)
+    obj = session.get(Object, object_id)
     if not obj:
         session.close()
         return jsonify({'success': False, 'error': 'Объект не найден'}), 404
@@ -1343,13 +1362,13 @@ def api_create_object_group():
 def api_update_object_group(group_id):
     data = request.get_json()
     session = SessionLocal()
-    group = session.query(ObjectGroup).get(group_id)
+    group = session.get(ObjectGroup, group_id)
     if group:
         if 'group_name' in data:
             group.group_name = data['group_name'].strip()
         if 'object_id' in data:
             # Проверка существования нового объекта
-            obj = session.query(Object).get(data['object_id'])
+            obj = session.get(Object, data['object_id'])
             if not obj:
                 session.close()
                 return jsonify({'success': False, 'error': 'Объект не найден'}), 404
@@ -1364,7 +1383,7 @@ def api_update_object_group(group_id):
 @app.route('/api/object-groups/<int:group_id>', methods=['DELETE'])
 def api_delete_object_group(group_id):
     session = SessionLocal()
-    group = session.query(ObjectGroup).get(group_id)
+    group = session.get(ObjectGroup, group_id)
     if group:
         session.delete(group)
         session.commit()
@@ -1382,7 +1401,7 @@ def api_export_object_groups_csv():
     writer = csv.writer(si, delimiter=';')
     writer.writerow(['group_name', 'object_id', 'normalized_name'])
     for g in groups:
-        obj = session.query(Object).get(g.object_id)
+        obj = session.get(Object, g.object_id)
         writer.writerow([g.group_name, g.object_id, obj.normalized_name if obj else ''])
     session.close()
     output = si.getvalue().encode('utf-8-sig')
@@ -1424,7 +1443,7 @@ def api_import_object_groups_csv():
                     errors.append(f"Некорректный object_id: {obj_id_str}")
                     continue
 
-                obj = session.query(Object).get(obj_id)
+                obj = session.get(Object, obj_id)
                 if not obj:
                     errors.append(f"Объект с ID {obj_id} не найден")
                     continue
@@ -1491,7 +1510,7 @@ def api_create_cleaning_method():
 def api_update_cleaning_method(method_id):
     data = request.get_json()
     session = SessionLocal()
-    method = session.query(CleaningMethodOrder).get(method_id)
+    method = session.get(CleaningMethodOrder, method_id)
     if method:
         if 'method_name' in data:
             method.method_name = data['method_name'].strip()
@@ -1507,7 +1526,7 @@ def api_update_cleaning_method(method_id):
 @app.route('/api/cleaning-methods/<int:method_id>', methods=['DELETE'])
 def api_delete_cleaning_method(method_id):
     session = SessionLocal()
-    method = session.query(CleaningMethodOrder).get(method_id)
+    method = session.get(CleaningMethodOrder, method_id)
     if method:
         session.delete(method)
         session.commit()

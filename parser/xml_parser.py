@@ -11,7 +11,7 @@
 
 Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
 Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
-Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
+Добавлено: парсинг специализированных моющих средств (пол/трапы, технологическое оборудование, тепловое оборудование, стекло/зеркала/мониторы).
 Добавлено: парсинг цвета инвентаря из выпадающего списка.
 Доработано: категории помещений и цвета инвентаря загружаются из БД (справочники).
 Добавлено: парсинг зональных исполнителей (поверхности выше 2 м, до 2 м, оборудование).
@@ -390,7 +390,7 @@ class SDTChecklistParser:
     def _parse_additional_info(self, root, data: ChecklistData):
         """
         Извлекает моющие и дезинфицирующие средства, цвет инвентаря.
-        Строгий порядок: 1 цвет + 15 средств (5 групп по 3).
+        Строгий порядок: 1 цвет + 18 средств (6 групп по 3).
         В каждой тройке: [0] – средство, [1] – концентрация, [2] – метод.
         Цвет инвентаря проверяется по БД (таблица inventory_colors).
         """
@@ -431,19 +431,20 @@ class SDTChecklistParser:
         if inventory_color is None:
             print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
 
-        # --- Средства (15 элементов) ---
+        # --- Средства (18 элементов = 6 групп по 3) ---
         dropdown_values = all_values[1:] if len(all_values) > 1 else []
-        while len(dropdown_values) < 15:
+        while len(dropdown_values) < 18:
             dropdown_values.append(None)
-        dropdown_values = dropdown_values[:15]
+        dropdown_values = dropdown_values[:18]
 
         # Группы с правильными именами полей
         groups = [
-            ('cleaning', 0, False),  # без _cleaning
-            ('disinfection', 3, False),
-            ('floor', 6, True),
-            ('thermal', 9, True),
-            ('glass', 12, True)
+            ('cleaning', 0, False),      # общее моющее
+            ('disinfection', 3, False),  # дезинфицирующее
+            ('floor', 6, True),          # пол/трапы
+            ('tech', 9, True),           # ДОБАВЛЕНО: технологическое оборудование
+            ('thermal', 12, True),       # тепловое оборудование (было 9, стало 12)
+            ('glass', 15, True)          # стекло/зеркала (было 12, стало 15)
         ]
 
         for group_name, start_idx, use_cleaning_suffix in groups:
@@ -486,6 +487,12 @@ class SDTChecklistParser:
             print(f"     Способ разведения: {data.floor_cleaning_method_text or 'не указан'}")
         else:
             print("  🧽 Моющее для пола/трапов не выбрано")
+        if data.tech_cleaning_product:  # ДОБАВЛЕНО
+            print(f"  ⚙️ Моющее для технологического оборудования: {data.tech_cleaning_product}")
+            print(f"     Концентрация: {data.tech_cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.tech_cleaning_method_text or 'не указан'}")
+        else:
+            print("  ⚙️ Моющее для технологического оборудования не выбрано")
         if data.thermal_cleaning_product:
             print(f"  🔥 Моющее для теплового оборудования: {data.thermal_cleaning_product}")
             print(f"     Концентрация: {data.thermal_cleaning_concentration or 'не указана'}")
@@ -610,6 +617,8 @@ class SDTChecklistParser:
             print(f"   Общее дезинфицирующее средство: {data.disinfection_product}")
         if data.floor_cleaning_product:
             print(f"   Моющее для пола/трапов: {data.floor_cleaning_product}")
+        if data.tech_cleaning_product:  # ДОБАВЛЕНО
+            print(f"   Моющее для технологического оборудования: {data.tech_cleaning_product}")
         if data.thermal_cleaning_product:
             print(f"   Моющее для теплового оборудования: {data.thermal_cleaning_product}")
         if data.glass_cleaning_product:

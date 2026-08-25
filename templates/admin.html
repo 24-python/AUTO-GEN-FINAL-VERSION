@@ -75,6 +75,20 @@
             border-radius: 4px;
             border: 1px solid #ccc;
         }
+
+        /* ===== ИСПРАВЛЕНИЕ: единая высота 35px для полей в модалке инструкций ===== */
+        .instructions-modal .form-control-sm,
+        .instructions-modal .form-select-sm,
+        .instructions-modal .btn-sm {
+            height: 35px;
+            line-height: 1.5;
+        }
+        .instructions-modal .btn-sm {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         @media (max-width: 768px) {
             .admin-layout {
                 flex-direction: column;
@@ -362,6 +376,7 @@
                                             <select class="form-select-ct form-select-sm" v-model="prop.special_product_type" @change="updateProperty(prop)">
                                                 <option value="">–</option>
                                                 <option value="floor">Пол/трапы</option>
+                                                <option value="tech">Технологическое оборудование</option>
                                                 <option value="thermal">Тепловое</option>
                                                 <option value="glass">Стекло/зеркала</option>
                                             </select>
@@ -609,9 +624,10 @@
             </div>
         </div>
 
-        <!-- МОДАЛКА: Инструкции (зафиксирован заголовок) -->
-        <div class="modal-overlay" v-if="showInstructionsModal">
-            <div class="modal-content-ct" style="max-width:800px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- ===== МОДАЛКА: Инструкции (с единой высотой 35px) ===== -->
+        <div class="modal-overlay instructions-modal" v-if="showInstructionsModal">
+            <div class="modal-content-ct" style="max-width:900px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+                <!-- Заголовок -->
                 <div class="modal-header-ct">
                     <span>Инструкции: <span v-text="editObject?.display_name"></span></span>
                     <div>
@@ -619,54 +635,68 @@
                         <button class="btn-ct-outline btn-sm" @click="showInstructionsModal = false">✕</button>
                     </div>
                 </div>
-                <div class="modal-body-ct" style="flex:1; overflow-y:auto;">
-                    <div v-if="currentInstructions.length === 0" class="text-muted text-center py-3">Нет инструкций. Нажмите «Добавить».</div>
 
-                    <div v-for="(instr, idx) in currentInstructions" :key="idx" class="instruction-row" :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB'}">
+                <!-- Тело модалки -->
+                <div class="modal-body-ct" style="flex:1; overflow-y:auto; padding: 16px 20px;">
+                    <div v-if="currentInstructions.length === 0" class="text-muted text-center py-4">
+                        Нет инструкций. Нажмите «Добавить».
+                    </div>
+
+                    <!-- Блок одной инструкции -->
+                    <div v-for="(instr, idx) in currentInstructions" :key="idx"
+                         class="instruction-row mb-3 p-3"
+                         :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB', borderRadius: '8px', background: '#FAFBFC'}">
+
+                        <!-- Шапка: статус + кнопки -->
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="badge-ct" :class="instr.isNew ? 'badge-success' : 'badge-info'" v-text="instr.isNew ? 'Новая' : 'ID: ' + instr.id + (instr.room_category_name ? ' | ' + instr.room_category_name : '')"></span>
+                            <span class="badge-ct" :class="instr.isNew ? 'badge-success' : 'badge-info'"
+                                  v-text="instr.isNew ? 'Новая' : 'ID: ' + instr.id + (instr.room_category_name ? ' | ' + instr.room_category_name : '')">
+                            </span>
                             <div>
                                 <button class="btn-ct-outline btn-sm me-1" @click="duplicateInstruction(instr, idx)" title="Дублировать"><i class="bi bi-files"></i></button>
                                 <button class="btn-ct-outline btn-sm text-danger" @click="deleteInstruction(instr, idx)"><i class="bi bi-trash"></i></button>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-3">
-                                <label class="form-label-ct">Уровень обработки</label>
+
+                        <!-- Строка 1: Уровень обработки | Подуровень (группа) | Категория помещения -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Уровень обработки</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.maintenance_type">
                                     <option value="основная">основная</option>
                                     <option value="поддерживающая">поддерживающая</option>
                                     <option value="генеральная">генеральная</option>
                                 </select>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Категория помещения</label>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Подуровень (группа)</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.subgroup" placeholder="например, основная1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Категория помещения</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.room_category_id">
                                     <option :value="null">Общая (для всех)</option>
                                     <option v-for="rc in roomCategories" :value="rc.id" v-text="rc.name"></option>
                                 </select>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Подуровень (группа)</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.subgroup" placeholder="например, основная1">
-                            </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Предприятие</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.enterprise" placeholder="Название предприятия">
-                            </div>
                         </div>
 
-                        <!-- ===== ДОБАВЛЕНО: Конкретное помещение ===== -->
-                        <div class="row">
-                            <div class="col-12">
-                                <label class="form-label-ct">Конкретное помещение</label>
+                        <!-- Строка 2: Предприятие | Конкретное помещение -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Предприятие</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.enterprise" placeholder="Название предприятия">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Конкретное помещение</label>
                                 <input class="form-control-ct form-control-sm" v-model="instr.room_name" placeholder="например, ванная, туалет, цех №1">
                             </div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-3">
-                                <label class="form-label-ct">Способ обработки</label>
+                        <!-- Строка 3: Способ обработки | Тип поверхности -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Способ обработки</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.cleaning_method">
                                     <option value="">-- выберите --</option>
                                     <option value="прочистка">прочистка</option>
@@ -681,8 +711,8 @@
                                     <option value="машинная стирка">машинная стирка</option>
                                 </select>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Тип поверхности</label>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Тип поверхности</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.surface_type">
                                     <option :value="null">Общая (для всех)</option>
                                     <option value="внешняя">Внешняя</option>
@@ -690,55 +720,82 @@
                                     <option value="очистка от мин. отложений">Очистка от мин. отложений</option>
                                 </select>
                             </div>
-                            <div class="col-6"></div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-6">
-                                <label class="form-label-ct">Средство</label>
+                        <!-- Строка 4: Средство | Метод уборки -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Средство</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.product_name">
                                     <option value="">-- выберите --</option>
                                     <option v-for="p in products" :value="p.name" v-text="p.name"></option>
                                 </select>
                             </div>
-                            <!-- ===== ИЗМЕНЕНО: Метод уборки – выпадающий список + кнопка добавления ===== -->
-                            <div class="col-6">
-                                <label class="form-label-ct">Метод уборки</label>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Метод уборки</label>
                                 <div class="d-flex gap-1">
-                                    <select class="form-select-ct form-select-sm" v-model="instr.cleaning_technique">
+                                    <select class="form-select-ct form-select-sm flex-grow-1" v-model="instr.cleaning_technique">
                                         <option value="">-- выберите --</option>
                                         <option v-for="t in cleaningTechniques" :key="t.id" :value="t.name" v-text="t.name"></option>
                                     </select>
-                                    <button class="btn-ct-outline btn-sm" @click="openCleaningTechniqueFormFromInstruction" title="Добавить новый метод"><i class="bi bi-plus-lg"></i></button>
+                                    <button class="btn-ct-outline btn-sm flex-shrink-0" @click="openCleaningTechniqueFormFromInstruction" title="Добавить новый метод"><i class="bi bi-plus-lg"></i></button>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-4">
-                                <label class="form-label-ct">Концентрация</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.concentration">
+                        <!-- Строка 5: Концентрация | Метод разведения | Температура -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Концентрация</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.concentration" placeholder="например, 1-2%">
                             </div>
-                            <div class="col-4">
-                                <label class="form-label-ct">Метод разведения</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.application_method">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Метод разведения</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.application_method" placeholder="способ разведения">
                             </div>
-                            <div class="col-4">
-                                <label class="form-label-ct">Температура</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.temperature">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Температура</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.temperature" placeholder="например, не ниже 40°C">
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-4"><label class="form-label-ct">Время выдержки</label><input class="form-control-ct form-control-sm" v-model="instr.exposure_time"></div>
-                            <div class="col-4"><label class="form-label-ct">Инвентарь</label><input class="form-control-ct form-control-sm" v-model="instr.inventory"></div>
-                            <div class="col-4"><label class="form-label-ct">Периодичность</label><input class="form-control-ct form-control-sm" v-model="instr.frequency"></div>
+
+                        <!-- Строка 6: Время выдержки | Инвентарь | Периодичность -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Время выдержки</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.exposure_time" placeholder="например, 20 мин">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Инвентарь</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.inventory" placeholder="например, промаркированный">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Периодичность</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.frequency" placeholder="например, 1 раз в смену">
+                            </div>
                         </div>
-                        <div class="row">
-                            <div class="col-4"><label class="form-label-ct">Исполнитель</label><input class="form-control-ct form-control-sm" v-model="instr.executor"></div>
-                            <div class="col-4"><label class="form-label-ct">Метод контроля</label><input class="form-control-ct form-control-sm" v-model="instr.control_method"></div>
-                            <div class="col-4"><label class="form-label-ct">№ инструкции</label><input class="form-control-ct form-control-sm" v-model="instr.instruction_number"></div>
+
+                        <!-- Строка 7: Исполнитель | Метод контроля | № инструкции -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Исполнитель</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.executor" placeholder="должность или ФИО">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Метод контроля</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.control_method" placeholder="способ проверки">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">№ инструкции</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.instruction_number" placeholder="номер документа">
+                            </div>
                         </div>
-                        <button class="btn-ct-primary btn-sm mt-2" @click="saveInstruction(instr)"><i class="bi bi-check-lg me-1"></i><span v-text="instr.isNew ? 'Сохранить' : 'Обновить'"></span></button>
+
+                        <!-- Кнопка сохранения -->
+                        <button class="btn-ct-primary btn-sm mt-2" @click="saveInstruction(instr)">
+                            <i class="bi bi-check-lg me-1"></i>
+                            <span v-text="instr.isNew ? 'Сохранить' : 'Обновить'"></span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -936,6 +993,7 @@
                     <select class="form-select-ct" v-model="propertyForm.special_product_type">
                         <option value="">–</option>
                         <option value="floor">Пол/трапы</option>
+                        <option value="tech">Технологическое оборудование</option>
                         <option value="thermal">Тепловое</option>
                         <option value="glass">Стекло/зеркала</option>
                     </select>
