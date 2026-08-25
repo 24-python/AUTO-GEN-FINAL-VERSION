@@ -61,6 +61,11 @@ class ChecklistData:
     floor_cleaning_concentration: Optional[str] = None
     floor_cleaning_method_text: Optional[str] = None
 
+    # ДОБАВЛЕНО: группа для технологического оборудования (4-я группа)
+    tech_cleaning_product: Optional[str] = None
+    tech_cleaning_concentration: Optional[str] = None
+    tech_cleaning_method_text: Optional[str] = None
+
     thermal_cleaning_product: Optional[str] = None
     thermal_cleaning_concentration: Optional[str] = None
     thermal_cleaning_method_text: Optional[str] = None

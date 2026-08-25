@@ -60,6 +60,7 @@ class TechCardGenerator:
         self.multi_method_objects = set()
         self.support_objects = set()
         self.floor_objects = set()
+        self.tech_objects = set()      # ДОБАВЛЕНО: для технологического оборудования
         self.glass_objects = set()
         self.thermal_objects = set()
 
@@ -73,6 +74,8 @@ class TechCardGenerator:
                 self.support_objects.add(name)
             if prop.special_product_type == 'floor':
                 self.floor_objects.add(name)
+            elif prop.special_product_type == 'tech':
+                self.tech_objects.add(name)
             elif prop.special_product_type == 'glass':
                 self.glass_objects.add(name)
             elif prop.special_product_type == 'thermal':
@@ -950,6 +953,10 @@ class TechCardGenerator:
                                     checklist_product = checklist_data.floor_cleaning_product
                                     checklist_concentration = checklist_data.floor_cleaning_concentration
                                     checklist_method = checklist_data.floor_cleaning_method_text
+                                elif normalized_name in self.tech_objects:  # ДОБАВЛЕНО
+                                    checklist_product = checklist_data.tech_cleaning_product
+                                    checklist_concentration = checklist_data.tech_cleaning_concentration
+                                    checklist_method = checklist_data.tech_cleaning_method_text
                                 elif normalized_name in self.thermal_objects:
                                     checklist_product = checklist_data.thermal_cleaning_product
                                     checklist_concentration = checklist_data.thermal_cleaning_concentration
