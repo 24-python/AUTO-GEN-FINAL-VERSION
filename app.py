@@ -8,6 +8,7 @@
 Добавлены таблицы конфигурации генератора: object_properties, object_groups, cleaning_method_order.
 Добавлены поля enterprise, subgroup и room_name для инструкций.
 Добавлен справочник методов уборки (cleaning_techniques).
+Добавлен эндпоинт для копирования инструкций и свойств между объектами.
 """
 
 import csv
@@ -1695,6 +1696,100 @@ def api_import_csv():
     finally:
         if os.path.exists(filepath):
             os.remove(filepath)
+
+
+# ============================================================
+# API: КОПИРОВАНИЕ ИНСТРУКЦИЙ И СВОЙСТВ МЕЖДУ ОБЪЕКТАМИ
+# ============================================================
+
+@app.route('/api/instructions/copy', methods=['POST'])
+def api_copy_instructions():
+    """
+    Копирует все инструкции и свойства объекта-источника на объект-получатель.
+    Ожидает JSON: {"source_id": int, "target_id": int}
+    """
+    data = request.get_json()
+    source_id = data.get('source_id')
+    target_id = data.get('target_id')
+
+    if not source_id or not target_id:
+        return jsonify({'success': False, 'error': 'source_id и target_id обязательны'}), 400
+
+    session = SessionLocal()
+    try:
+        # Проверка существования объектов
+        source = session.get(Object, source_id)
+        target = session.get(Object, target_id)
+        if not source or not target:
+            return jsonify({'success': False, 'error': 'Один из объектов не найден'}), 404
+
+        # Копирование инструкций
+        source_instructions = session.query(Instruction).filter(Instruction.object_id == source_id).all()
+        copied_count = 0
+        for instr in source_instructions:
+            new_instr = Instruction(
+                object_id=target_id,
+                room_category_id=instr.room_category_id,
+                maintenance_type=instr.maintenance_type,
+                enterprise=instr.enterprise,
+                subgroup=instr.subgroup,
+                room_name=instr.room_name,
+                cleaning_method=instr.cleaning_method,
+                instruction_number=instr.instruction_number,
+                product_name=instr.product_name,
+                cleaning_technique=instr.cleaning_technique,
+                concentration=instr.concentration,
+                application_method=instr.application_method,
+                temperature=instr.temperature,
+                exposure_time=instr.exposure_time,
+                inventory=instr.inventory,
+                frequency=instr.frequency,
+                executor=instr.executor,
+                control_method=instr.control_method,
+                surface_type=instr.surface_type
+            )
+            session.add(new_instr)
+            copied_count += 1
+
+        # Копирование свойств объекта (ObjectProperty)
+        source_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == source_id).first()
+        target_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == target_id).first()
+
+        property_copied = False
+        if source_prop:
+            if target_prop:
+                # Обновляем существующее свойство у получателя
+                target_prop.is_split = source_prop.is_split
+                target_prop.is_multi_method = source_prop.is_multi_method
+                target_prop.has_support_maintenance = source_prop.has_support_maintenance
+                target_prop.special_product_type = source_prop.special_product_type
+            else:
+                # Создаём новое свойство для получателя
+                new_prop = ObjectProperty(
+                    object_id=target_id,
+                    is_split=source_prop.is_split,
+                    is_multi_method=source_prop.is_multi_method,
+                    has_support_maintenance=source_prop.has_support_maintenance,
+                    special_product_type=source_prop.special_product_type
+                )
+                session.add(new_prop)
+            property_copied = True
+        else:
+            # Если у источника нет свойства, удаляем свойство у получателя (если есть)
+            if target_prop:
+                session.delete(target_prop)
+
+        session.commit()
+        return jsonify({
+            'success': True,
+            'copied_instructions': copied_count,
+            'property_copied': property_copied
+        })
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':

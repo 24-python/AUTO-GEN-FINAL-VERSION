@@ -175,6 +175,10 @@
                             <button class="btn-ct-outline btn-sm me-2 text-danger" @click="clearDatabase">
                                 <i class="bi bi-eraser me-1"></i>Очистить БД
                             </button>
+                            <!-- Новая кнопка: Копировать инструкции -->
+                            <button class="btn-ct-outline btn-sm me-2" @click="openCopyModal">
+                                <i class="bi bi-clipboard-plus me-1"></i>Копировать инструкции
+                            </button>
                             <button class="btn-ct-primary btn-sm" @click="openAddModal"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         </div>
                     </div>
@@ -797,6 +801,42 @@
                             <span v-text="instr.isNew ? 'Сохранить' : 'Обновить'"></span>
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== МОДАЛКА: Копирование инструкций ===== -->
+        <div class="modal-overlay" v-if="showCopyModal">
+            <div class="modal-content-ct" style="max-width:500px;">
+                <div class="modal-header-ct">
+                    <span>Копирование инструкций</span>
+                    <button class="btn-ct-outline btn-sm" @click="showCopyModal = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-3">
+                        <label class="form-label-ct">Объект-источник (с которого копировать)</label>
+                        <select class="form-select-ct" v-model="copySourceId">
+                            <option value="">-- выберите --</option>
+                            <option v-for="obj in objects" :key="obj.id" :value="obj.id" v-text="obj.display_name + ' (ID: ' + obj.id + ')'"></option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label-ct">Объект-получатель (на который копировать)</label>
+                        <select class="form-select-ct" v-model="copyTargetId">
+                            <option value="">-- выберите --</option>
+                            <option v-for="obj in objects" :key="obj.id" :value="obj.id" v-text="obj.display_name + ' (ID: ' + obj.id + ')'"></option>
+                        </select>
+                    </div>
+                    <div class="text-muted" style="font-size:0.85rem;">
+                        Будут скопированы все инструкции и свойства объекта-источника.
+                        Дубликаты инструкций будут добавлены без проверки.
+                    </div>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showCopyModal = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="doCopy" :disabled="!copySourceId || !copyTargetId">
+                        <i class="bi bi-clipboard-plus me-1"></i>Копировать
+                    </button>
                 </div>
             </div>
         </div>

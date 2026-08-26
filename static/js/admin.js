@@ -94,6 +94,11 @@ createApp({
             propertyImportFile: null,
             groupImportFile: null,
             methodImportFile: null,
+
+            // ===== ДОБАВЛЕНО: КОПИРОВАНИЕ ИНСТРУКЦИЙ =====
+            showCopyModal: false,
+            copySourceId: null,
+            copyTargetId: null,
         }
     },
     computed: {
@@ -993,6 +998,53 @@ createApp({
                 }
             } catch (e) {
                 Toastify({ text: '❌ Ошибка импорта методов уборки', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ================= ДОБАВЛЕНО: КОПИРОВАНИЕ ИНСТРУКЦИЙ =================
+        openCopyModal() {
+            // Объекты уже загружены в this.objects, просто открываем модалку
+            this.copySourceId = null;
+            this.copyTargetId = null;
+            this.showCopyModal = true;
+        },
+
+        async doCopy() {
+            if (!this.copySourceId || !this.copyTargetId) {
+                Toastify({ text: '⚠️ Выберите оба объекта', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            if (this.copySourceId === this.copyTargetId) {
+                Toastify({ text: '⚠️ Источник и получатель не могут совпадать', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/instructions/copy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_id: this.copySourceId,
+                        target_id: this.copyTargetId
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    Toastify({
+                        text: `✅ Скопировано инструкций: ${data.copied_instructions}, свойства: ${data.property_copied ? 'скопированы' : 'удалены'}`,
+                        duration: 5000,
+                        gravity: 'bottom',
+                        position: 'right',
+                        style: { background: '#00A650' }
+                    }).showToast();
+                    this.showCopyModal = false;
+                    // Обновляем список объектов (перезагрузка данных)
+                    await this.loadObjects();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка копирования'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка при копировании', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         }
     }
