@@ -180,3 +180,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 generation_history.json
+tech_cards.db
