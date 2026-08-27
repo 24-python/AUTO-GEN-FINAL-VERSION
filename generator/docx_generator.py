@@ -19,10 +19,8 @@ class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
 
-    # Порядок уровней обработки для вывода
     LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
 
-    # Заглушки, которые не должны подставляться из чек-листа
     SKIP_PLACEHOLDERS = {
         "Выберите элемент.", "Не выбрано", "Выберите элемент",
         "", None
@@ -30,14 +28,11 @@ class TechCardGenerator:
 
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
-        # Кэши конфигурации, загружаемые из БД
         self._config_loaded = False
-        # ===== Кэш цветов инвентаря =====
-        self._inventory_colors = {}  # {name: hex_color}
+        self._inventory_colors = {}
         self._load_inventory_colors()
 
     def _load_inventory_colors(self):
-        """Загружает цвета инвентаря из БД в словарь {name: hex_color}."""
         session = SessionLocal()
         try:
             colors = session.query(InventoryColor).all()
@@ -46,21 +41,17 @@ class TechCardGenerator:
             session.close()
 
     def _load_config(self, session):
-        """Загружает конфигурацию из БД (CleaningMethodOrder, ObjectProperty, ObjectGroup)"""
         if self._config_loaded:
             return
-
-        # 1. Порядок методов очистки
         methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
         self.cleaning_method_order = {m.method_name: m.sort_order for m in methods}
 
-        # 2. Свойства объектов
         props = session.query(ObjectProperty).join(DBObject).all()
         self.split_objects = set()
         self.multi_method_objects = set()
         self.support_objects = set()
         self.floor_objects = set()
-        self.tech_objects = set()      # ДОБАВЛЕНО: для технологического оборудования
+        self.tech_objects = set()
         self.glass_objects = set()
         self.thermal_objects = set()
 
@@ -81,9 +72,8 @@ class TechCardGenerator:
             elif prop.special_product_type == 'thermal':
                 self.thermal_objects.add(name)
 
-        # 3. Группы объектов
         groups = session.query(ObjectGroup).all()
-        self.group_headers = {}  # frozenset -> header
+        self.group_headers = {}
         temp_groups = defaultdict(set)
         for g in groups:
             if g.object:
@@ -94,12 +84,10 @@ class TechCardGenerator:
         self._config_loaded = True
 
     def _load_product_colors(self, session) -> dict:
-        """Загружает цвета средств из таблицы products."""
         products = session.query(Product).all()
         return {p.name: p.color for p in products if p.color}
 
     def _clean_text(self, val: str) -> str:
-        """Очищает строку от лишних пробелов и переводов строк (но не XML-элементов)."""
         if not val:
             return ""
         return val.strip().replace('\n', ' ').replace('\r', ' ')
@@ -127,7 +115,6 @@ class TechCardGenerator:
             start_cell.merge(row.cells[col])
 
     def _remove_extra_paragraphs_in_cell(self, cell):
-        """Удаляет все пустые параграфы в ячейке, оставляя только один."""
         tc = cell._tc
         paragraphs = tc.findall(qn('w:p'))
         if not paragraphs:
@@ -193,19 +180,13 @@ class TechCardGenerator:
         return {cat.name: cat.sort_order for cat in categories}
 
     def _get_room_category_id(self, session, room_category_name: str) -> int:
-        """Ищет категорию помещения по точному совпадению (в БД все в нижнем регистре)."""
         if not room_category_name:
             return None
         rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
         return rc.id if rc else None
 
-    # ===== ДОБАВЛЕНО: метод для определения приоритета инструкции =====
     def _get_instruction_priority(self, instr, target_enterprise: str = None,
                                   target_room_name: str = None, target_room_category_id: int = None) -> int:
-        """
-        Возвращает числовой приоритет инструкции (чем меньше, тем выше приоритет).
-        Учитывает совпадение enterprise, room_name и room_category_id.
-        """
         ent_match = (instr.enterprise or "") == (target_enterprise or "")
         room_match = (instr.room_name or "") == (target_room_name or "")
         cat_match = (instr.room_category_id == target_room_category_id)
@@ -227,15 +208,10 @@ class TechCardGenerator:
         elif not ent_match and instr.room_name is None and instr.room_category_id is None:
             return 8
         else:
-            return 99  # не должно использоваться
+            return 99
 
-    # ===== ДОБАВЛЕНО: фильтрация инструкций по enterprise, room_name, room_category_id =====
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None) -> list:
-        """
-        Фильтрует список инструкций, оставляя только те, которые могут быть применимы
-        к заданным enterprise, room_name и room_category_id.
-        """
         if not instructions:
             return []
         filtered = []
@@ -272,7 +248,6 @@ class TechCardGenerator:
                 instr.executor or "",
                 instr.control_method or "",
                 instr.surface_type or "",
-                # ===== ДОБАВЛЕНО: поля, влияющие на группировку =====
                 instr.enterprise or "",
                 instr.subgroup or "",
                 instr.room_name or "",
@@ -294,8 +269,10 @@ class TechCardGenerator:
             result.append((merged_name, data["instructions"]))
         return result
 
+    # ===== ИЗМЕНЕНО: добавлен параметр product_name для фильтрации инструкций дезинфекции =====
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
-                                      enterprise: str = None, room_name: str = None) -> list:
+                                      enterprise: str = None, room_name: str = None,
+                                      product_name: str = None) -> list:
         if not all_instructions:
             return []
 
@@ -303,6 +280,16 @@ class TechCardGenerator:
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
+
+        # ДОБАВЛЕНО: фильтрация по названию средства ТОЛЬКО для дезинфекции
+        if product_name:
+            normalized_product = self._normalize_product_name(product_name)
+            if normalized_product:
+                filtered = [
+                    instr for instr in filtered
+                    if instr.cleaning_method != "дезинфекция"  # оставляем все не-дезинфекции
+                       or self._normalize_product_name(instr.product_name or "") == normalized_product
+                ]
 
         by_method = defaultdict(list)
         for instr in filtered:
@@ -339,12 +326,10 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        # Фильтруем инструкции
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
 
-        # Сортируем по приоритету, уровню и методу
         sorted_instrs = sorted(
             filtered,
             key=lambda i: (
@@ -354,7 +339,6 @@ class TechCardGenerator:
             )
         )
 
-        # Группируем по уровню обслуживания
         level_groups = defaultdict(list)
         for instr in sorted_instrs:
             level = (instr.maintenance_type or "").lower()
@@ -365,12 +349,10 @@ class TechCardGenerator:
             instrs = level_groups.get(level, [])
             if not instrs:
                 continue
-            # Группируем по методам для чередования
             method_groups = defaultdict(list)
             for instr in instrs:
                 method = instr.cleaning_method or ""
                 method_groups[method].append(instr)
-
             ordered_methods = sorted(method_groups.keys(),
                                      key=lambda m: self.cleaning_method_order.get(m.lower().strip(), 99))
             while True:
@@ -381,7 +363,6 @@ class TechCardGenerator:
                         added = True
                 if not added:
                     break
-
         return result
 
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
@@ -398,7 +379,6 @@ class TechCardGenerator:
         return result
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
-        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонок 4 и 9)"""
         source_row = table.rows[source_row_idx]
         target_row = table.rows[target_row_idx]
         for col_idx, source_cell in enumerate(source_row.cells):
@@ -430,8 +410,6 @@ class TechCardGenerator:
                     if r_pr is None:
                         r_pr = OxmlElement('w:rPr')
                         new_run.insert(0, r_pr)
-
-                    # Сохраняем жирность из исходного run'а
                     source_r_pr = source_run._r.find(qn('w:rPr'))
                     if source_r_pr is not None:
                         source_b = source_r_pr.find(qn('w:b'))
@@ -439,32 +417,26 @@ class TechCardGenerator:
                             existing_b = r_pr.find(qn('w:b'))
                             if existing_b is None:
                                 r_pr.append(copy.deepcopy(source_b))
-
-                    # Принудительно добавляем bold для колонки 4 (индекс 3)
                     if col_idx == 3:
                         existing_b = r_pr.find(qn('w:b'))
                         if existing_b is None:
                             b = OxmlElement('w:b')
                             r_pr.append(b)
-                    # Принудительно добавляем bold для колонки 9 (индекс 8)
                     if col_idx == 8:
                         existing_b = r_pr.find(qn('w:b'))
                         if existing_b is None:
                             b = OxmlElement('w:b')
                             r_pr.append(b)
-
                     sz = r_pr.find(qn('w:sz'))
                     if sz is None:
                         sz = OxmlElement('w:sz')
                         r_pr.append(sz)
                     sz.set(qn('w:val'), '14')
-
                     sz_cs = r_pr.find(qn('w:szCs'))
                     if sz_cs is None:
                         sz_cs = OxmlElement('w:szCs')
                         r_pr.append(sz_cs)
                     sz_cs.set(qn('w:val'), '14')
-
                     r_fonts = r_pr.find(qn('w:rFonts'))
                     if r_fonts is None:
                         r_fonts = OxmlElement('w:rFonts')
@@ -477,7 +449,6 @@ class TechCardGenerator:
                     target_para._p.append(new_run)
 
     def _set_cell_text(self, cell, text: str, bold: bool = False):
-        """Устанавливает текст в ячейку. Если bold=True, делает шрифт жирным."""
         text = self._clean_text(text)
         if not cell.paragraphs:
             cell.add_paragraph()
@@ -518,16 +489,12 @@ class TechCardGenerator:
             break
 
     def _set_product_cell(self, cell, text: str, bold: bool = False):
-        """Устанавливает текст в ячейку, обрабатывая надстрочный знак ®."""
         text = self._clean_text(text)
         if not cell.paragraphs:
             cell.add_paragraph()
         para = cell.paragraphs[0]
-        # Очищаем параграф перед вставкой новых runs
         for r in para.runs:
             para._p.remove(r._r)
-
-        # Разбиваем по символу ®
         parts = text.split('®')
         for i, part in enumerate(parts):
             if part:
@@ -537,7 +504,6 @@ class TechCardGenerator:
                 if bold:
                     run.bold = True
             if i < len(parts) - 1:
-                # Вставляем надстрочный ®
                 run_reg = para.add_run('®')
                 run_reg.font.name = 'Arial'
                 run_reg.font.size = Pt(7)
@@ -546,20 +512,17 @@ class TechCardGenerator:
                 run_reg.font.superscript = True
 
     def _clear_cell_text(self, cell):
-        """Очищает текст в ячейке"""
         for para in cell.paragraphs:
             for run in para.runs:
                 for t in run._r.findall(qn('w:t')):
                     t.text = ''
 
     def _is_valid_product_name(self, name: str) -> bool:
-        """Проверяет, похоже ли значение на название средства (не концентрация/метод/заглушка)."""
         if not name:
             return False
         name_lower = name.lower().strip()
         if name_lower in ('выберите элемент.', 'не выбрано', 'выберите элемент', ''):
             return False
-        # Паттерны, указывающие на концентрацию или метод
         patterns = [
             r'%', r'дозирующая система', r'ручной', r'система', r'протирание',
             r'щётка', r'ветошь', r'губка', r'погружение', r'замачивание',
@@ -577,7 +540,6 @@ class TechCardGenerator:
         doc = Document(self.template_path)
         main_table = doc.tables[1]
 
-        # Заполняем помещение
         room_cell = main_table.cell(1, 0)
         if "Помещение:" in room_cell.text:
             room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
@@ -587,19 +549,16 @@ class TechCardGenerator:
                     run.font.size = Pt(9)
                     run.font.bold = True
 
-        # === ОБРАБОТКА 4-Й СТРОКИ (предупреждение об удалении сырья) ===
         warning_row = main_table.rows[3]
         if checklist_data.room_category not in ["производственное", "складское"]:
             self._clear_cell_text(warning_row.cells[0])
 
         session = SessionLocal()
-        # Загрузка конфигурации из БД
         self._load_config(session)
 
         category_priority = self._get_category_priority(session)
         product_colors = self._load_product_colors(session)
 
-        # ===== Получаем enterprise и room_name из чек-листа =====
         target_enterprise = checklist_data.enterprise
         target_room_name = checklist_data.room_name
 
@@ -647,8 +606,10 @@ class TechCardGenerator:
                     instructions = self._select_split_instructions(all_instrs, room_category_id,
                                                                    target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('split', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.support_objects:
@@ -662,13 +623,15 @@ class TechCardGenerator:
                             best = None
                             for instr in instrs:
                                 if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
-                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name,
+                                                                      room_category_id) <= 4:
                                         best = instr
                                         break
                             if not best:
                                 for instr in instrs:
                                     if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
-                                        if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                        if self._get_instruction_priority(instr, target_enterprise, target_room_name,
+                                                                          room_category_id) <= 4:
                                             best = instr
                                             break
                             if best:
@@ -681,24 +644,39 @@ class TechCardGenerator:
                         )
                     )
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.multi_method_objects:
                     instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
                                                                           target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 else:
-                    instructions = self._select_instructions_for_room(all_instrs, room_category_id,
-                                                                      target_enterprise, target_room_name)
+                    # ===== ОБЫЧНЫЕ ОБЪЕКТЫ: для дезинфекции передаём ожидаемое название средства =====
+                    expected_product = None
+                    has_disinfection = any(instr.cleaning_method == "дезинфекция" for instr in all_instrs)
+                    if has_disinfection and checklist_data.disinfection_product:
+                        expected_product = checklist_data.disinfection_product
+
+                    instructions = self._select_instructions_for_room(
+                        all_instrs, room_category_id,
+                        target_enterprise, target_room_name,
+                        product_name=expected_product
+                    )
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
             elif obj:
@@ -828,7 +806,8 @@ class TechCardGenerator:
                     if data["instructions"]:
                         for i, instr in enumerate(data["instructions"]):
                             cell_text = merged_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
+                            rows_data.append(
+                                ('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
                     else:
                         rows_data.append(('object', merged_name, None, data["normalized_name"], None, item))
                     group_end_row = len(rows_data) - 1
@@ -936,81 +915,144 @@ class TechCardGenerator:
 
                     has_db_product = db_product and self._is_valid_product_name(db_product)
 
-                    if has_db_product:
-                        final_product = db_product
-                        final_concentration = db_concentration
-                        final_extra_method = db_method
+                    is_disinfection = (cleaning_method == "дезинфекция")
+
+                    if is_disinfection:
+                        # Для дезинфекции: средство, концентрация, метод разведения – из чек-листа (если есть) или из БД
+                        # Температура и время выдержки – всегда из БД (если есть в инструкции)
+                        checklist_product = checklist_data.disinfection_product
+                        checklist_concentration = checklist_data.disinfection_concentration
+                        checklist_method_text = checklist_data.disinfection_method_text
+
+                        if checklist_product and self._is_valid_product_name(checklist_product):
+                            final_product = self._clean_text(checklist_product)
+                            final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                            final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+                            # Если в чек-листе нет концентрации/метода, берём из БД (если есть)
+                            if not final_concentration and db_concentration:
+                                final_concentration = db_concentration
+                            if not final_extra_method and db_method:
+                                final_extra_method = db_method
+                        else:
+                            # Если в чек-листе нет средства, берём из БД
+                            if has_db_product:
+                                final_product = db_product
+                                final_concentration = db_concentration if db_concentration else ""
+                                final_extra_method = db_method if db_method else ""
+                            else:
+                                final_product = ""
+                                final_concentration = ""
+                                final_extra_method = ""
+
+                        # Температура и время выдержки из БД (или прочерк)
+                        final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
+                        final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+
+                        # Применяем значения для вывода
+                        self._set_cell_text(row.cells[1], cleaning_method)
+                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                        if final_product:
+                            self._set_product_cell(row.cells[3], final_product, bold=True)
+                        else:
+                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                        self._set_cell_text(row.cells[4], cleaning_technique)
+
+                        # Колонка 6: концентрация + метод разведения (с переносом)
+                        para = row.cells[5].paragraphs[0]
+                        for r in para.runs:
+                            para._p.remove(r._r)
+                        conc_text = final_concentration if final_concentration else "___________________"
+                        run_conc = para.add_run(conc_text)
+                        run_conc.font.name = 'Arial'
+                        run_conc.font.size = Pt(7)
+                        if final_extra_method:
+                            run_br = para.add_run()
+                            br = OxmlElement('w:br')
+                            run_br._r.append(br)
+                            run_method = para.add_run(final_extra_method)
+                            run_method.font.name = 'Arial'
+                            run_method.font.size = Pt(7)
+
+                        # Температура и время выдержки (из БД)
+                        self._set_cell_text(row.cells[6], final_temperature)
+                        self._set_cell_text(row.cells[7], final_exposure)
+
                     else:
-                        final_product = ""
-                        final_concentration = ""
-                        final_extra_method = ""
-                        if normalized_name and normalized_name not in self.split_objects:
-                            checklist_product = None
-                            checklist_concentration = None
-                            checklist_method = None
-                            if cleaning_method == "мойка":
-                                if normalized_name in self.floor_objects:
-                                    checklist_product = checklist_data.floor_cleaning_product
-                                    checklist_concentration = checklist_data.floor_cleaning_concentration
-                                    checklist_method = checklist_data.floor_cleaning_method_text
-                                elif normalized_name in self.tech_objects:  # ДОБАВЛЕНО
-                                    checklist_product = checklist_data.tech_cleaning_product
-                                    checklist_concentration = checklist_data.tech_cleaning_concentration
-                                    checklist_method = checklist_data.tech_cleaning_method_text
-                                elif normalized_name in self.thermal_objects:
-                                    checklist_product = checklist_data.thermal_cleaning_product
-                                    checklist_concentration = checklist_data.thermal_cleaning_concentration
-                                    checklist_method = checklist_data.thermal_cleaning_method_text
-                                elif normalized_name in self.glass_objects:
-                                    checklist_product = checklist_data.glass_cleaning_product
-                                    checklist_concentration = checklist_data.glass_cleaning_concentration
-                                    checklist_method = checklist_data.glass_cleaning_method_text
+                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ (логика как раньше) =====
+                        if has_db_product:
+                            final_product = db_product
+                            final_concentration = db_concentration
+                            final_extra_method = db_method
+                        else:
+                            final_product = ""
+                            final_concentration = ""
+                            final_extra_method = ""
+                            if normalized_name and normalized_name not in self.split_objects:
+                                checklist_product = None
+                                checklist_concentration = None
+                                checklist_method = None
+                                if cleaning_method == "мойка":
+                                    if normalized_name in self.floor_objects:
+                                        checklist_product = checklist_data.floor_cleaning_product
+                                        checklist_concentration = checklist_data.floor_cleaning_concentration
+                                        checklist_method = checklist_data.floor_cleaning_method_text
+                                    elif normalized_name in self.tech_objects:
+                                        checklist_product = checklist_data.tech_cleaning_product
+                                        checklist_concentration = checklist_data.tech_cleaning_concentration
+                                        checklist_method = checklist_data.tech_cleaning_method_text
+                                    elif normalized_name in self.thermal_objects:
+                                        checklist_product = checklist_data.thermal_cleaning_product
+                                        checklist_concentration = checklist_data.thermal_cleaning_concentration
+                                        checklist_method = checklist_data.thermal_cleaning_method_text
+                                    elif normalized_name in self.glass_objects:
+                                        checklist_product = checklist_data.glass_cleaning_product
+                                        checklist_concentration = checklist_data.glass_cleaning_concentration
+                                        checklist_method = checklist_data.glass_cleaning_method_text
+                                    else:
+                                        checklist_product = checklist_data.cleaning_product
+                                        checklist_concentration = checklist_data.cleaning_concentration
+                                        checklist_method = checklist_data.cleaning_method_text
                                 else:
-                                    checklist_product = checklist_data.cleaning_product
-                                    checklist_concentration = checklist_data.cleaning_concentration
-                                    checklist_method = checklist_data.cleaning_method_text
-                            elif cleaning_method == "дезинфекция":
-                                checklist_product = checklist_data.disinfection_product
-                                checklist_concentration = checklist_data.disinfection_concentration
-                                checklist_method = checklist_data.disinfection_method_text
+                                    checklist_product = None
 
-                            if checklist_product and self._is_valid_product_name(checklist_product):
-                                final_product = self._clean_text(checklist_product)
-                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                                final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+                                if checklist_product and self._is_valid_product_name(checklist_product):
+                                    final_product = self._clean_text(checklist_product)
+                                    final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                                    final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+                                else:
+                                    # Если нигде нет средства, оставляем прочерк
+                                    final_product = ""
 
-                    if not final_product:
-                        final_product = None
+                        if not final_product:
+                            final_product = None
 
-                    self._set_cell_text(row.cells[1], cleaning_method)
-                    self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                    if final_product:
-                        self._set_product_cell(row.cells[3], final_product, bold=True)
-                    else:
-                        self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                        self._set_cell_text(row.cells[1], cleaning_method)
+                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                        if final_product:
+                            self._set_product_cell(row.cells[3], final_product, bold=True)
+                        else:
+                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
 
-                    self._set_cell_text(row.cells[4], cleaning_technique)
+                        self._set_cell_text(row.cells[4], cleaning_technique)
 
-                    # Колонка 6: концентрация + метод разведения (с переносом строки)
-                    para = row.cells[5].paragraphs[0]
-                    for r in para.runs:
-                        para._p.remove(r._r)
+                        # Колонка 6: концентрация + метод разведения (с переносом)
+                        para = row.cells[5].paragraphs[0]
+                        for r in para.runs:
+                            para._p.remove(r._r)
+                        conc_text = final_concentration if final_concentration else "___________________"
+                        run_conc = para.add_run(conc_text)
+                        run_conc.font.name = 'Arial'
+                        run_conc.font.size = Pt(7)
+                        if final_extra_method:
+                            run_br = para.add_run()
+                            br = OxmlElement('w:br')
+                            run_br._r.append(br)
+                            run_method = para.add_run(final_extra_method)
+                            run_method.font.name = 'Arial'
+                            run_method.font.size = Pt(7)
 
-                    conc_text = final_concentration if final_concentration else "___________________"
-                    run_conc = para.add_run(conc_text)
-                    run_conc.font.name = 'Arial'
-                    run_conc.font.size = Pt(7)
-
-                    if final_extra_method:
-                        run_br = para.add_run()
-                        br = OxmlElement('w:br')
-                        run_br._r.append(br)
-                        run_method = para.add_run(final_extra_method)
-                        run_method.font.name = 'Arial'
-                        run_method.font.size = Pt(7)
-
-                    self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
-                    self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
+                        self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
+                        self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
                     # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
                     if normalized_name and normalized_name in self.split_objects:
@@ -1036,7 +1078,7 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
+                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ =====
                     executor_value = None
 
                     # 1. Если в инструкции есть исполнитель – используем его (всегда)
@@ -1072,6 +1114,7 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
+                    # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА (для всех методов) =====
                     if final_product:
                         color = product_colors.get(final_product)
                         if color:
