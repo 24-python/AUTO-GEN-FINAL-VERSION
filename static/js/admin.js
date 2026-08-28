@@ -764,6 +764,11 @@ createApp({
             this.methodForm = { method_name: '', sort_order: 99 };
             this.showMethodForm = true;
         },
+        // ===== ДОБАВЛЕНО: метод для вызова из модалки инструкций =====
+        openMethodFormFromInstruction() {
+            // Открываем форму метода как обычно
+            this.openMethodForm();
+        },
         editMethod(m) {
             this.editingMethod = m;
             this.methodForm = { method_name: m.method_name, sort_order: m.sort_order };

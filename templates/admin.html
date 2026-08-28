@@ -697,23 +697,17 @@
                             </div>
                         </div>
 
-                        <!-- Строка 3: Способ обработки | Тип поверхности -->
+                        <!-- Строка 3: Способ обработки | Тип поверхности (ИЗМЕНЕНО) -->
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
                                 <label class="form-label-ct mb-0">Способ обработки</label>
-                                <select class="form-select-ct form-select-sm" v-model="instr.cleaning_method">
-                                    <option value="">-- выберите --</option>
-                                    <option value="прочистка">прочистка</option>
-                                    <option value="очистка">очистка</option>
-                                    <option value="очистка (обеспыливание поверхностей)">очистка (обеспыливание поверхностей)</option>
-                                    <option value="удаление маркировки">удаление маркировки</option>
-                                    <option value="мойка">мойка</option>
-                                    <option value="мойка жаропрочного стекла">мойка жаропрочного стекла</option>
-                                    <option value="ополаскивание">ополаскивание</option>
-                                    <option value="стерилизация">стерилизация</option>
-                                    <option value="дезинфекция">дезинфекция</option>
-                                    <option value="машинная стирка">машинная стирка</option>
-                                </select>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select-ct form-select-sm flex-grow-1" v-model="instr.cleaning_method">
+                                        <option value="">-- выберите --</option>
+                                        <option v-for="m in cleaningMethods" :key="m.id" :value="m.method_name" v-text="m.method_name"></option>
+                                    </select>
+                                    <button class="btn-ct-outline btn-sm flex-shrink-0" @click="openMethodFormFromInstruction" title="Добавить новый способ обработки"><i class="bi bi-plus-lg"></i></button>
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label-ct mb-0">Тип поверхности</label>

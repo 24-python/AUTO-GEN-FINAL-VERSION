@@ -269,27 +269,33 @@ class TechCardGenerator:
             result.append((merged_name, data["instructions"]))
         return result
 
-    # ===== ИЗМЕНЕНО: добавлен параметр product_name для фильтрации инструкций дезинфекции =====
+    # ===== ИЗМЕНЕНО: добавлены параметры product_name и application_method =====
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
                                       enterprise: str = None, room_name: str = None,
-                                      product_name: str = None) -> list:
+                                      product_name: str = None, application_method: str = None) -> list:
         if not all_instructions:
             return []
 
-        # Фильтруем инструкции по enterprise, room_name, room_category_id
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
 
-        # ДОБАВЛЕНО: фильтрация по названию средства ТОЛЬКО для дезинфекции
+        # Фильтр по product_name (только для дезинфекции)
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
             if normalized_product:
                 filtered = [
                     instr for instr in filtered
-                    if instr.cleaning_method != "дезинфекция"  # оставляем все не-дезинфекции
-                       or self._normalize_product_name(instr.product_name or "") == normalized_product
+                    if instr.cleaning_method != "дезинфекция"
+                    or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
+
+        # Фильтр по application_method (если передан)
+        if application_method:
+            filtered = [
+                instr for instr in filtered
+                if not instr.application_method or instr.application_method == application_method
+            ]
 
         by_method = defaultdict(list)
         for instr in filtered:
@@ -298,13 +304,11 @@ class TechCardGenerator:
 
         selected = []
         for method, instrs in by_method.items():
-            # Сортируем инструкции по приоритету
             sorted_instrs = sorted(
                 instrs,
                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
             )
             best = None
-            # Берём первую, у которой maintenance_type совпадает с желаемым порядком
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
                 for instr in sorted_instrs:
                     if (instr.maintenance_type or "").lower() == maint_level:
@@ -584,6 +588,29 @@ class TechCardGenerator:
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
+        # ===== 1. Находим общую инструкцию дезинфекции с учётом product_name и application_method =====
+        common_disinfection_instr = None
+        if checklist_data.disinfection_product:
+            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+            application_method = checklist_data.disinfection_method_text
+            candidates = []
+            for obj_id, instrs in instructions_dict.items():
+                for instr in instrs:
+                    if (instr.cleaning_method == "дезинфекция" and
+                        self._normalize_product_name(instr.product_name or "") == normalized_product):
+                        if self._filter_instructions([instr], target_enterprise, target_room_name, room_category_id):
+                            if application_method:
+                                if instr.application_method == application_method:
+                                    candidates.append(instr)
+                            else:
+                                candidates.append(instr)
+            if candidates:
+                candidates.sort(
+                    key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
+                )
+                common_disinfection_instr = candidates[0]
+                print(f"✅ Найдена общая инструкция для дезинфекции: {common_disinfection_instr.product_name}")
+
         category_object_instructions = defaultdict(list)
         all_object_instructions = []
         category_order = {}
@@ -661,17 +688,36 @@ class TechCardGenerator:
                     else:
                         unmatched_objects.append(display_name)
                 else:
-                    # ===== ОБЫЧНЫЕ ОБЪЕКТЫ: для дезинфекции передаём ожидаемое название средства =====
-                    expected_product = None
-                    has_disinfection = any(instr.cleaning_method == "дезинфекция" for instr in all_instrs)
-                    if has_disinfection and checklist_data.disinfection_product:
-                        expected_product = checklist_data.disinfection_product
+                    # Обычный объект
+                    if common_disinfection_instr:
+                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        if other_instrs:
+                            app_method = checklist_data.cleaning_method_text
+                            other_selected = self._select_instructions_for_room(
+                                other_instrs, room_category_id,
+                                target_enterprise, target_room_name,
+                                application_method=app_method
+                            )
+                        else:
+                            other_selected = []
+                        instructions = other_selected + [common_disinfection_instr]
+                        instructions.sort(
+                            key=lambda x: self.cleaning_method_order.get(
+                                (x.cleaning_method or "").lower().strip(), 99
+                            )
+                        )
+                        seen = set()
+                        unique_instrs = []
+                        for instr in instructions:
+                            key = (instr.cleaning_method, instr.product_name, instr.surface_type)
+                            if key not in seen:
+                                seen.add(key)
+                                unique_instrs.append(instr)
+                        instructions = unique_instrs
+                    else:
+                        instructions = self._select_instructions_for_room(all_instrs, room_category_id,
+                                                                          target_enterprise, target_room_name)
 
-                    instructions = self._select_instructions_for_room(
-                        all_instrs, room_category_id,
-                        target_enterprise, target_room_name,
-                        product_name=expected_product
-                    )
                     if instructions:
                         category_object_instructions[cat_name].append(
                             ('normal', display_name, instructions, normalized_name, item))
@@ -928,13 +974,11 @@ class TechCardGenerator:
                             final_product = self._clean_text(checklist_product)
                             final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
                             final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
-                            # Если в чек-листе нет концентрации/метода, берём из БД (если есть)
                             if not final_concentration and db_concentration:
                                 final_concentration = db_concentration
                             if not final_extra_method and db_method:
                                 final_extra_method = db_method
                         else:
-                            # Если в чек-листе нет средства, берём из БД
                             if has_db_product:
                                 final_product = db_product
                                 final_concentration = db_concentration if db_concentration else ""
@@ -944,11 +988,9 @@ class TechCardGenerator:
                                 final_concentration = ""
                                 final_extra_method = ""
 
-                        # Температура и время выдержки из БД (или прочерк)
                         final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
                         final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
 
-                        # Применяем значения для вывода
                         self._set_cell_text(row.cells[1], cleaning_method)
                         self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
                         if final_product:
@@ -957,7 +999,6 @@ class TechCardGenerator:
                             self._set_product_cell(row.cells[3], "_____________________", bold=False)
                         self._set_cell_text(row.cells[4], cleaning_technique)
 
-                        # Колонка 6: концентрация + метод разведения (с переносом)
                         para = row.cells[5].paragraphs[0]
                         for r in para.runs:
                             para._p.remove(r._r)
@@ -973,12 +1014,11 @@ class TechCardGenerator:
                             run_method.font.name = 'Arial'
                             run_method.font.size = Pt(7)
 
-                        # Температура и время выдержки (из БД)
                         self._set_cell_text(row.cells[6], final_temperature)
                         self._set_cell_text(row.cells[7], final_exposure)
 
                     else:
-                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ (логика как раньше) =====
+                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
                         if has_db_product:
                             final_product = db_product
                             final_concentration = db_concentration
@@ -1020,7 +1060,6 @@ class TechCardGenerator:
                                     final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
                                     final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
                                 else:
-                                    # Если нигде нет средства, оставляем прочерк
                                     final_product = ""
 
                         if not final_product:
@@ -1035,7 +1074,6 @@ class TechCardGenerator:
 
                         self._set_cell_text(row.cells[4], cleaning_technique)
 
-                        # Колонка 6: концентрация + метод разведения (с переносом)
                         para = row.cells[5].paragraphs[0]
                         for r in para.runs:
                             para._p.remove(r._r)
@@ -1056,7 +1094,6 @@ class TechCardGenerator:
 
                     # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
                     if normalized_name and normalized_name in self.split_objects:
-                        # Для split-объектов инвентарь берётся из инструкции
                         inv_text = self._clean_text(instr.inventory or "")
                         if inv_text and inv_text.lower() in self._inventory_colors:
                             inv_color = self._inventory_colors[inv_text.lower()]
@@ -1065,7 +1102,6 @@ class TechCardGenerator:
                         else:
                             self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
                     else:
-                        # Для обычных объектов – цвет из чек-листа
                         if checklist_data.inventory_color:
                             inv_color = self._inventory_colors.get(checklist_data.inventory_color)
                             if inv_color:
@@ -1078,18 +1114,14 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ =====
+                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика по sort_priority) =====
                     executor_value = None
 
-                    # 1. Если в инструкции есть исполнитель – используем его (всегда)
                     if instr.executor:
                         executor_value = instr.executor
                     else:
-                        # 2. Определяем зону объекта, если есть item
                         if item and isinstance(item, ChecklistItem):
-                            markers_lower = [m.lower() for m in item.markers]
-                            name_lower = item.name.lower()
-
+                            # Определяем категорию объекта
                             is_surface = (item.category == Category.SURFACE)
                             equipment_categories = {
                                 Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
@@ -1099,14 +1131,16 @@ class TechCardGenerator:
                             }
                             is_equipment = (item.category in equipment_categories)
 
-                            if is_surface and ('выше 2 м' in name_lower or any('выше 2 м' in m for m in markers_lower)):
-                                executor_value = checklist_data.executor_high
-                            elif is_surface and ('до 2 м' in name_lower or any('до 2 м' in m for m in markers_lower)):
-                                executor_value = checklist_data.executor_low
+                            if is_surface:
+                                # Используем sort_priority для определения высоты
+                                if sort_priority == -1:
+                                    executor_value = checklist_data.executor_high
+                                elif 1 <= sort_priority <= 50:
+                                    executor_value = checklist_data.executor_low
+                                # Иначе оставляем None (не назначаем)
                             elif is_equipment:
                                 executor_value = checklist_data.executor_equipment
 
-                    # 3. Если ничего не нашлось – пустая строка
                     if not executor_value:
                         executor_value = ""
 
@@ -1114,7 +1148,7 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
-                    # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА (для всех методов) =====
+                    # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА =====
                     if final_product:
                         color = product_colors.get(final_product)
                         if color:
@@ -1131,7 +1165,7 @@ class TechCardGenerator:
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 (как раньше) =====
+        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 =====
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -1144,7 +1178,6 @@ class TechCardGenerator:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
             if actual_end > actual_start:
-                # Собираем для каждой строки ключ группировки (maintenance_type, subgroup)
                 keys = []
                 for row_idx in range(actual_start, actual_end + 1):
                     row_data_index = row_idx - start_row
@@ -1162,10 +1195,8 @@ class TechCardGenerator:
 
                 unique_keys = set([k for k in keys if k is not None])
                 if len(unique_keys) <= 1:
-                    # Все строки одного ключа – объединяем колонку 2 целиком
                     self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
                 else:
-                    # Разбиваем на поддиапазоны по смене ключа
                     current_key = None
                     sub_start = actual_start
                     for row_idx in range(actual_start, actual_end + 1):
@@ -1191,7 +1222,7 @@ class TechCardGenerator:
                         if sub_start <= actual_end:
                             self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
 
-        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ (не меняется) ===
+        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ ===
         for group_start, group_end in surface_merge_info:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
