@@ -285,10 +285,12 @@ class TechCardGenerator:
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
                                       enterprise: str = None, room_name: str = None,
                                       product_name: str = None, application_method: str = None) -> list:
+        print(f"   -> _select_instructions_for_room: вход {len(all_instructions)} инструкций")
         if not all_instructions:
             return []
 
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
+        print(f"   -> после фильтрации по enterprise/room/room_category: {len(filtered)}")
         if not filtered:
             return []
 
@@ -296,23 +298,35 @@ class TechCardGenerator:
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
             if normalized_product:
+                before = len(filtered)
                 filtered = [
                     instr for instr in filtered
                     if instr.cleaning_method != "дезинфекция"
                     or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
+                print(f"   -> после фильтрации по product_name='{product_name}': {len(filtered)} (было {before})")
+            else:
+                print(f"   -> product_name невалидный: '{product_name}', фильтр не применяется")
+        else:
+            print(f"   -> product_name не передан, фильтр не применяется")
 
         # Фильтр по application_method (если передан)
         if application_method:
+            before = len(filtered)
             filtered = [
                 instr for instr in filtered
                 if not instr.application_method or instr.application_method == application_method
             ]
+            print(f"   -> после фильтрации по application_method='{application_method}': {len(filtered)} (было {before})")
+        else:
+            print(f"   -> application_method не передан, фильтр не применяется")
 
         by_method = defaultdict(list)
         for instr in filtered:
             method = instr.cleaning_method or ""
             by_method[method].append(instr)
+
+        print(f"   -> по методам: {dict((m, len(lst)) for m, lst in by_method.items())}")
 
         selected = []
         for method, instrs in by_method.items():
@@ -330,11 +344,15 @@ class TechCardGenerator:
                     break
             if best:
                 selected.append(best)
+                print(f"   -> для метода '{method}' выбран ID={best.id} (maintenance_type={best.maintenance_type})")
+            else:
+                print(f"   -> для метода '{method}' не найдена подходящая инструкция")
         selected.sort(
             key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
             )
         )
+        print(f"   -> итого выбрано: {len(selected)} инструкций")
         return selected
 
     def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int,
@@ -631,6 +649,7 @@ class TechCardGenerator:
             all_object_instructions = []
             category_order = {}
             unmatched_objects = []
+            unmatched_reasons = {}
 
             for item in checked_items:
                 obj = objects_dict.get(item.name)
@@ -642,10 +661,44 @@ class TechCardGenerator:
                 sort_priority = obj.sort_priority if obj else 999
                 normalized_name = item.name
 
+                # ===== ОТЛАДКА: вывод информации о инструкциях =====
+                print(f"\n🔍 Обработка объекта: {normalized_name}")
+                print(f"   sort_priority = {sort_priority}")
+                if obj:
+                    print(f"   ID объекта в БД: {obj.id}")
+                    all_instrs = instructions_dict.get(obj.id, [])
+                    print(f"   Всего инструкций в БД: {len(all_instrs)}")
+                else:
+                    print(f"   ⚠️ Объект не найден в БД")
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "Объект не найден в БД"
+                    continue
+
                 if obj and obj.id in instructions_dict:
                     all_instrs = instructions_dict[obj.id]
 
+                    # Фильтруем инструкции по параметрам чек-листа для диагностики
+                    filtered_instrs = self._filter_instructions(all_instrs, target_enterprise, target_room_name, room_category_id)
+                    print(f"   После фильтрации по enterprise/room/room_category: {len(filtered_instrs)}")
+
+                    if len(filtered_instrs) == 0:
+                        print(f"   ⚠️ Нет инструкций после фильтрации. Проверьте параметры:")
+                        print(f"      - room_category_id: {room_category_id}")
+                        print(f"      - enterprise: {target_enterprise}")
+                        print(f"      - room_name: {target_room_name}")
+                        if all_instrs:
+                            print("   Примеры инструкций из БД (первые 3):")
+                            for idx, instr in enumerate(all_instrs[:3]):
+                                print(f"      {idx+1}. ID={instr.id}, cat_id={instr.room_category_id}, ent={instr.enterprise}, room={instr.room_name}, method={instr.cleaning_method}")
+                        else:
+                            print("   В БД нет инструкций для этого объекта.")
+                        unmatched_objects.append(display_name)
+                        unmatched_reasons[display_name] = "Нет инструкций после фильтрации"
+                        continue
+
+                    # Далее идёт обычная логика выбора инструкций (без изменений)
                     if normalized_name in self.split_objects:
+                        print(f"   -> объект в split_objects")
                         disinfection_product = checklist_data.disinfection_product
                         disinfection_method = checklist_data.disinfection_method_text
                         instructions = self._select_split_instructions(
@@ -660,8 +713,11 @@ class TechCardGenerator:
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
+                            print(f"   ❌ split-инструкции не выбраны")
                             unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "split-инструкции не выбраны"
                     elif normalized_name in self.support_objects:
+                        print(f"   -> объект в support_objects")
                         by_method = defaultdict(list)
                         for instr in all_instrs:
                             method = instr.cleaning_method or ""
@@ -698,8 +754,11 @@ class TechCardGenerator:
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
+                            print(f"   ❌ support-инструкции не выбраны")
                             unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "support-инструкции не выбраны"
                     elif normalized_name in self.multi_method_objects:
+                        print(f"   -> объект в multi_method_objects")
                         instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
                                                                               target_enterprise, target_room_name)
                         if instructions:
@@ -708,11 +767,14 @@ class TechCardGenerator:
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
+                            print(f"   ❌ multi-method инструкции не выбраны")
                             unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "multi-method инструкции не выбраны"
                     else:
                         # Обычный объект – индивидуальный выбор дезинфекции
                         disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
                         other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        print(f"   -> обычный объект, disinfection_instrs={len(disinfection_instrs)}, other_instrs={len(other_instrs)}")
 
                         # Выбираем инструкцию дезинфекции для этого объекта
                         selected_disinfection = None
@@ -721,13 +783,18 @@ class TechCardGenerator:
                             filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
                             candidates = [instr for instr in filtered_disinfection
                                           if self._normalize_product_name(instr.product_name or "") == normalized_product]
+                            print(f"   кандидатов для дезинфекции с нужным product_name: {len(candidates)}")
                             if candidates:
                                 candidates.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
                                 selected_disinfection = candidates[0]
+                                print(f"   выбрана дезинфекция ID={selected_disinfection.id}")
                             else:
                                 if filtered_disinfection:
                                     filtered_disinfection.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
                                     selected_disinfection = filtered_disinfection[0]
+                                    print(f"   выбрана дезинфекция по приоритету ID={selected_disinfection.id} (без совпадения product_name)")
+                                else:
+                                    print("   нет дезинфекционных инструкций после фильтрации")
                         else:
                             if disinfection_instrs:
                                 disinfection_selected_list = self._select_instructions_for_room(
@@ -737,6 +804,11 @@ class TechCardGenerator:
                                 )
                                 if disinfection_selected_list:
                                     selected_disinfection = disinfection_selected_list[0]
+                                    print(f"   выбрана дезинфекция по стандартной логике ID={selected_disinfection.id}")
+                                else:
+                                    print("   дезинфекция не выбрана (нет подходящих)")
+                            else:
+                                print("   нет инструкций дезинфекции")
 
                         # Выбираем инструкции для остальных методов (без application_method)
                         if other_instrs:
@@ -745,8 +817,10 @@ class TechCardGenerator:
                                 target_enterprise, target_room_name,
                                 application_method=None
                             )
+                            print(f"   выбрано других методов: {len(other_selected)}")
                         else:
                             other_selected = []
+                            print("   нет других методов")
 
                         instructions = other_selected
                         if selected_disinfection:
@@ -764,18 +838,26 @@ class TechCardGenerator:
                         instructions = unique_instrs
 
                         if instructions:
+                            print(f"   итоговый набор инструкций: {[f'{i.cleaning_method} (ID={i.id})' for i in instructions]}")
                             category_object_instructions[cat_name].append(
                                 ('normal', display_name, instructions, normalized_name, item))
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
+                            print(f"   ❌ инструкции не выбраны для {normalized_name}")
                             unmatched_objects.append(display_name)
-                elif obj:
-                    unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "инструкции не выбраны (пустой набор)"
                 else:
-                    unmatched_objects.append(item.name)
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "объект не найден в instructions_dict"
 
             session.close()
+
+            if unmatched_objects:
+                print(f"\n⚠️ Объекты без инструкций: {unmatched_objects}")
+                print("Причины:")
+                for obj in unmatched_objects:
+                    print(f"   - {obj}: {unmatched_reasons.get(obj, 'неизвестно')}")
 
             rows_data = []
             merge_info_object = []
