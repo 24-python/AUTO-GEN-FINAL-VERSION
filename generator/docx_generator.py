@@ -380,15 +380,20 @@ class TechCardGenerator:
                     break
         return result
 
+    # ===== ИЗМЕНЕНО: добавлены параметры product_name и application_method =====
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
-                                   enterprise: str = None, room_name: str = None) -> dict:
+                                   enterprise: str = None, room_name: str = None,
+                                   product_name: str = None, application_method: str = None) -> dict:
         result = {}
         surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
         for sf in surface_types:
             sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
             if not sf_instrs:
                 continue
-            selected = self._select_instructions_for_room(sf_instrs, room_category_id, enterprise, room_name)
+            selected = self._select_instructions_for_room(
+                sf_instrs, room_category_id, enterprise, room_name,
+                product_name=product_name, application_method=application_method
+            )
             if selected:
                 result[sf] = selected
         return result
@@ -620,8 +625,15 @@ class TechCardGenerator:
                 all_instrs = instructions_dict[obj.id]
 
                 if normalized_name in self.split_objects:
-                    instructions = self._select_split_instructions(all_instrs, room_category_id,
-                                                                   target_enterprise, target_room_name)
+                    # Передаём product_name и application_method для дезинфекции
+                    disinfection_product = checklist_data.disinfection_product
+                    disinfection_method = checklist_data.disinfection_method_text
+                    instructions = self._select_split_instructions(
+                        all_instrs, room_category_id,
+                        target_enterprise, target_room_name,
+                        product_name=disinfection_product,
+                        application_method=disinfection_method
+                    )
                     if instructions:
                         category_object_instructions[cat_name].append(
                             ('split', display_name, instructions, normalized_name, item))
@@ -1052,7 +1064,7 @@ class TechCardGenerator:
                         self._set_cell_text(row.cells[7], final_exposure)
 
                     else:
-                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
+                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ (исправлено: убрано условие для split) =====
                         if has_db_product:
                             final_product = db_product
                             final_concentration = db_concentration
@@ -1061,7 +1073,7 @@ class TechCardGenerator:
                             final_product = ""
                             final_concentration = ""
                             final_extra_method = ""
-                            if normalized_name and normalized_name not in self.split_objects:
+                            if normalized_name:
                                 checklist_product = None
                                 checklist_concentration = None
                                 checklist_method = None
