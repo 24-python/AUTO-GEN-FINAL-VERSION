@@ -380,7 +380,7 @@ class TechCardGenerator:
                     break
         return result
 
-    # ===== ИЗМЕНЕНО: добавлены параметры product_name и application_method =====
+    # ===== ИЗМЕНЕНО: добавлен fallback для дезинфекции =====
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
                                    enterprise: str = None, room_name: str = None,
                                    product_name: str = None, application_method: str = None) -> dict:
@@ -390,10 +390,27 @@ class TechCardGenerator:
             sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
             if not sf_instrs:
                 continue
+            # Сначала пробуем выбрать инструкции с учётом product_name (для дезинфекции)
             selected = self._select_instructions_for_room(
                 sf_instrs, room_category_id, enterprise, room_name,
                 product_name=product_name, application_method=application_method
             )
+            # Проверяем, есть ли в selected дезинфекция
+            has_disinfection = any(instr.cleaning_method == "дезинфекция" for instr in selected)
+            if not has_disinfection and product_name:
+                # Если нет дезинфекции с нужным средством, пробуем выбрать дезинфекцию без учёта средства
+                disinfection_instrs = [i for i in sf_instrs if i.cleaning_method == "дезинфекция"]
+                if disinfection_instrs:
+                    disinfection_selected = self._select_instructions_for_room(
+                        disinfection_instrs, room_category_id, enterprise, room_name,
+                        product_name=None, application_method=None
+                    )
+                    if disinfection_selected:
+                        selected.append(disinfection_selected[0])
+                        # Пересортируем по порядку методов
+                        selected.sort(key=lambda x: self.cleaning_method_order.get(
+                            (x.cleaning_method or "").lower().strip(), 99
+                        ))
             if selected:
                 result[sf] = selected
         return result
