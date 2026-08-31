@@ -1010,29 +1010,26 @@ class TechCardGenerator:
                     is_disinfection = (cleaning_method == "дезинфекция")
 
                     if is_disinfection:
-                        # Для дезинфекции: средство, концентрация, метод разведения – из чек-листа (если есть) или из БД
-                        # Температура и время выдержки – всегда из БД (если есть в инструкции)
-                        checklist_product = checklist_data.disinfection_product
-                        checklist_concentration = checklist_data.disinfection_concentration
-                        checklist_method_text = checklist_data.disinfection_method_text
+                        # Название средства – всегда из БД
+                        final_product = db_product if db_product else ""
 
-                        if checklist_product and self._is_valid_product_name(checklist_product):
-                            final_product = self._clean_text(checklist_product)
-                            final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                            final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
-                            if not final_concentration and db_concentration:
-                                final_concentration = db_concentration
-                            if not final_extra_method and db_method:
-                                final_extra_method = db_method
+                        # Проверяем, совпадает ли средство в инструкции с выбранным в чек-листе
+                        checklist_product = checklist_data.disinfection_product
+                        product_matches = False
+                        if checklist_product and db_product:
+                            if self._normalize_product_name(checklist_product) == self._normalize_product_name(db_product):
+                                product_matches = True
+                        # Если в чек-листе средство не указано – считаем, что совпадения нет
+                        # Если совпадает – концентрация и метод из чек-листа (если есть), иначе из БД
+                        if product_matches:
+                            checklist_concentration = checklist_data.disinfection_concentration
+                            checklist_method_text = checklist_data.disinfection_method_text
+                            final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else db_concentration if db_concentration else ""
+                            final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else db_method if db_method else ""
                         else:
-                            if has_db_product:
-                                final_product = db_product
-                                final_concentration = db_concentration if db_concentration else ""
-                                final_extra_method = db_method if db_method else ""
-                            else:
-                                final_product = ""
-                                final_concentration = ""
-                                final_extra_method = ""
+                            # Берём строго из БД
+                            final_concentration = db_concentration if db_concentration else ""
+                            final_extra_method = db_method if db_method else ""
 
                         final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
                         final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
