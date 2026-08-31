@@ -8,7 +8,7 @@ from pathlib import Path
 from parser.models import ChecklistData, ChecklistItem, Category
 from db.models import (Instruction, Category as DBCategory, Object as DBObject,
                        RoomCategory, Product, ObjectProperty, ObjectGroup,
-                       CleaningMethodOrder, InventoryColor)
+                       CleaningMethodOrder, InventoryColor, CleaningTechnique)
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -30,13 +30,24 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
         self._config_loaded = False
         self._inventory_colors = {}
+        self._cleaning_techniques = {}  # {normalized_name: original_name}
         self._load_inventory_colors()
+        self._load_cleaning_techniques()
 
     def _load_inventory_colors(self):
         session = SessionLocal()
         try:
             colors = session.query(InventoryColor).all()
             self._inventory_colors = {c.name: c.hex_color for c in colors}
+        finally:
+            session.close()
+
+    def _load_cleaning_techniques(self):
+        """Загружает справочник методов уборки (нормализованное имя -> оригинальное)."""
+        session = SessionLocal()
+        try:
+            techniques = session.query(CleaningTechnique).all()
+            self._cleaning_techniques = {t.name.lower(): t.name for t in techniques}
         finally:
             session.close()
 
@@ -588,28 +599,7 @@ class TechCardGenerator:
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
-        # ===== 1. Находим общую инструкцию дезинфекции с учётом product_name и application_method =====
-        common_disinfection_instr = None
-        if checklist_data.disinfection_product:
-            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-            application_method = checklist_data.disinfection_method_text
-            candidates = []
-            for obj_id, instrs in instructions_dict.items():
-                for instr in instrs:
-                    if (instr.cleaning_method == "дезинфекция" and
-                        self._normalize_product_name(instr.product_name or "") == normalized_product):
-                        if self._filter_instructions([instr], target_enterprise, target_room_name, room_category_id):
-                            if application_method:
-                                if instr.application_method == application_method:
-                                    candidates.append(instr)
-                            else:
-                                candidates.append(instr)
-            if candidates:
-                candidates.sort(
-                    key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
-                )
-                common_disinfection_instr = candidates[0]
-                print(f"✅ Найдена общая инструкция для дезинфекции: {common_disinfection_instr.product_name}")
+        # Удалён блок поиска общей инструкции дезинфекции
 
         category_object_instructions = defaultdict(list)
         all_object_instructions = []
@@ -688,35 +678,58 @@ class TechCardGenerator:
                     else:
                         unmatched_objects.append(display_name)
                 else:
-                    # Обычный объект
-                    if common_disinfection_instr:
-                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
-                        if other_instrs:
-                            app_method = checklist_data.cleaning_method_text
-                            other_selected = self._select_instructions_for_room(
-                                other_instrs, room_category_id,
-                                target_enterprise, target_room_name,
-                                application_method=app_method
-                            )
+                    # Обычный объект – индивидуальный выбор дезинфекции
+                    disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
+                    other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+
+                    # Выбираем инструкцию дезинфекции для этого объекта
+                    selected_disinfection = None
+                    if checklist_data.disinfection_product:
+                        normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+                        filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
+                        candidates = [instr for instr in filtered_disinfection
+                                      if self._normalize_product_name(instr.product_name or "") == normalized_product]
+                        if candidates:
+                            candidates.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
+                            selected_disinfection = candidates[0]
                         else:
-                            other_selected = []
-                        instructions = other_selected + [common_disinfection_instr]
-                        instructions.sort(
-                            key=lambda x: self.cleaning_method_order.get(
-                                (x.cleaning_method or "").lower().strip(), 99
-                            )
-                        )
-                        seen = set()
-                        unique_instrs = []
-                        for instr in instructions:
-                            key = (instr.cleaning_method, instr.product_name, instr.surface_type)
-                            if key not in seen:
-                                seen.add(key)
-                                unique_instrs.append(instr)
-                        instructions = unique_instrs
+                            if filtered_disinfection:
+                                filtered_disinfection.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
+                                selected_disinfection = filtered_disinfection[0]
                     else:
-                        instructions = self._select_instructions_for_room(all_instrs, room_category_id,
-                                                                          target_enterprise, target_room_name)
+                        if disinfection_instrs:
+                            disinfection_selected_list = self._select_instructions_for_room(
+                                disinfection_instrs, room_category_id,
+                                target_enterprise, target_room_name,
+                                product_name=None, application_method=None
+                            )
+                            if disinfection_selected_list:
+                                selected_disinfection = disinfection_selected_list[0]
+
+                    # Выбираем инструкции для остальных методов (без application_method)
+                    if other_instrs:
+                        other_selected = self._select_instructions_for_room(
+                            other_instrs, room_category_id,
+                            target_enterprise, target_room_name,
+                            application_method=None
+                        )
+                    else:
+                        other_selected = []
+
+                    instructions = other_selected
+                    if selected_disinfection:
+                        instructions.append(selected_disinfection)
+
+                    instructions.sort(key=lambda x: self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99))
+
+                    seen = set()
+                    unique_instrs = []
+                    for instr in instructions:
+                        key = (instr.cleaning_method, instr.product_name, instr.surface_type)
+                        if key not in seen:
+                            seen.add(key)
+                            unique_instrs.append(instr)
+                    instructions = unique_instrs
 
                     if instructions:
                         category_object_instructions[cat_name].append(
@@ -953,6 +966,27 @@ class TechCardGenerator:
                 if instr:
                     cleaning_method = self._clean_text(instr.cleaning_method or "")
                     cleaning_technique = self._clean_text(instr.cleaning_technique or "")
+
+                    # ---------- НОВАЯ ЛОГИКА: подстановка метода уборки для дезинфекции из справочника ----------
+                    if cleaning_method == "дезинфекция" and checklist_data.disinfection_method_text:
+                        method_text = checklist_data.disinfection_method_text.lower()
+                        target_method_name = None
+                        if "promax" in method_text:
+                            target_method_name = "протирание"
+                        elif "protwin" in method_text:
+                            target_method_name = "орошение"
+                        elif "пенная станция" in method_text:
+                            target_method_name = "запенивание"
+
+                        if target_method_name:
+                            # Ищем в справочнике cleaning_techniques (нормализованное сравнение)
+                            found = self._cleaning_techniques.get(target_method_name.lower())
+                            if found:
+                                cleaning_technique = found
+                            else:
+                                # Если не найдено – оставляем значение из БД
+                                pass
+                        # иначе оставляем значение из БД
 
                     # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
                     db_product = self._clean_text(instr.product_name or "")

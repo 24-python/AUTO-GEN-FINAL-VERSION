@@ -1,6 +1,6 @@
 ================================================================================
 ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
-Дата экспорта: 2026-08-24 16:19:53
+Дата экспорта: 2026-08-31 08:32:39
 ================================================================================
 
 📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
@@ -20,6 +20,7 @@
    generator\docx_generator.py
    generator\mapper.py
    import_csv_to_db.py
+   migrate_config.py
    parser\__init__.py
    parser\models.py
    parser\parse_products.py
@@ -43,11 +44,10 @@
 AUTO-GEN-FINAL-VERSION/
 ├──    __pycache__/
 
-├── ✅ app.py (64.1 KB)
+├── ✅ app.py (69.4 KB)
 ├──    checklists/
 
 ├──    Context.py (17.3 KB)
-├──    Context.txt (0.0 KB)
 ├── ✅ db/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
@@ -65,18 +65,18 @@ AUTO-GEN-FINAL-VERSION/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
-│   ├── ✅ docx_generator.py (60.2 KB)
+│   ├── ✅ docx_generator.py (63.8 KB)
 │   └── ✅ mapper.py (3.0 KB)
 ├── ✅ import_csv_to_db.py (33.0 KB)
-├──    migrate_config.py (13.5 KB)
+├── ✅ migrate_config.py (13.5 KB)
 ├── ✅ parser/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
-│   ├── ✅ models.py (4.0 KB)
+│   ├── ✅ models.py (4.3 KB)
 │   ├── ✅ parse_products.py (7.6 KB)
 │   ├── ✅ utils.py (0.7 KB)
-│   └── ✅ xml_parser.py (32.3 KB)
+│   └── ✅ xml_parser.py (33.4 KB)
 ├── ✅ requirements.txt (0.5 KB)
 ├── ✅ static/
 │   ├── ✅ css/
@@ -85,20 +85,21 @@ AUTO-GEN-FINAL-VERSION/
 │   │   ├── ✅ README.md (28.5 KB)
 │   │   └── ✅ Инструкция по использованию.md (24.1 KB)
 │   └── ✅ js/
-│       ├── ✅ admin.js (51.5 KB)
+│       ├── ✅ admin.js (54.5 KB)
 │       ├── ✅ app.js (7.1 KB)
 │       └── ✅ history.js (3.3 KB)
 ├──    tech_card_templates/
 
 ├──    tech_cards/
-│   ├──    generation_history.json (26.3 KB)
+│   ├──    generation_history.json (35.6 KB)
 ├── ✅ templates/
-│   ├── ✅ admin.html (71.2 KB)
+│   ├── ✅ admin.html (76.4 KB)
 │   ├── ✅ history.html (7.6 KB)
 │   └── ✅ index.html (13.2 KB)
 ├── ✅ test_generator.py (10.4 KB)
 ├──    uploads/
 
+├──    Контекст.txt (0.0 KB)
 └──    Разное/
     ├──    1.py (4.1 KB)
     ├──    1111111.py (1.4 KB)
@@ -193,6 +194,7 @@ AUTO-GEN-FINAL-VERSION/
 Добавлены таблицы конфигурации генератора: object_properties, object_groups, cleaning_method_order.
 Добавлены поля enterprise, subgroup и room_name для инструкций.
 Добавлен справочник методов уборки (cleaning_techniques).
+Добавлен эндпоинт для копирования инструкций и свойств между объектами.
 """
 
 import csv
@@ -661,7 +663,7 @@ def api_create_product():
 def api_update_product(product_id):
     data = request.get_json()
     session = SessionLocal()
-    product = session.query(Product).get(product_id)
+    product = session.get(Product, product_id)
     if product:
         if 'name' in data:
             product.name = data['name'].strip()
@@ -679,7 +681,7 @@ def api_update_product(product_id):
 @app.route('/api/products/<int:product_id>', methods=['DELETE'])
 def api_delete_product(product_id):
     session = SessionLocal()
-    product = session.query(Product).get(product_id)
+    product = session.get(Product, product_id)
     if product:
         session.delete(product)
         session.commit()
@@ -807,7 +809,7 @@ def api_update_room_category(rc_id):
         return jsonify({'success': False, 'error': 'Название обязательно'}), 400
 
     session = SessionLocal()
-    rc = session.query(RoomCategory).get(rc_id)
+    rc = session.get(RoomCategory, rc_id)
     if rc:
         rc.name = name
         session.commit()
@@ -820,7 +822,7 @@ def api_update_room_category(rc_id):
 @app.route('/api/room-categories/<int:rc_id>', methods=['DELETE'])
 def api_delete_room_category(rc_id):
     session = SessionLocal()
-    rc = session.query(RoomCategory).get(rc_id)
+    rc = session.get(RoomCategory, rc_id)
     if rc:
         session.delete(rc)
         session.commit()
@@ -870,7 +872,7 @@ def api_create_inventory_color():
 def api_update_inventory_color(color_id):
     data = request.get_json()
     session = SessionLocal()
-    color = session.query(InventoryColor).get(color_id)
+    color = session.get(InventoryColor, color_id)
     if not color:
         session.close()
         return jsonify({"success": False, "error": "Цвет не найден"}), 404
@@ -893,7 +895,7 @@ def api_update_inventory_color(color_id):
 @app.route('/api/inventory-colors/<int:color_id>', methods=['DELETE'])
 def api_delete_inventory_color(color_id):
     session = SessionLocal()
-    color = session.query(InventoryColor).get(color_id)
+    color = session.get(InventoryColor, color_id)
     if color:
         session.delete(color)
         session.commit()
@@ -1008,7 +1010,7 @@ def api_update_cleaning_technique(tech_id):
         return jsonify({"success": False, "error": "Название обязательно"}), 400
 
     session = SessionLocal()
-    technique = session.query(CleaningTechnique).get(tech_id)
+    technique = session.get(CleaningTechnique, tech_id)
     if not technique:
         session.close()
         return jsonify({"success": False, "error": "Метод не найден"}), 404
@@ -1027,7 +1029,7 @@ def api_update_cleaning_technique(tech_id):
 @app.route('/api/cleaning-techniques/<int:tech_id>', methods=['DELETE'])
 def api_delete_cleaning_technique(tech_id):
     session = SessionLocal()
-    technique = session.query(CleaningTechnique).get(tech_id)
+    technique = session.get(CleaningTechnique, tech_id)
     if technique:
         session.delete(technique)
         session.commit()
@@ -1146,7 +1148,7 @@ def api_create_object():
 def api_update_object(obj_id):
     data = request.get_json()
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         for key in ['display_name', 'normalized_name', 'base_name', 'modifier', 'sort_priority', 'category_id']:
             if key in data:
@@ -1161,7 +1163,7 @@ def api_update_object(obj_id):
 @app.route('/api/objects/<int:obj_id>', methods=['DELETE'])
 def api_delete_object(obj_id):
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         session.delete(obj)
         session.commit()
@@ -1178,7 +1180,7 @@ def api_delete_object(obj_id):
 @app.route('/api/objects/<int:obj_id>/instructions')
 def api_object_instructions(obj_id):
     session = SessionLocal()
-    obj = session.query(Object).get(obj_id)
+    obj = session.get(Object, obj_id)
     if obj:
         room_cats = {rc.id: rc.name for rc in session.query(RoomCategory).all()}
         result = [{
@@ -1221,10 +1223,16 @@ def api_create_instruction(obj_id):
         except (ValueError, TypeError):
             room_category_id = None
 
+    # Безопасное извлечение строковых полей с обрезкой пробелов
+    def safe_strip(value):
+        return value.strip() if isinstance(value, str) else None
+
     maintenance_type = data.get('maintenance_type', '')
-    subgroup = data.get('subgroup', '').strip() or None
-    enterprise = data.get('enterprise', '').strip() or None
-    room_name = data.get('room_name', '').strip() or None
+    subgroup = safe_strip(data.get('subgroup'))
+    enterprise = safe_strip(data.get('enterprise'))
+    room_name = safe_strip(data.get('room_name'))
+    surface_type = safe_strip(data.get('surface_type'))
+    application_method = safe_strip(data.get('application_method'))
 
     instr = Instruction(
         object_id=obj_id,
@@ -1237,7 +1245,7 @@ def api_create_instruction(obj_id):
         product_name=data.get('product_name', ''),
         cleaning_technique=data.get('cleaning_technique', ''),
         concentration=data.get('concentration', ''),
-        application_method=data.get('application_method', ''),
+        application_method=application_method,
         temperature=data.get('temperature', ''),
         exposure_time=data.get('exposure_time', ''),
         inventory=data.get('inventory', ''),
@@ -1245,7 +1253,7 @@ def api_create_instruction(obj_id):
         executor=data.get('executor', ''),
         control_method=data.get('control_method', ''),
         instruction_number=data.get('instruction_number', ''),
-        surface_type=data.get('surface_type')
+        surface_type=surface_type
     )
     session.add(instr)
     session.commit()
@@ -1259,7 +1267,7 @@ def api_create_instruction(obj_id):
 def api_update_instruction(instr_id):
     data = request.get_json()
     session = SessionLocal()
-    instr = session.query(Instruction).get(instr_id)
+    instr = session.get(Instruction, instr_id)
     if instr:
         if 'room_category_id' in data:
             rc_id = data['room_category_id']
@@ -1270,13 +1278,26 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
+        # Обычные поля (безопасно присваиваем как есть, либо обрезаем пробелы для строк)
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
-                  'concentration', 'application_method', 'temperature', 'exposure_time', 'inventory',
-                  'frequency', 'executor', 'control_method', 'instruction_number', 'surface_type',
-                  'subgroup', 'enterprise', 'room_name']
+                  'concentration', 'temperature', 'exposure_time', 'inventory',
+                  'frequency', 'executor', 'control_method', 'instruction_number']
         for key in fields:
             if key in data:
-                setattr(instr, key, data[key])
+                # Если значение строка — обрезаем пробелы, иначе оставляем как есть (может быть None)
+                val = data[key]
+                if isinstance(val, str):
+                    val = val.strip()
+                setattr(instr, key, val)
+
+        # Поля, требующие особой обработки (могут быть None, обрезаем пробелы)
+        for key in ['subgroup', 'enterprise', 'room_name', 'surface_type', 'application_method']:
+            if key in data:
+                val = data[key]
+                if isinstance(val, str):
+                    val = val.strip()
+                setattr(instr, key, val)
+
         session.commit()
         session.close()
         return jsonify({'success': True})
@@ -1287,7 +1308,7 @@ def api_update_instruction(instr_id):
 @app.route('/api/instructions/<int:instr_id>', methods=['DELETE'])
 def api_delete_instruction(instr_id):
     session = SessionLocal()
-    instr = session.query(Instruction).get(instr_id)
+    instr = session.get(Instruction, instr_id)
     if instr:
         session.delete(instr)
         session.commit()
@@ -1307,7 +1328,7 @@ def api_object_properties():
     props = session.query(ObjectProperty).all()
     result = []
     for p in props:
-        obj = session.query(Object).get(p.object_id)
+        obj = session.get(Object, p.object_id)
         result.append({
             'id': p.id,
             'object_id': p.object_id,
@@ -1326,7 +1347,7 @@ def api_object_properties():
 def api_update_object_property(prop_id):
     data = request.get_json()
     session = SessionLocal()
-    prop = session.query(ObjectProperty).get(prop_id)
+    prop = session.get(ObjectProperty, prop_id)
     if prop:
         for field in ['is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type']:
             if field in data:
@@ -1346,7 +1367,7 @@ def api_export_object_properties_csv():
     writer = csv.writer(si, delimiter=';')
     writer.writerow(['object_id', 'normalized_name', 'is_split', 'is_multi_method', 'has_support_maintenance', 'special_product_type'])
     for p in props:
-        obj = session.query(Object).get(p.object_id)
+        obj = session.get(Object, p.object_id)
         writer.writerow([
             p.object_id,
             obj.normalized_name if obj else '',
@@ -1395,7 +1416,7 @@ def api_import_object_properties_csv():
                     errors.append(f"Некорректный object_id: {row.get('object_id')}")
                     continue
 
-                obj = session.query(Object).get(obj_id)
+                obj = session.get(Object, obj_id)
                 if not obj:
                     errors.append(f"Объект с ID {obj_id} не найден")
                     continue
@@ -1488,7 +1509,7 @@ def api_object_groups():
     groups = session.query(ObjectGroup).all()
     result = []
     for g in groups:
-        obj = session.query(Object).get(g.object_id)
+        obj = session.get(Object, g.object_id)
         result.append({
             'id': g.id,
             'group_name': g.group_name,
@@ -1510,7 +1531,7 @@ def api_create_object_group():
 
     session = SessionLocal()
     # Проверка существования объекта
-    obj = session.query(Object).get(object_id)
+    obj = session.get(Object, object_id)
     if not obj:
         session.close()
         return jsonify({'success': False, 'error': 'Объект не найден'}), 404
@@ -1528,13 +1549,13 @@ def api_create_object_group():
 def api_update_object_group(group_id):
     data = request.get_json()
     session = SessionLocal()
-    group = session.query(ObjectGroup).get(group_id)
+    group = session.get(ObjectGroup, group_id)
     if group:
         if 'group_name' in data:
             group.group_name = data['group_name'].strip()
         if 'object_id' in data:
             # Проверка существования нового объекта
-            obj = session.query(Object).get(data['object_id'])
+            obj = session.get(Object, data['object_id'])
             if not obj:
                 session.close()
                 return jsonify({'success': False, 'error': 'Объект не найден'}), 404
@@ -1549,7 +1570,7 @@ def api_update_object_group(group_id):
 @app.route('/api/object-groups/<int:group_id>', methods=['DELETE'])
 def api_delete_object_group(group_id):
     session = SessionLocal()
-    group = session.query(ObjectGroup).get(group_id)
+    group = session.get(ObjectGroup, group_id)
     if group:
         session.delete(group)
         session.commit()
@@ -1567,7 +1588,7 @@ def api_export_object_groups_csv():
     writer = csv.writer(si, delimiter=';')
     writer.writerow(['group_name', 'object_id', 'normalized_name'])
     for g in groups:
-        obj = session.query(Object).get(g.object_id)
+        obj = session.get(Object, g.object_id)
         writer.writerow([g.group_name, g.object_id, obj.normalized_name if obj else ''])
     session.close()
     output = si.getvalue().encode('utf-8-sig')
@@ -1609,7 +1630,7 @@ def api_import_object_groups_csv():
                     errors.append(f"Некорректный object_id: {obj_id_str}")
                     continue
 
-                obj = session.query(Object).get(obj_id)
+                obj = session.get(Object, obj_id)
                 if not obj:
                     errors.append(f"Объект с ID {obj_id} не найден")
                     continue
@@ -1676,7 +1697,7 @@ def api_create_cleaning_method():
 def api_update_cleaning_method(method_id):
     data = request.get_json()
     session = SessionLocal()
-    method = session.query(CleaningMethodOrder).get(method_id)
+    method = session.get(CleaningMethodOrder, method_id)
     if method:
         if 'method_name' in data:
             method.method_name = data['method_name'].strip()
@@ -1692,7 +1713,7 @@ def api_update_cleaning_method(method_id):
 @app.route('/api/cleaning-methods/<int:method_id>', methods=['DELETE'])
 def api_delete_cleaning_method(method_id):
     session = SessionLocal()
-    method = session.query(CleaningMethodOrder).get(method_id)
+    method = session.get(CleaningMethodOrder, method_id)
     if method:
         session.delete(method)
         session.commit()
@@ -1861,6 +1882,100 @@ def api_import_csv():
     finally:
         if os.path.exists(filepath):
             os.remove(filepath)
+
+
+# ============================================================
+# API: КОПИРОВАНИЕ ИНСТРУКЦИЙ И СВОЙСТВ МЕЖДУ ОБЪЕКТАМИ
+# ============================================================
+
+@app.route('/api/instructions/copy', methods=['POST'])
+def api_copy_instructions():
+    """
+    Копирует все инструкции и свойства объекта-источника на объект-получатель.
+    Ожидает JSON: {"source_id": int, "target_id": int}
+    """
+    data = request.get_json()
+    source_id = data.get('source_id')
+    target_id = data.get('target_id')
+
+    if not source_id or not target_id:
+        return jsonify({'success': False, 'error': 'source_id и target_id обязательны'}), 400
+
+    session = SessionLocal()
+    try:
+        # Проверка существования объектов
+        source = session.get(Object, source_id)
+        target = session.get(Object, target_id)
+        if not source or not target:
+            return jsonify({'success': False, 'error': 'Один из объектов не найден'}), 404
+
+        # Копирование инструкций
+        source_instructions = session.query(Instruction).filter(Instruction.object_id == source_id).all()
+        copied_count = 0
+        for instr in source_instructions:
+            new_instr = Instruction(
+                object_id=target_id,
+                room_category_id=instr.room_category_id,
+                maintenance_type=instr.maintenance_type,
+                enterprise=instr.enterprise,
+                subgroup=instr.subgroup,
+                room_name=instr.room_name,
+                cleaning_method=instr.cleaning_method,
+                instruction_number=instr.instruction_number,
+                product_name=instr.product_name,
+                cleaning_technique=instr.cleaning_technique,
+                concentration=instr.concentration,
+                application_method=instr.application_method,
+                temperature=instr.temperature,
+                exposure_time=instr.exposure_time,
+                inventory=instr.inventory,
+                frequency=instr.frequency,
+                executor=instr.executor,
+                control_method=instr.control_method,
+                surface_type=instr.surface_type
+            )
+            session.add(new_instr)
+            copied_count += 1
+
+        # Копирование свойств объекта (ObjectProperty)
+        source_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == source_id).first()
+        target_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == target_id).first()
+
+        property_copied = False
+        if source_prop:
+            if target_prop:
+                # Обновляем существующее свойство у получателя
+                target_prop.is_split = source_prop.is_split
+                target_prop.is_multi_method = source_prop.is_multi_method
+                target_prop.has_support_maintenance = source_prop.has_support_maintenance
+                target_prop.special_product_type = source_prop.special_product_type
+            else:
+                # Создаём новое свойство для получателя
+                new_prop = ObjectProperty(
+                    object_id=target_id,
+                    is_split=source_prop.is_split,
+                    is_multi_method=source_prop.is_multi_method,
+                    has_support_maintenance=source_prop.has_support_maintenance,
+                    special_product_type=source_prop.special_product_type
+                )
+                session.add(new_prop)
+            property_copied = True
+        else:
+            # Если у источника нет свойства, удаляем свойство у получателя (если есть)
+            if target_prop:
+                session.delete(target_prop)
+
+        session.commit()
+        return jsonify({
+            'success': True,
+            'copied_instructions': copied_count,
+            'property_copied': property_copied
+        })
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':
@@ -3708,10 +3823,8 @@ class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
 
-    # Порядок уровней обработки для вывода
     LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
 
-    # Заглушки, которые не должны подставляться из чек-листа
     SKIP_PLACEHOLDERS = {
         "Выберите элемент.", "Не выбрано", "Выберите элемент",
         "", None
@@ -3719,14 +3832,11 @@ class TechCardGenerator:
 
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
-        # Кэши конфигурации, загружаемые из БД
         self._config_loaded = False
-        # ===== Кэш цветов инвентаря =====
-        self._inventory_colors = {}  # {name: hex_color}
+        self._inventory_colors = {}
         self._load_inventory_colors()
 
     def _load_inventory_colors(self):
-        """Загружает цвета инвентаря из БД в словарь {name: hex_color}."""
         session = SessionLocal()
         try:
             colors = session.query(InventoryColor).all()
@@ -3735,20 +3845,17 @@ class TechCardGenerator:
             session.close()
 
     def _load_config(self, session):
-        """Загружает конфигурацию из БД (CleaningMethodOrder, ObjectProperty, ObjectGroup)"""
         if self._config_loaded:
             return
-
-        # 1. Порядок методов очистки
         methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
         self.cleaning_method_order = {m.method_name: m.sort_order for m in methods}
 
-        # 2. Свойства объектов
         props = session.query(ObjectProperty).join(DBObject).all()
         self.split_objects = set()
         self.multi_method_objects = set()
         self.support_objects = set()
         self.floor_objects = set()
+        self.tech_objects = set()
         self.glass_objects = set()
         self.thermal_objects = set()
 
@@ -3762,14 +3869,15 @@ class TechCardGenerator:
                 self.support_objects.add(name)
             if prop.special_product_type == 'floor':
                 self.floor_objects.add(name)
+            elif prop.special_product_type == 'tech':
+                self.tech_objects.add(name)
             elif prop.special_product_type == 'glass':
                 self.glass_objects.add(name)
             elif prop.special_product_type == 'thermal':
                 self.thermal_objects.add(name)
 
-        # 3. Группы объектов
         groups = session.query(ObjectGroup).all()
-        self.group_headers = {}  # frozenset -> header
+        self.group_headers = {}
         temp_groups = defaultdict(set)
         for g in groups:
             if g.object:
@@ -3780,12 +3888,10 @@ class TechCardGenerator:
         self._config_loaded = True
 
     def _load_product_colors(self, session) -> dict:
-        """Загружает цвета средств из таблицы products."""
         products = session.query(Product).all()
         return {p.name: p.color for p in products if p.color}
 
     def _clean_text(self, val: str) -> str:
-        """Очищает строку от лишних пробелов и переводов строк (но не XML-элементов)."""
         if not val:
             return ""
         return val.strip().replace('\n', ' ').replace('\r', ' ')
@@ -3813,7 +3919,6 @@ class TechCardGenerator:
             start_cell.merge(row.cells[col])
 
     def _remove_extra_paragraphs_in_cell(self, cell):
-        """Удаляет все пустые параграфы в ячейке, оставляя только один."""
         tc = cell._tc
         paragraphs = tc.findall(qn('w:p'))
         if not paragraphs:
@@ -3879,19 +3984,13 @@ class TechCardGenerator:
         return {cat.name: cat.sort_order for cat in categories}
 
     def _get_room_category_id(self, session, room_category_name: str) -> int:
-        """Ищет категорию помещения по точному совпадению (в БД все в нижнем регистре)."""
         if not room_category_name:
             return None
         rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
         return rc.id if rc else None
 
-    # ===== ДОБАВЛЕНО: метод для определения приоритета инструкции =====
     def _get_instruction_priority(self, instr, target_enterprise: str = None,
                                   target_room_name: str = None, target_room_category_id: int = None) -> int:
-        """
-        Возвращает числовой приоритет инструкции (чем меньше, тем выше приоритет).
-        Учитывает совпадение enterprise, room_name и room_category_id.
-        """
         ent_match = (instr.enterprise or "") == (target_enterprise or "")
         room_match = (instr.room_name or "") == (target_room_name or "")
         cat_match = (instr.room_category_id == target_room_category_id)
@@ -3913,15 +4012,10 @@ class TechCardGenerator:
         elif not ent_match and instr.room_name is None and instr.room_category_id is None:
             return 8
         else:
-            return 99  # не должно использоваться
+            return 99
 
-    # ===== ДОБАВЛЕНО: фильтрация инструкций по enterprise, room_name, room_category_id =====
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None) -> list:
-        """
-        Фильтрует список инструкций, оставляя только те, которые могут быть применимы
-        к заданным enterprise, room_name и room_category_id.
-        """
         if not instructions:
             return []
         filtered = []
@@ -3958,7 +4052,6 @@ class TechCardGenerator:
                 instr.executor or "",
                 instr.control_method or "",
                 instr.surface_type or "",
-                # ===== ДОБАВЛЕНО: поля, влияющие на группировку =====
                 instr.enterprise or "",
                 instr.subgroup or "",
                 instr.room_name or "",
@@ -3980,15 +4073,33 @@ class TechCardGenerator:
             result.append((merged_name, data["instructions"]))
         return result
 
+    # ===== ИЗМЕНЕНО: добавлены параметры product_name и application_method =====
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
-                                      enterprise: str = None, room_name: str = None) -> list:
+                                      enterprise: str = None, room_name: str = None,
+                                      product_name: str = None, application_method: str = None) -> list:
         if not all_instructions:
             return []
 
-        # Фильтруем инструкции по enterprise, room_name, room_category_id
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
+
+        # Фильтр по product_name (только для дезинфекции)
+        if product_name:
+            normalized_product = self._normalize_product_name(product_name)
+            if normalized_product:
+                filtered = [
+                    instr for instr in filtered
+                    if instr.cleaning_method != "дезинфекция"
+                    or self._normalize_product_name(instr.product_name or "") == normalized_product
+                ]
+
+        # Фильтр по application_method (если передан)
+        if application_method:
+            filtered = [
+                instr for instr in filtered
+                if not instr.application_method or instr.application_method == application_method
+            ]
 
         by_method = defaultdict(list)
         for instr in filtered:
@@ -3997,13 +4108,11 @@ class TechCardGenerator:
 
         selected = []
         for method, instrs in by_method.items():
-            # Сортируем инструкции по приоритету
             sorted_instrs = sorted(
                 instrs,
                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
             )
             best = None
-            # Берём первую, у которой maintenance_type совпадает с желаемым порядком
             for maint_level in ["основная", "поддерживающая", "генеральная"]:
                 for instr in sorted_instrs:
                     if (instr.maintenance_type or "").lower() == maint_level:
@@ -4025,12 +4134,10 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        # Фильтруем инструкции
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
 
-        # Сортируем по приоритету, уровню и методу
         sorted_instrs = sorted(
             filtered,
             key=lambda i: (
@@ -4040,7 +4147,6 @@ class TechCardGenerator:
             )
         )
 
-        # Группируем по уровню обслуживания
         level_groups = defaultdict(list)
         for instr in sorted_instrs:
             level = (instr.maintenance_type or "").lower()
@@ -4051,12 +4157,10 @@ class TechCardGenerator:
             instrs = level_groups.get(level, [])
             if not instrs:
                 continue
-            # Группируем по методам для чередования
             method_groups = defaultdict(list)
             for instr in instrs:
                 method = instr.cleaning_method or ""
                 method_groups[method].append(instr)
-
             ordered_methods = sorted(method_groups.keys(),
                                      key=lambda m: self.cleaning_method_order.get(m.lower().strip(), 99))
             while True:
@@ -4067,7 +4171,6 @@ class TechCardGenerator:
                         added = True
                 if not added:
                     break
-
         return result
 
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
@@ -4084,7 +4187,6 @@ class TechCardGenerator:
         return result
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
-        """Клонирует форматирование строки (шрифт, размер, границы, жирность для колонок 4 и 9)"""
         source_row = table.rows[source_row_idx]
         target_row = table.rows[target_row_idx]
         for col_idx, source_cell in enumerate(source_row.cells):
@@ -4116,8 +4218,6 @@ class TechCardGenerator:
                     if r_pr is None:
                         r_pr = OxmlElement('w:rPr')
                         new_run.insert(0, r_pr)
-
-                    # Сохраняем жирность из исходного run'а
                     source_r_pr = source_run._r.find(qn('w:rPr'))
                     if source_r_pr is not None:
                         source_b = source_r_pr.find(qn('w:b'))
@@ -4125,32 +4225,26 @@ class TechCardGenerator:
                             existing_b = r_pr.find(qn('w:b'))
                             if existing_b is None:
                                 r_pr.append(copy.deepcopy(source_b))
-
-                    # Принудительно добавляем bold для колонки 4 (индекс 3)
                     if col_idx == 3:
                         existing_b = r_pr.find(qn('w:b'))
                         if existing_b is None:
                             b = OxmlElement('w:b')
                             r_pr.append(b)
-                    # Принудительно добавляем bold для колонки 9 (индекс 8)
                     if col_idx == 8:
                         existing_b = r_pr.find(qn('w:b'))
                         if existing_b is None:
                             b = OxmlElement('w:b')
                             r_pr.append(b)
-
                     sz = r_pr.find(qn('w:sz'))
                     if sz is None:
                         sz = OxmlElement('w:sz')
                         r_pr.append(sz)
                     sz.set(qn('w:val'), '14')
-
                     sz_cs = r_pr.find(qn('w:szCs'))
                     if sz_cs is None:
                         sz_cs = OxmlElement('w:szCs')
                         r_pr.append(sz_cs)
                     sz_cs.set(qn('w:val'), '14')
-
                     r_fonts = r_pr.find(qn('w:rFonts'))
                     if r_fonts is None:
                         r_fonts = OxmlElement('w:rFonts')
@@ -4163,7 +4257,6 @@ class TechCardGenerator:
                     target_para._p.append(new_run)
 
     def _set_cell_text(self, cell, text: str, bold: bool = False):
-        """Устанавливает текст в ячейку. Если bold=True, делает шрифт жирным."""
         text = self._clean_text(text)
         if not cell.paragraphs:
             cell.add_paragraph()
@@ -4204,16 +4297,12 @@ class TechCardGenerator:
             break
 
     def _set_product_cell(self, cell, text: str, bold: bool = False):
-        """Устанавливает текст в ячейку, обрабатывая надстрочный знак ®."""
         text = self._clean_text(text)
         if not cell.paragraphs:
             cell.add_paragraph()
         para = cell.paragraphs[0]
-        # Очищаем параграф перед вставкой новых runs
         for r in para.runs:
             para._p.remove(r._r)
-
-        # Разбиваем по символу ®
         parts = text.split('®')
         for i, part in enumerate(parts):
             if part:
@@ -4223,7 +4312,6 @@ class TechCardGenerator:
                 if bold:
                     run.bold = True
             if i < len(parts) - 1:
-                # Вставляем надстрочный ®
                 run_reg = para.add_run('®')
                 run_reg.font.name = 'Arial'
                 run_reg.font.size = Pt(7)
@@ -4232,20 +4320,17 @@ class TechCardGenerator:
                 run_reg.font.superscript = True
 
     def _clear_cell_text(self, cell):
-        """Очищает текст в ячейке"""
         for para in cell.paragraphs:
             for run in para.runs:
                 for t in run._r.findall(qn('w:t')):
                     t.text = ''
 
     def _is_valid_product_name(self, name: str) -> bool:
-        """Проверяет, похоже ли значение на название средства (не концентрация/метод/заглушка)."""
         if not name:
             return False
         name_lower = name.lower().strip()
         if name_lower in ('выберите элемент.', 'не выбрано', 'выберите элемент', ''):
             return False
-        # Паттерны, указывающие на концентрацию или метод
         patterns = [
             r'%', r'дозирующая система', r'ручной', r'система', r'протирание',
             r'щётка', r'ветошь', r'губка', r'погружение', r'замачивание',
@@ -4263,7 +4348,6 @@ class TechCardGenerator:
         doc = Document(self.template_path)
         main_table = doc.tables[1]
 
-        # Заполняем помещение
         room_cell = main_table.cell(1, 0)
         if "Помещение:" in room_cell.text:
             room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
@@ -4273,19 +4357,16 @@ class TechCardGenerator:
                     run.font.size = Pt(9)
                     run.font.bold = True
 
-        # === ОБРАБОТКА 4-Й СТРОКИ (предупреждение об удалении сырья) ===
         warning_row = main_table.rows[3]
         if checklist_data.room_category not in ["производственное", "складское"]:
             self._clear_cell_text(warning_row.cells[0])
 
         session = SessionLocal()
-        # Загрузка конфигурации из БД
         self._load_config(session)
 
         category_priority = self._get_category_priority(session)
         product_colors = self._load_product_colors(session)
 
-        # ===== Получаем enterprise и room_name из чек-листа =====
         target_enterprise = checklist_data.enterprise
         target_room_name = checklist_data.room_name
 
@@ -4311,6 +4392,29 @@ class TechCardGenerator:
         for instr in db_instructions:
             instructions_dict[instr.object_id].append(instr)
 
+        # ===== 1. Находим общую инструкцию дезинфекции с учётом product_name и application_method =====
+        common_disinfection_instr = None
+        if checklist_data.disinfection_product:
+            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+            application_method = checklist_data.disinfection_method_text
+            candidates = []
+            for obj_id, instrs in instructions_dict.items():
+                for instr in instrs:
+                    if (instr.cleaning_method == "дезинфекция" and
+                        self._normalize_product_name(instr.product_name or "") == normalized_product):
+                        if self._filter_instructions([instr], target_enterprise, target_room_name, room_category_id):
+                            if application_method:
+                                if instr.application_method == application_method:
+                                    candidates.append(instr)
+                            else:
+                                candidates.append(instr)
+            if candidates:
+                candidates.sort(
+                    key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
+                )
+                common_disinfection_instr = candidates[0]
+                print(f"✅ Найдена общая инструкция для дезинфекции: {common_disinfection_instr.product_name}")
+
         category_object_instructions = defaultdict(list)
         all_object_instructions = []
         category_order = {}
@@ -4333,8 +4437,10 @@ class TechCardGenerator:
                     instructions = self._select_split_instructions(all_instrs, room_category_id,
                                                                    target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('split', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('split', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.support_objects:
@@ -4348,13 +4454,15 @@ class TechCardGenerator:
                             best = None
                             for instr in instrs:
                                 if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
-                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name,
+                                                                      room_category_id) <= 4:
                                         best = instr
                                         break
                             if not best:
                                 for instr in instrs:
                                     if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
-                                        if self._get_instruction_priority(instr, target_enterprise, target_room_name, room_category_id) <= 4:
+                                        if self._get_instruction_priority(instr, target_enterprise, target_room_name,
+                                                                          room_category_id) <= 4:
                                             best = instr
                                             break
                             if best:
@@ -4367,24 +4475,58 @@ class TechCardGenerator:
                         )
                     )
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 elif normalized_name in self.multi_method_objects:
                     instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
                                                                           target_enterprise, target_room_name)
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
                 else:
-                    instructions = self._select_instructions_for_room(all_instrs, room_category_id,
-                                                                      target_enterprise, target_room_name)
+                    # Обычный объект
+                    if common_disinfection_instr:
+                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        if other_instrs:
+                            app_method = checklist_data.cleaning_method_text
+                            other_selected = self._select_instructions_for_room(
+                                other_instrs, room_category_id,
+                                target_enterprise, target_room_name,
+                                application_method=app_method
+                            )
+                        else:
+                            other_selected = []
+                        instructions = other_selected + [common_disinfection_instr]
+                        instructions.sort(
+                            key=lambda x: self.cleaning_method_order.get(
+                                (x.cleaning_method or "").lower().strip(), 99
+                            )
+                        )
+                        seen = set()
+                        unique_instrs = []
+                        for instr in instructions:
+                            key = (instr.cleaning_method, instr.product_name, instr.surface_type)
+                            if key not in seen:
+                                seen.add(key)
+                                unique_instrs.append(instr)
+                        instructions = unique_instrs
+                    else:
+                        instructions = self._select_instructions_for_room(all_instrs, room_category_id,
+                                                                          target_enterprise, target_room_name)
+
                     if instructions:
-                        category_object_instructions[cat_name].append(('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append((display_name, instructions, sort_priority, normalized_name, item))
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, instructions, sort_priority, normalized_name, item))
                     else:
                         unmatched_objects.append(display_name)
             elif obj:
@@ -4514,7 +4656,8 @@ class TechCardGenerator:
                     if data["instructions"]:
                         for i, instr in enumerate(data["instructions"]):
                             cell_text = merged_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
+                            rows_data.append(
+                                ('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
                     else:
                         rows_data.append(('object', merged_name, None, data["normalized_name"], None, item))
                     group_end_row = len(rows_data) - 1
@@ -4622,81 +4765,139 @@ class TechCardGenerator:
 
                     has_db_product = db_product and self._is_valid_product_name(db_product)
 
-                    if has_db_product:
-                        final_product = db_product
-                        final_concentration = db_concentration
-                        final_extra_method = db_method
+                    is_disinfection = (cleaning_method == "дезинфекция")
+
+                    if is_disinfection:
+                        # Для дезинфекции: средство, концентрация, метод разведения – из чек-листа (если есть) или из БД
+                        # Температура и время выдержки – всегда из БД (если есть в инструкции)
+                        checklist_product = checklist_data.disinfection_product
+                        checklist_concentration = checklist_data.disinfection_concentration
+                        checklist_method_text = checklist_data.disinfection_method_text
+
+                        if checklist_product and self._is_valid_product_name(checklist_product):
+                            final_product = self._clean_text(checklist_product)
+                            final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                            final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+                            if not final_concentration and db_concentration:
+                                final_concentration = db_concentration
+                            if not final_extra_method and db_method:
+                                final_extra_method = db_method
+                        else:
+                            if has_db_product:
+                                final_product = db_product
+                                final_concentration = db_concentration if db_concentration else ""
+                                final_extra_method = db_method if db_method else ""
+                            else:
+                                final_product = ""
+                                final_concentration = ""
+                                final_extra_method = ""
+
+                        final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
+                        final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+
+                        self._set_cell_text(row.cells[1], cleaning_method)
+                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                        if final_product:
+                            self._set_product_cell(row.cells[3], final_product, bold=True)
+                        else:
+                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                        self._set_cell_text(row.cells[4], cleaning_technique)
+
+                        para = row.cells[5].paragraphs[0]
+                        for r in para.runs:
+                            para._p.remove(r._r)
+                        conc_text = final_concentration if final_concentration else "___________________"
+                        run_conc = para.add_run(conc_text)
+                        run_conc.font.name = 'Arial'
+                        run_conc.font.size = Pt(7)
+                        if final_extra_method:
+                            run_br = para.add_run()
+                            br = OxmlElement('w:br')
+                            run_br._r.append(br)
+                            run_method = para.add_run(final_extra_method)
+                            run_method.font.name = 'Arial'
+                            run_method.font.size = Pt(7)
+
+                        self._set_cell_text(row.cells[6], final_temperature)
+                        self._set_cell_text(row.cells[7], final_exposure)
+
                     else:
-                        final_product = ""
-                        final_concentration = ""
-                        final_extra_method = ""
-                        if normalized_name and normalized_name not in self.split_objects:
-                            checklist_product = None
-                            checklist_concentration = None
-                            checklist_method = None
-                            if cleaning_method == "мойка":
-                                if normalized_name in self.floor_objects:
-                                    checklist_product = checklist_data.floor_cleaning_product
-                                    checklist_concentration = checklist_data.floor_cleaning_concentration
-                                    checklist_method = checklist_data.floor_cleaning_method_text
-                                elif normalized_name in self.thermal_objects:
-                                    checklist_product = checklist_data.thermal_cleaning_product
-                                    checklist_concentration = checklist_data.thermal_cleaning_concentration
-                                    checklist_method = checklist_data.thermal_cleaning_method_text
-                                elif normalized_name in self.glass_objects:
-                                    checklist_product = checklist_data.glass_cleaning_product
-                                    checklist_concentration = checklist_data.glass_cleaning_concentration
-                                    checklist_method = checklist_data.glass_cleaning_method_text
+                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
+                        if has_db_product:
+                            final_product = db_product
+                            final_concentration = db_concentration
+                            final_extra_method = db_method
+                        else:
+                            final_product = ""
+                            final_concentration = ""
+                            final_extra_method = ""
+                            if normalized_name and normalized_name not in self.split_objects:
+                                checklist_product = None
+                                checklist_concentration = None
+                                checklist_method = None
+                                if cleaning_method == "мойка":
+                                    if normalized_name in self.floor_objects:
+                                        checklist_product = checklist_data.floor_cleaning_product
+                                        checklist_concentration = checklist_data.floor_cleaning_concentration
+                                        checklist_method = checklist_data.floor_cleaning_method_text
+                                    elif normalized_name in self.tech_objects:
+                                        checklist_product = checklist_data.tech_cleaning_product
+                                        checklist_concentration = checklist_data.tech_cleaning_concentration
+                                        checklist_method = checklist_data.tech_cleaning_method_text
+                                    elif normalized_name in self.thermal_objects:
+                                        checklist_product = checklist_data.thermal_cleaning_product
+                                        checklist_concentration = checklist_data.thermal_cleaning_concentration
+                                        checklist_method = checklist_data.thermal_cleaning_method_text
+                                    elif normalized_name in self.glass_objects:
+                                        checklist_product = checklist_data.glass_cleaning_product
+                                        checklist_concentration = checklist_data.glass_cleaning_concentration
+                                        checklist_method = checklist_data.glass_cleaning_method_text
+                                    else:
+                                        checklist_product = checklist_data.cleaning_product
+                                        checklist_concentration = checklist_data.cleaning_concentration
+                                        checklist_method = checklist_data.cleaning_method_text
                                 else:
-                                    checklist_product = checklist_data.cleaning_product
-                                    checklist_concentration = checklist_data.cleaning_concentration
-                                    checklist_method = checklist_data.cleaning_method_text
-                            elif cleaning_method == "дезинфекция":
-                                checklist_product = checklist_data.disinfection_product
-                                checklist_concentration = checklist_data.disinfection_concentration
-                                checklist_method = checklist_data.disinfection_method_text
+                                    checklist_product = None
 
-                            if checklist_product and self._is_valid_product_name(checklist_product):
-                                final_product = self._clean_text(checklist_product)
-                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                                final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+                                if checklist_product and self._is_valid_product_name(checklist_product):
+                                    final_product = self._clean_text(checklist_product)
+                                    final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                                    final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+                                else:
+                                    final_product = ""
 
-                    if not final_product:
-                        final_product = None
+                        if not final_product:
+                            final_product = None
 
-                    self._set_cell_text(row.cells[1], cleaning_method)
-                    self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                    if final_product:
-                        self._set_product_cell(row.cells[3], final_product, bold=True)
-                    else:
-                        self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                        self._set_cell_text(row.cells[1], cleaning_method)
+                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                        if final_product:
+                            self._set_product_cell(row.cells[3], final_product, bold=True)
+                        else:
+                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
 
-                    self._set_cell_text(row.cells[4], cleaning_technique)
+                        self._set_cell_text(row.cells[4], cleaning_technique)
 
-                    # Колонка 6: концентрация + метод разведения (с переносом строки)
-                    para = row.cells[5].paragraphs[0]
-                    for r in para.runs:
-                        para._p.remove(r._r)
+                        para = row.cells[5].paragraphs[0]
+                        for r in para.runs:
+                            para._p.remove(r._r)
+                        conc_text = final_concentration if final_concentration else "___________________"
+                        run_conc = para.add_run(conc_text)
+                        run_conc.font.name = 'Arial'
+                        run_conc.font.size = Pt(7)
+                        if final_extra_method:
+                            run_br = para.add_run()
+                            br = OxmlElement('w:br')
+                            run_br._r.append(br)
+                            run_method = para.add_run(final_extra_method)
+                            run_method.font.name = 'Arial'
+                            run_method.font.size = Pt(7)
 
-                    conc_text = final_concentration if final_concentration else "___________________"
-                    run_conc = para.add_run(conc_text)
-                    run_conc.font.name = 'Arial'
-                    run_conc.font.size = Pt(7)
-
-                    if final_extra_method:
-                        run_br = para.add_run()
-                        br = OxmlElement('w:br')
-                        run_br._r.append(br)
-                        run_method = para.add_run(final_extra_method)
-                        run_method.font.name = 'Arial'
-                        run_method.font.size = Pt(7)
-
-                    self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
-                    self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
+                        self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
+                        self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
                     # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
                     if normalized_name and normalized_name in self.split_objects:
-                        # Для split-объектов инвентарь берётся из инструкции
                         inv_text = self._clean_text(instr.inventory or "")
                         if inv_text and inv_text.lower() in self._inventory_colors:
                             inv_color = self._inventory_colors[inv_text.lower()]
@@ -4705,7 +4906,6 @@ class TechCardGenerator:
                         else:
                             self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
                     else:
-                        # Для обычных объектов – цвет из чек-листа
                         if checklist_data.inventory_color:
                             inv_color = self._inventory_colors.get(checklist_data.inventory_color)
                             if inv_color:
@@ -4718,18 +4918,14 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
+                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика по sort_priority) =====
                     executor_value = None
 
-                    # 1. Если в инструкции есть исполнитель – используем его (всегда)
                     if instr.executor:
                         executor_value = instr.executor
                     else:
-                        # 2. Определяем зону объекта, если есть item
                         if item and isinstance(item, ChecklistItem):
-                            markers_lower = [m.lower() for m in item.markers]
-                            name_lower = item.name.lower()
-
+                            # Определяем категорию объекта
                             is_surface = (item.category == Category.SURFACE)
                             equipment_categories = {
                                 Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
@@ -4739,14 +4935,16 @@ class TechCardGenerator:
                             }
                             is_equipment = (item.category in equipment_categories)
 
-                            if is_surface and ('выше 2 м' in name_lower or any('выше 2 м' in m for m in markers_lower)):
-                                executor_value = checklist_data.executor_high
-                            elif is_surface and ('до 2 м' in name_lower or any('до 2 м' in m for m in markers_lower)):
-                                executor_value = checklist_data.executor_low
+                            if is_surface:
+                                # Используем sort_priority для определения высоты
+                                if sort_priority == -1:
+                                    executor_value = checklist_data.executor_high
+                                elif 1 <= sort_priority <= 50:
+                                    executor_value = checklist_data.executor_low
+                                # Иначе оставляем None (не назначаем)
                             elif is_equipment:
                                 executor_value = checklist_data.executor_equipment
 
-                    # 3. Если ничего не нашлось – пустая строка
                     if not executor_value:
                         executor_value = ""
 
@@ -4754,6 +4952,7 @@ class TechCardGenerator:
 
                     self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
+                    # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА =====
                     if final_product:
                         color = product_colors.get(final_product)
                         if color:
@@ -4770,7 +4969,7 @@ class TechCardGenerator:
                     main_table.cell(row, 0).text = ""
                 self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 (как раньше) =====
+        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 =====
         for group_start, group_end in merge_info_columns:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -4783,7 +4982,6 @@ class TechCardGenerator:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
             if actual_end > actual_start:
-                # Собираем для каждой строки ключ группировки (maintenance_type, subgroup)
                 keys = []
                 for row_idx in range(actual_start, actual_end + 1):
                     row_data_index = row_idx - start_row
@@ -4801,10 +4999,8 @@ class TechCardGenerator:
 
                 unique_keys = set([k for k in keys if k is not None])
                 if len(unique_keys) <= 1:
-                    # Все строки одного ключа – объединяем колонку 2 целиком
                     self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
                 else:
-                    # Разбиваем на поддиапазоны по смене ключа
                     current_key = None
                     sub_start = actual_start
                     for row_idx in range(actual_start, actual_end + 1):
@@ -4830,7 +5026,7 @@ class TechCardGenerator:
                         if sub_start <= actual_end:
                             self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
 
-        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ (не меняется) ===
+        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ ===
         for group_start, group_end in surface_merge_info:
             actual_start = start_row + group_start
             actual_end = start_row + group_end
@@ -5573,6 +5769,240 @@ if __name__ == "__main__":
     main()
 
 ================================================================================
+ФАЙЛ: migrate_config.py
+================================================================================
+
+#!/usr/bin/env python3
+"""
+Миграция конфигурационных словарей из кода в БД.
+Заполняет таблицы object_properties и object_groups данными из старых словарей.
+Запускается один раз после обновления моделей.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from db.database import SessionLocal
+from db.models import Object, ObjectProperty, ObjectGroup
+
+# Переносимые словари (актуальные на момент миграции)
+SUPPORT_MAINTENANCE_OBJECTS = {
+    "прибор кисл теста", "бисквиторезки", "блендеры",
+    "вакуумные роторные шприцы", "водяные бани", "депозитор волюметрический",
+    "дозатор для геля (пульверизатор)", "дозаторы для жидкостей", "дробилки",
+    "измельчители", "картофелечистки", "машина для резки конд изделий",
+    "металлодетектор", "миксеры планетарные", "минифилы (дозаторы крема)",
+    "овощерезки", "овощечистки", "отсадочные машины", "пневматические распылители",
+    "прессы для теста", "просеиватели мука", "просеиватели сахар",
+    "протирочные машины", "распылители для желе и сиропов",
+    "рентгеновские системы контроля", "слайсера", "солодоварки",
+    "тарталетницы", "термощупы", "тестоделители", "тестомесы",
+    "тестоокруглители", "тестораскатки", "ультразвуковые нарезки",
+    "ферментаторы", "шприц-дозатор начинки", "весы напольные",
+    "весы настольные", "производственные столы д", "производственные столы н",
+}
+
+SPLIT_SURFACE_OBJECTS = {
+    "холод шкафы", "камеры мороз", "камеры шок замор",
+    "морозильный ларь", "холод столы", "пароконвектоматы",
+    "ледогенератор", "ферментаторы", "солодоварки",
+    "пмм купольная", "пмм туннельная", "таромоечная машина",
+    "печи ротационные", "печи подовые", "багетницы",
+    "аппарат для приготовления фрикаделек"
+}
+
+MULTI_METHOD_OBJECTS = {
+    "вешала", "внутрицеховая тара (вёдра ящики)", "гастроёмкости", "дежи", "доски",
+    "изотермические контейнеры (bigbox)", "инвентарь", "корзины для расстойки теста",
+    "крючки", "листы для выпечки а", "листы для выпечки н", "листы от шпилек",
+    "мусаты", "ножи", "оборотная тара", "отсадочные мешки", "передвижные ёмкости",
+    "посуда", "расстоечные термочехлы", "секачи", "силапеновые коврики",
+    "съёмные детали оборудования а", "съёмные детали оборудования н", "тележки",
+    "тележки подкатные", "формы для выпечки а", "формы для выпечки н",
+    "формы для выпечки с", "шампура", "шпильки", "ёмкости для перетаривания",
+    "ёмкости для сыпучих продуктов"
+}
+
+FLOOR_OBJECTS = {"пол", "трапы"}
+GLASS_OBJECTS = {"зеркала", "окна внешние", "окна внутрицеховые", "монитор"}
+THERMAL_OBJECTS = {
+    "плиты индук", "плиты элек", "плиты газ",
+    "варочные котлы", "сковороды", "фритюры", "грили",
+    "пароконвектоматы", "печи подовые", "печи ротационные",
+    "расстоечные шкафы", "вафельницы"
+}
+
+GROUP_HEADERS = {
+    frozenset({"весы напольные", "весы настольные"}): "Санитарная обработка средств измерений",
+    frozenset({
+        "прибор кисл теста", "бисквиторезки", "блендеры", "вакуумные роторные шприцы",
+        "водяные бани", "депозитор волюметрический", "дозатор для геля (пульверизатор)",
+        "дозаторы для жидкостей", "дробилки", "измельчители", "картофелечистки",
+        "машина для резки конд изделий", "металлодетектор", "миксеры планетарные",
+        "минифилы (дозаторы крема)", "овощерезки", "овощечистки", "отсадочные машины",
+        "пневматические распылители", "прессы для теста", "просеиватели мука",
+        "просеиватели сахар", "протирочные машины", "распылители для желе и сиропов",
+        "рентгеновские системы контроля", "слайсера", "солодоварки", "тарталетницы",
+        "термощупы", "тестоделители", "тестомесы", "тестоокруглители", "тестораскатки",
+        "ультразвуковые нарезки", "ферментаторы", "шприц-дозатор начинки",
+        "пмм купольная", "пмм туннельная", "таромоечная машина",
+        "стиральные машины", "сушильные машины", "холодильная витрина", "ледогенератор",
+        "морозильный ларь", "холод шкафы", "холод столы"
+    }): "Санитарная обработка технологического оборудования",
+    frozenset({
+        "производственные столы д", "производственные столы н"}): "Санитарная обработка рабочих поверхностей",
+    frozenset({
+        "авд", "ведра", "ветошь", "мопы", "поломоечная машина", "пылесосы", "сгоны",
+        "тележки уборочные", "щётки"
+    }): "Санитарная обработка уборочного инвентаря и т.д.",
+    frozenset({
+        "вешала", "внутрицеховая тара (вёдра ящики)", "гастроёмкости", "дежи", "доски",
+        "изотермические контейнеры (bigbox)", "инвентарь", "корзины для расстойки теста",
+        "крючки", "листы для выпечки а", "листы для выпечки н", "листы от шпилек",
+        "мусаты", "ножи", "оборотная тара", "отсадочные мешки", "передвижные ёмкости",
+        "посуда", "расстоечные термочехлы", "секачи", "силапеновые коврики",
+        "съёмные детали оборудования а", "съёмные детали оборудования н", "тележки",
+        "тележки подкатные", "формы для выпечки а", "формы для выпечки н",
+        "формы для выпечки с", "шампура", "шпильки", "ёмкости для перетаривания",
+        "ёмкости для сыпучих продуктов"
+    }): "Санитарная обработка производственного инвентаря, посуды",
+}
+
+
+def migrate():
+    session = SessionLocal()
+    try:
+        all_objects = session.query(Object).all()
+        obj_map = {obj.normalized_name: obj for obj in all_objects}
+
+        # ---------- 1. Сбор объединённых свойств объектов ----------
+        print("🔹 Сбор свойств объектов...")
+        # Структура: { object_id: { 'is_split': bool, 'is_multi': bool, 'support': bool, 'special': str } }
+        obj_props = {}
+
+        for name in SUPPORT_MAINTENANCE_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['has_support_maintenance'] = True
+
+        for name in SPLIT_SURFACE_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['is_split'] = True
+
+        for name in MULTI_METHOD_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['is_multi_method'] = True
+
+        for name in FLOOR_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['special_product_type'] = 'floor'
+
+        for name in GLASS_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['special_product_type'] = 'glass'
+
+        for name in THERMAL_OBJECTS:
+            obj = obj_map.get(name)
+            if obj:
+                props = obj_props.setdefault(obj.id, {
+                    'is_split': False,
+                    'is_multi_method': False,
+                    'has_support_maintenance': False,
+                    'special_product_type': None
+                })
+                props['special_product_type'] = 'thermal'
+
+        print(f"   Уникальных объектов со свойствами: {len(obj_props)}")
+
+        # ---------- 2. Применение свойств в БД (создание/обновление) ----------
+        print("🔹 Сохранение свойств...")
+        created = 0
+        updated = 0
+        for obj_id, props in obj_props.items():
+            obj_prop = session.query(ObjectProperty).filter_by(object_id=obj_id).first()
+            if obj_prop:
+                obj_prop.is_split = props['is_split']
+                obj_prop.is_multi_method = props['is_multi_method']
+                obj_prop.has_support_maintenance = props['has_support_maintenance']
+                obj_prop.special_product_type = props['special_product_type']
+                updated += 1
+            else:
+                session.add(ObjectProperty(
+                    object_id=obj_id,
+                    is_split=props['is_split'],
+                    is_multi_method=props['is_multi_method'],
+                    has_support_maintenance=props['has_support_maintenance'],
+                    special_product_type=props['special_product_type']
+                ))
+                created += 1
+        print(f"   Создано: {created}, обновлено: {updated}")
+
+        # ---------- 3. Группы объектов ----------
+        print("🔹 Перенос групп объектов...")
+        group_count = 0
+        for group_set, header in GROUP_HEADERS.items():
+            for name in group_set:
+                obj = obj_map.get(name)
+                if obj:
+                    existing = session.query(ObjectGroup).filter_by(
+                        group_name=header, object_id=obj.id).first()
+                    if not existing:
+                        session.add(ObjectGroup(group_name=header, object_id=obj.id))
+                        group_count += 1
+        print(f"   Создано {group_count} записей групп")
+
+        session.commit()
+        print("✅ Миграция успешно завершена!")
+
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка миграции: {e}")
+        raise
+    finally:
+        session.close()
+
+
+if __name__ == "__main__":
+    print("🚀 Запуск миграции конфигурации в БД")
+    migrate()
+
+================================================================================
 ФАЙЛ: parser\__init__.py
 ================================================================================
 
@@ -5649,6 +6079,11 @@ class ChecklistData:
     floor_cleaning_product: Optional[str] = None
     floor_cleaning_concentration: Optional[str] = None
     floor_cleaning_method_text: Optional[str] = None
+
+    # ДОБАВЛЕНО: группа для технологического оборудования (4-я группа)
+    tech_cleaning_product: Optional[str] = None
+    tech_cleaning_concentration: Optional[str] = None
+    tech_cleaning_method_text: Optional[str] = None
 
     thermal_cleaning_product: Optional[str] = None
     thermal_cleaning_concentration: Optional[str] = None
@@ -5929,7 +6364,7 @@ def merge_adjacent_cells(row) -> List[str]:
 
 Добавлено: парсинг категории помещения из выпадающего списка (dropDownList).
 Добавлено: парсинг моющих и дезинфицирующих средств из раздела "Дополнительная информация".
-Добавлено: парсинг специализированных моющих средств (пол/трапы, тепловое оборудование, стекло/зеркала/мониторы).
+Добавлено: парсинг специализированных моющих средств (пол/трапы, технологическое оборудование, тепловое оборудование, стекло/зеркала/мониторы).
 Добавлено: парсинг цвета инвентаря из выпадающего списка.
 Доработано: категории помещений и цвета инвентаря загружаются из БД (справочники).
 Добавлено: парсинг зональных исполнителей (поверхности выше 2 м, до 2 м, оборудование).
@@ -6308,7 +6743,7 @@ class SDTChecklistParser:
     def _parse_additional_info(self, root, data: ChecklistData):
         """
         Извлекает моющие и дезинфицирующие средства, цвет инвентаря.
-        Строгий порядок: 1 цвет + 15 средств (5 групп по 3).
+        Строгий порядок: 1 цвет + 18 средств (6 групп по 3).
         В каждой тройке: [0] – средство, [1] – концентрация, [2] – метод.
         Цвет инвентаря проверяется по БД (таблица inventory_colors).
         """
@@ -6349,19 +6784,20 @@ class SDTChecklistParser:
         if inventory_color is None:
             print("  🎨 Цвет инвентаря не указан (будет 'промаркированный')")
 
-        # --- Средства (15 элементов) ---
+        # --- Средства (18 элементов = 6 групп по 3) ---
         dropdown_values = all_values[1:] if len(all_values) > 1 else []
-        while len(dropdown_values) < 15:
+        while len(dropdown_values) < 18:
             dropdown_values.append(None)
-        dropdown_values = dropdown_values[:15]
+        dropdown_values = dropdown_values[:18]
 
         # Группы с правильными именами полей
         groups = [
-            ('cleaning', 0, False),  # без _cleaning
-            ('disinfection', 3, False),
-            ('floor', 6, True),
-            ('thermal', 9, True),
-            ('glass', 12, True)
+            ('cleaning', 0, False),      # общее моющее
+            ('disinfection', 3, False),  # дезинфицирующее
+            ('floor', 6, True),          # пол/трапы
+            ('tech', 9, True),           # ДОБАВЛЕНО: технологическое оборудование
+            ('thermal', 12, True),       # тепловое оборудование (было 9, стало 12)
+            ('glass', 15, True)          # стекло/зеркала (было 12, стало 15)
         ]
 
         for group_name, start_idx, use_cleaning_suffix in groups:
@@ -6404,6 +6840,12 @@ class SDTChecklistParser:
             print(f"     Способ разведения: {data.floor_cleaning_method_text or 'не указан'}")
         else:
             print("  🧽 Моющее для пола/трапов не выбрано")
+        if data.tech_cleaning_product:  # ДОБАВЛЕНО
+            print(f"  ⚙️ Моющее для технологического оборудования: {data.tech_cleaning_product}")
+            print(f"     Концентрация: {data.tech_cleaning_concentration or 'не указана'}")
+            print(f"     Способ разведения: {data.tech_cleaning_method_text or 'не указан'}")
+        else:
+            print("  ⚙️ Моющее для технологического оборудования не выбрано")
         if data.thermal_cleaning_product:
             print(f"  🔥 Моющее для теплового оборудования: {data.thermal_cleaning_product}")
             print(f"     Концентрация: {data.thermal_cleaning_concentration or 'не указана'}")
@@ -6528,6 +6970,8 @@ class SDTChecklistParser:
             print(f"   Общее дезинфицирующее средство: {data.disinfection_product}")
         if data.floor_cleaning_product:
             print(f"   Моющее для пола/трапов: {data.floor_cleaning_product}")
+        if data.tech_cleaning_product:  # ДОБАВЛЕНО
+            print(f"   Моющее для технологического оборудования: {data.tech_cleaning_product}")
         if data.thermal_cleaning_product:
             print(f"   Моющее для теплового оборудования: {data.thermal_cleaning_product}")
         if data.glass_cleaning_product:
@@ -8158,6 +8602,11 @@ createApp({
             propertyImportFile: null,
             groupImportFile: null,
             methodImportFile: null,
+
+            // ===== ДОБАВЛЕНО: КОПИРОВАНИЕ ИНСТРУКЦИЙ =====
+            showCopyModal: false,
+            copySourceId: null,
+            copyTargetId: null,
         }
     },
     computed: {
@@ -8823,6 +9272,11 @@ createApp({
             this.methodForm = { method_name: '', sort_order: 99 };
             this.showMethodForm = true;
         },
+        // ===== ДОБАВЛЕНО: метод для вызова из модалки инструкций =====
+        openMethodFormFromInstruction() {
+            // Открываем форму метода как обычно
+            this.openMethodForm();
+        },
         editMethod(m) {
             this.editingMethod = m;
             this.methodForm = { method_name: m.method_name, sort_order: m.sort_order };
@@ -9057,6 +9511,53 @@ createApp({
                 }
             } catch (e) {
                 Toastify({ text: '❌ Ошибка импорта методов уборки', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+            }
+        },
+
+        // ================= ДОБАВЛЕНО: КОПИРОВАНИЕ ИНСТРУКЦИЙ =================
+        openCopyModal() {
+            // Объекты уже загружены в this.objects, просто открываем модалку
+            this.copySourceId = null;
+            this.copyTargetId = null;
+            this.showCopyModal = true;
+        },
+
+        async doCopy() {
+            if (!this.copySourceId || !this.copyTargetId) {
+                Toastify({ text: '⚠️ Выберите оба объекта', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+            if (this.copySourceId === this.copyTargetId) {
+                Toastify({ text: '⚠️ Источник и получатель не могут совпадать', duration: 3000, gravity: 'bottom', position: 'right' }).showToast();
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/instructions/copy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_id: this.copySourceId,
+                        target_id: this.copyTargetId
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    Toastify({
+                        text: `✅ Скопировано инструкций: ${data.copied_instructions}, свойства: ${data.property_copied ? 'скопированы' : 'удалены'}`,
+                        duration: 5000,
+                        gravity: 'bottom',
+                        position: 'right',
+                        style: { background: '#00A650' }
+                    }).showToast();
+                    this.showCopyModal = false;
+                    // Обновляем список объектов (перезагрузка данных)
+                    await this.loadObjects();
+                } else {
+                    Toastify({ text: '❌ ' + (data.error || 'Ошибка копирования'), duration: 5000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
+                }
+            } catch (e) {
+                Toastify({ text: '❌ Ошибка при копировании', duration: 3000, gravity: 'bottom', position: 'right', style: { background: '#DC2626' } }).showToast();
             }
         }
     }
@@ -9408,6 +9909,20 @@ createApp({
             border-radius: 4px;
             border: 1px solid #ccc;
         }
+
+        /* ===== ИСПРАВЛЕНИЕ: единая высота 35px для полей в модалке инструкций ===== */
+        .instructions-modal .form-control-sm,
+        .instructions-modal .form-select-sm,
+        .instructions-modal .btn-sm {
+            height: 35px;
+            line-height: 1.5;
+        }
+        .instructions-modal .btn-sm {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         @media (max-width: 768px) {
             .admin-layout {
                 flex-direction: column;
@@ -9493,6 +10008,10 @@ createApp({
                         <div>
                             <button class="btn-ct-outline btn-sm me-2 text-danger" @click="clearDatabase">
                                 <i class="bi bi-eraser me-1"></i>Очистить БД
+                            </button>
+                            <!-- Новая кнопка: Копировать инструкции -->
+                            <button class="btn-ct-outline btn-sm me-2" @click="openCopyModal">
+                                <i class="bi bi-clipboard-plus me-1"></i>Копировать инструкции
                             </button>
                             <button class="btn-ct-primary btn-sm" @click="openAddModal"><i class="bi bi-plus-circle me-1"></i>Добавить</button>
                         </div>
@@ -9695,6 +10214,7 @@ createApp({
                                             <select class="form-select-ct form-select-sm" v-model="prop.special_product_type" @change="updateProperty(prop)">
                                                 <option value="">–</option>
                                                 <option value="floor">Пол/трапы</option>
+                                                <option value="tech">Технологическое оборудование</option>
                                                 <option value="thermal">Тепловое</option>
                                                 <option value="glass">Стекло/зеркала</option>
                                             </select>
@@ -9942,9 +10462,10 @@ createApp({
             </div>
         </div>
 
-        <!-- МОДАЛКА: Инструкции (зафиксирован заголовок) -->
-        <div class="modal-overlay" v-if="showInstructionsModal">
-            <div class="modal-content-ct" style="max-width:800px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- ===== МОДАЛКА: Инструкции (с единой высотой 35px) ===== -->
+        <div class="modal-overlay instructions-modal" v-if="showInstructionsModal">
+            <div class="modal-content-ct" style="max-width:900px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+                <!-- Заголовок -->
                 <div class="modal-header-ct">
                     <span>Инструкции: <span v-text="editObject?.display_name"></span></span>
                     <div>
@@ -9952,70 +10473,78 @@ createApp({
                         <button class="btn-ct-outline btn-sm" @click="showInstructionsModal = false">✕</button>
                     </div>
                 </div>
-                <div class="modal-body-ct" style="flex:1; overflow-y:auto;">
-                    <div v-if="currentInstructions.length === 0" class="text-muted text-center py-3">Нет инструкций. Нажмите «Добавить».</div>
 
-                    <div v-for="(instr, idx) in currentInstructions" :key="idx" class="instruction-row" :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB'}">
+                <!-- Тело модалки -->
+                <div class="modal-body-ct" style="flex:1; overflow-y:auto; padding: 16px 20px;">
+                    <div v-if="currentInstructions.length === 0" class="text-muted text-center py-4">
+                        Нет инструкций. Нажмите «Добавить».
+                    </div>
+
+                    <!-- Блок одной инструкции -->
+                    <div v-for="(instr, idx) in currentInstructions" :key="idx"
+                         class="instruction-row mb-3 p-3"
+                         :style="{border: instr.isNew ? '2px dashed #00A650' : '1px solid #E5E7EB', borderRadius: '8px', background: '#FAFBFC'}">
+
+                        <!-- Шапка: статус + кнопки -->
                         <div class="d-flex justify-content-between align-items-center mb-2">
-                            <span class="badge-ct" :class="instr.isNew ? 'badge-success' : 'badge-info'" v-text="instr.isNew ? 'Новая' : 'ID: ' + instr.id + (instr.room_category_name ? ' | ' + instr.room_category_name : '')"></span>
+                            <span class="badge-ct" :class="instr.isNew ? 'badge-success' : 'badge-info'"
+                                  v-text="instr.isNew ? 'Новая' : 'ID: ' + instr.id + (instr.room_category_name ? ' | ' + instr.room_category_name : '')">
+                            </span>
                             <div>
                                 <button class="btn-ct-outline btn-sm me-1" @click="duplicateInstruction(instr, idx)" title="Дублировать"><i class="bi bi-files"></i></button>
                                 <button class="btn-ct-outline btn-sm text-danger" @click="deleteInstruction(instr, idx)"><i class="bi bi-trash"></i></button>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-3">
-                                <label class="form-label-ct">Уровень обработки</label>
+
+                        <!-- Строка 1: Уровень обработки | Подуровень (группа) | Категория помещения -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Уровень обработки</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.maintenance_type">
                                     <option value="основная">основная</option>
                                     <option value="поддерживающая">поддерживающая</option>
                                     <option value="генеральная">генеральная</option>
                                 </select>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Категория помещения</label>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Подуровень (группа)</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.subgroup" placeholder="например, основная1">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Категория помещения</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.room_category_id">
                                     <option :value="null">Общая (для всех)</option>
                                     <option v-for="rc in roomCategories" :value="rc.id" v-text="rc.name"></option>
                                 </select>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Подуровень (группа)</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.subgroup" placeholder="например, основная1">
-                            </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Предприятие</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.enterprise" placeholder="Название предприятия">
-                            </div>
                         </div>
 
-                        <!-- ===== ДОБАВЛЕНО: Конкретное помещение ===== -->
-                        <div class="row">
-                            <div class="col-12">
-                                <label class="form-label-ct">Конкретное помещение</label>
+                        <!-- Строка 2: Предприятие | Конкретное помещение -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Предприятие</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.enterprise" placeholder="Название предприятия">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Конкретное помещение</label>
                                 <input class="form-control-ct form-control-sm" v-model="instr.room_name" placeholder="например, ванная, туалет, цех №1">
                             </div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-3">
-                                <label class="form-label-ct">Способ обработки</label>
-                                <select class="form-select-ct form-select-sm" v-model="instr.cleaning_method">
-                                    <option value="">-- выберите --</option>
-                                    <option value="прочистка">прочистка</option>
-                                    <option value="очистка">очистка</option>
-                                    <option value="очистка (обеспыливание поверхностей)">очистка (обеспыливание поверхностей)</option>
-                                    <option value="удаление маркировки">удаление маркировки</option>
-                                    <option value="мойка">мойка</option>
-                                    <option value="мойка жаропрочного стекла">мойка жаропрочного стекла</option>
-                                    <option value="ополаскивание">ополаскивание</option>
-                                    <option value="стерилизация">стерилизация</option>
-                                    <option value="дезинфекция">дезинфекция</option>
-                                    <option value="машинная стирка">машинная стирка</option>
-                                </select>
+                        <!-- Строка 3: Способ обработки | Тип поверхности (ИЗМЕНЕНО) -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Способ обработки</label>
+                                <div class="d-flex gap-1">
+                                    <select class="form-select-ct form-select-sm flex-grow-1" v-model="instr.cleaning_method">
+                                        <option value="">-- выберите --</option>
+                                        <option v-for="m in cleaningMethods" :key="m.id" :value="m.method_name" v-text="m.method_name"></option>
+                                    </select>
+                                    <button class="btn-ct-outline btn-sm flex-shrink-0" @click="openMethodFormFromInstruction" title="Добавить новый способ обработки"><i class="bi bi-plus-lg"></i></button>
+                                </div>
                             </div>
-                            <div class="col-3">
-                                <label class="form-label-ct">Тип поверхности</label>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Тип поверхности</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.surface_type">
                                     <option :value="null">Общая (для всех)</option>
                                     <option value="внешняя">Внешняя</option>
@@ -10023,56 +10552,119 @@ createApp({
                                     <option value="очистка от мин. отложений">Очистка от мин. отложений</option>
                                 </select>
                             </div>
-                            <div class="col-6"></div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-6">
-                                <label class="form-label-ct">Средство</label>
+                        <!-- Строка 4: Средство | Метод уборки -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Средство</label>
                                 <select class="form-select-ct form-select-sm" v-model="instr.product_name">
                                     <option value="">-- выберите --</option>
                                     <option v-for="p in products" :value="p.name" v-text="p.name"></option>
                                 </select>
                             </div>
-                            <!-- ===== ИЗМЕНЕНО: Метод уборки – выпадающий список + кнопка добавления ===== -->
-                            <div class="col-6">
-                                <label class="form-label-ct">Метод уборки</label>
+                            <div class="col-md-6">
+                                <label class="form-label-ct mb-0">Метод уборки</label>
                                 <div class="d-flex gap-1">
-                                    <select class="form-select-ct form-select-sm" v-model="instr.cleaning_technique">
+                                    <select class="form-select-ct form-select-sm flex-grow-1" v-model="instr.cleaning_technique">
                                         <option value="">-- выберите --</option>
                                         <option v-for="t in cleaningTechniques" :key="t.id" :value="t.name" v-text="t.name"></option>
                                     </select>
-                                    <button class="btn-ct-outline btn-sm" @click="openCleaningTechniqueFormFromInstruction" title="Добавить новый метод"><i class="bi bi-plus-lg"></i></button>
+                                    <button class="btn-ct-outline btn-sm flex-shrink-0" @click="openCleaningTechniqueFormFromInstruction" title="Добавить новый метод"><i class="bi bi-plus-lg"></i></button>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="row">
-                            <div class="col-4">
-                                <label class="form-label-ct">Концентрация</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.concentration">
+                        <!-- Строка 5: Концентрация | Метод разведения | Температура -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Концентрация</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.concentration" placeholder="например, 1-2%">
                             </div>
-                            <div class="col-4">
-                                <label class="form-label-ct">Метод разведения</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.application_method">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Метод разведения</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.application_method" placeholder="способ разведения">
                             </div>
-                            <div class="col-4">
-                                <label class="form-label-ct">Температура</label>
-                                <input class="form-control-ct form-control-sm" v-model="instr.temperature">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Температура</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.temperature" placeholder="например, не ниже 40°C">
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-4"><label class="form-label-ct">Время выдержки</label><input class="form-control-ct form-control-sm" v-model="instr.exposure_time"></div>
-                            <div class="col-4"><label class="form-label-ct">Инвентарь</label><input class="form-control-ct form-control-sm" v-model="instr.inventory"></div>
-                            <div class="col-4"><label class="form-label-ct">Периодичность</label><input class="form-control-ct form-control-sm" v-model="instr.frequency"></div>
+
+                        <!-- Строка 6: Время выдержки | Инвентарь | Периодичность -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Время выдержки</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.exposure_time" placeholder="например, 20 мин">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Инвентарь</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.inventory" placeholder="например, промаркированный">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Периодичность</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.frequency" placeholder="например, 1 раз в смену">
+                            </div>
                         </div>
-                        <div class="row">
-                            <div class="col-4"><label class="form-label-ct">Исполнитель</label><input class="form-control-ct form-control-sm" v-model="instr.executor"></div>
-                            <div class="col-4"><label class="form-label-ct">Метод контроля</label><input class="form-control-ct form-control-sm" v-model="instr.control_method"></div>
-                            <div class="col-4"><label class="form-label-ct">№ инструкции</label><input class="form-control-ct form-control-sm" v-model="instr.instruction_number"></div>
+
+                        <!-- Строка 7: Исполнитель | Метод контроля | № инструкции -->
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Исполнитель</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.executor" placeholder="должность или ФИО">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">Метод контроля</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.control_method" placeholder="способ проверки">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label-ct mb-0">№ инструкции</label>
+                                <input class="form-control-ct form-control-sm" v-model="instr.instruction_number" placeholder="номер документа">
+                            </div>
                         </div>
-                        <button class="btn-ct-primary btn-sm mt-2" @click="saveInstruction(instr)"><i class="bi bi-check-lg me-1"></i><span v-text="instr.isNew ? 'Сохранить' : 'Обновить'"></span></button>
+
+                        <!-- Кнопка сохранения -->
+                        <button class="btn-ct-primary btn-sm mt-2" @click="saveInstruction(instr)">
+                            <i class="bi bi-check-lg me-1"></i>
+                            <span v-text="instr.isNew ? 'Сохранить' : 'Обновить'"></span>
+                        </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== МОДАЛКА: Копирование инструкций ===== -->
+        <div class="modal-overlay" v-if="showCopyModal">
+            <div class="modal-content-ct" style="max-width:500px;">
+                <div class="modal-header-ct">
+                    <span>Копирование инструкций</span>
+                    <button class="btn-ct-outline btn-sm" @click="showCopyModal = false">✕</button>
+                </div>
+                <div class="modal-body-ct">
+                    <div class="mb-3">
+                        <label class="form-label-ct">Объект-источник (с которого копировать)</label>
+                        <select class="form-select-ct" v-model="copySourceId">
+                            <option value="">-- выберите --</option>
+                            <option v-for="obj in objects" :key="obj.id" :value="obj.id" v-text="obj.display_name + ' (ID: ' + obj.id + ')'"></option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label-ct">Объект-получатель (на который копировать)</label>
+                        <select class="form-select-ct" v-model="copyTargetId">
+                            <option value="">-- выберите --</option>
+                            <option v-for="obj in objects" :key="obj.id" :value="obj.id" v-text="obj.display_name + ' (ID: ' + obj.id + ')'"></option>
+                        </select>
+                    </div>
+                    <div class="text-muted" style="font-size:0.85rem;">
+                        Будут скопированы все инструкции и свойства объекта-источника.
+                        Дубликаты инструкций будут добавлены без проверки.
+                    </div>
+                </div>
+                <div class="modal-footer-ct">
+                    <button class="btn-ct-outline btn-sm" @click="showCopyModal = false">Отмена</button>
+                    <button class="btn-ct-primary btn-sm" @click="doCopy" :disabled="!copySourceId || !copyTargetId">
+                        <i class="bi bi-clipboard-plus me-1"></i>Копировать
+                    </button>
                 </div>
             </div>
         </div>
@@ -10269,6 +10861,7 @@ createApp({
                     <select class="form-select-ct" v-model="propertyForm.special_product_type">
                         <option value="">–</option>
                         <option value="floor">Пол/трапы</option>
+                        <option value="tech">Технологическое оборудование</option>
                         <option value="thermal">Тепловое</option>
                         <option value="glass">Стекло/зеркала</option>
                     </select>
