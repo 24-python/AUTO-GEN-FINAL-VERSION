@@ -554,6 +554,13 @@ class SDTChecklistParser:
                         data.executor_equipment = val
                         print(f"  👤 Исполнитель для оборудования: {val}")
 
+        print(f"🔍 Парсинг исполнителей, найдено параграфов: {len(paragraphs)}")
+        for p in paragraphs:
+            text = p.xpath('string()', namespaces=self.NAMESPACES).strip()
+            if text:
+                print(f"   Текст: {text[:100]}")
+
+
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
         data = ChecklistData(file_path=str(file_path))
