@@ -1258,16 +1258,15 @@ class TechCardGenerator:
 
                         self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика по sort_priority) =====
+                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
                         executor_value = None
 
                         # 1. Если в инструкции БД есть исполнитель – используем его (приоритет)
                         if instr.executor:
                             executor_value = instr.executor
                         else:
-                            # 2. Определяем по зоне
+                            # 2. Определяем по зоне для всех, кроме оборудования
                             if item and isinstance(item, ChecklistItem):
-                                is_surface = (item.category == Category.SURFACE)
                                 equipment_categories = {
                                     Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
                                     Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
@@ -1276,13 +1275,13 @@ class TechCardGenerator:
                                 }
                                 is_equipment = (item.category in equipment_categories)
 
-                                if is_surface:
+                                if not is_equipment:
                                     if sort_priority == -1:
                                         executor_value = checklist_data.executor_high
                                     elif 1 <= sort_priority <= 50:
                                         executor_value = checklist_data.executor_low
                                     # иначе не назначаем
-                                elif is_equipment:
+                                else:
                                     executor_value = checklist_data.executor_equipment
 
                         if not executor_value:
