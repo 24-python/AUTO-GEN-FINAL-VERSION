@@ -1083,23 +1083,6 @@ class TechCardGenerator:
                         cleaning_method = self._clean_text(instr.cleaning_method or "")
                         cleaning_technique = self._clean_text(instr.cleaning_technique or "")
 
-                        # ---------- НОВАЯ ЛОГИКА: подстановка метода уборки для дезинфекции из справочника ----------
-                        if cleaning_method == "дезинфекция" and checklist_data.disinfection_method_text:
-                            method_text = checklist_data.disinfection_method_text.lower()
-                            target_method_name = None
-                            if "promax" in method_text:
-                                target_method_name = "протирание"
-                            elif "protwin" in method_text:
-                                target_method_name = "орошение"
-                            elif "пенная станция" in method_text:
-                                target_method_name = "запенивание"
-
-                            if target_method_name:
-                                found = self._cleaning_techniques.get(target_method_name.lower())
-                                if found:
-                                    cleaning_technique = found
-                                # else оставляем значение из БД
-
                         # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
                         db_product = self._clean_text(instr.product_name or "")
                         db_concentration = self._clean_text(instr.concentration or "")
@@ -1113,26 +1096,39 @@ class TechCardGenerator:
                             # Название средства – всегда из БД
                             final_product = db_product if db_product else ""
 
-                            # Проверяем, совпадает ли средство в инструкции с выбранным в чек-листе
-                            checklist_product = checklist_data.disinfection_product
-                            product_matches = False
-                            if checklist_product and db_product:
-                                if self._normalize_product_name(checklist_product) == self._normalize_product_name(db_product):
-                                    product_matches = True
-                            # Если в чек-листе средство не указано – считаем, что совпадения нет
-                            # Если совпадает – концентрация и метод из чек-листа (если есть), иначе из БД
-                            if product_matches:
-                                checklist_concentration = checklist_data.disinfection_concentration
-                                checklist_method_text = checklist_data.disinfection_method_text
-                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else db_concentration if db_concentration else ""
-                                final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else db_method if db_method else ""
+                            # Концентрация и метод разведения: приоритет БД
+                            if db_concentration:
+                                final_concentration = db_concentration
                             else:
-                                # Берём строго из БД
-                                final_concentration = db_concentration if db_concentration else ""
-                                final_extra_method = db_method if db_method else ""
+                                checklist_concentration = checklist_data.disinfection_concentration
+                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
 
+                            if db_method:
+                                final_extra_method = db_method
+                            else:
+                                checklist_method_text = checklist_data.disinfection_method_text
+                                final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+
+                            # Температура и время выдержки – всегда из БД
                             final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
                             final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+
+                            # Метод уборки – определяем по application_method (из БД или чек-листа)
+                            source_application_method = db_method if db_method else checklist_data.disinfection_method_text
+                            if source_application_method:
+                                method_text = source_application_method.lower()
+                                target_method_name = None
+                                if "promax" in method_text:
+                                    target_method_name = "протирание"
+                                elif "protwin" in method_text:
+                                    target_method_name = "орошение"
+                                elif "пенная станция" in method_text:
+                                    target_method_name = "запенивание"
+                                if target_method_name:
+                                    found = self._cleaning_techniques.get(target_method_name.lower())
+                                    if found:
+                                        cleaning_technique = found
+                                    # else оставляем значение из БД
 
                             self._set_cell_text(row.cells[1], cleaning_method)
                             self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
@@ -1161,7 +1157,7 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[7], final_exposure)
 
                         else:
-                            # ===== МОЙКА И ДРУГИЕ МЕТОДЫ (исправлено: убрано условие для split) =====
+                            # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
                             if has_db_product:
                                 final_product = db_product
                                 final_concentration = db_concentration
@@ -1235,16 +1231,17 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                             self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
-                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
-                        if normalized_name and normalized_name in self.split_objects:
-                            inv_text = self._clean_text(instr.inventory or "")
-                            if inv_text and inv_text.lower() in self._inventory_colors:
-                                inv_color = self._inventory_colors[inv_text.lower()]
-                                self._set_cell_text(row.cells[8], inv_text, bold=True)
-                                self._set_cell_background(row.cells[8], inv_color)
-                            else:
-                                self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
+                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ (унифицированная логика для всех объектов) =====
+                        # 1. Проверяем инструкцию БД
+                        inv_text = self._clean_text(instr.inventory or "")
+                        is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
+
+                        if is_valid_color:
+                            inv_color = self._inventory_colors[inv_text.lower()]
+                            self._set_cell_text(row.cells[8], inv_text, bold=True)
+                            self._set_cell_background(row.cells[8], inv_color)
                         else:
+                            # 2. Fallback на чек-лист
                             if checklist_data.inventory_color:
                                 inv_color = self._inventory_colors.get(checklist_data.inventory_color)
                                 if inv_color:
@@ -1257,16 +1254,15 @@ class TechCardGenerator:
 
                         self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика по sort_priority) =====
+                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
                         executor_value = None
 
                         # 1. Если в инструкции БД есть исполнитель – используем его (приоритет)
                         if instr.executor:
                             executor_value = instr.executor
                         else:
-                            # 2. Определяем по зоне
+                            # 2. Определяем по зоне для всех, кроме оборудования
                             if item and isinstance(item, ChecklistItem):
-                                is_surface = (item.category == Category.SURFACE)
                                 equipment_categories = {
                                     Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
                                     Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
@@ -1275,13 +1271,13 @@ class TechCardGenerator:
                                 }
                                 is_equipment = (item.category in equipment_categories)
 
-                                if is_surface:
+                                if not is_equipment:
                                     if sort_priority == -1:
                                         executor_value = checklist_data.executor_high
                                     elif 1 <= sort_priority <= 50:
                                         executor_value = checklist_data.executor_low
                                     # иначе не назначаем
-                                elif is_equipment:
+                                else:
                                     executor_value = checklist_data.executor_equipment
 
                         if not executor_value:
