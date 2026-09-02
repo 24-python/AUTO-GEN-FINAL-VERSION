@@ -1,6 +1,6 @@
 ================================================================================
 ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
-Дата экспорта: 2026-08-31 08:32:39
+Дата экспорта: 2026-09-02 16:29:06
 ================================================================================
 
 📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
@@ -36,7 +36,6 @@
    templates\admin.html
    templates\history.html
    templates\index.html
-   test_generator.py
 
 
 📁 СТРУКТУРА ПРОЕКТА (✅ - выбранные файлы)
@@ -48,6 +47,8 @@ AUTO-GEN-FINAL-VERSION/
 ├──    checklists/
 
 ├──    Context.py (17.3 KB)
+├──    converted/
+
 ├── ✅ db/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
@@ -65,7 +66,7 @@ AUTO-GEN-FINAL-VERSION/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
-│   ├── ✅ docx_generator.py (63.8 KB)
+│   ├── ✅ docx_generator.py (76.6 KB)
 │   └── ✅ mapper.py (3.0 KB)
 ├── ✅ import_csv_to_db.py (33.0 KB)
 ├── ✅ migrate_config.py (13.5 KB)
@@ -76,7 +77,7 @@ AUTO-GEN-FINAL-VERSION/
 │   ├── ✅ models.py (4.3 KB)
 │   ├── ✅ parse_products.py (7.6 KB)
 │   ├── ✅ utils.py (0.7 KB)
-│   └── ✅ xml_parser.py (33.4 KB)
+│   └── ✅ xml_parser.py (33.7 KB)
 ├── ✅ requirements.txt (0.5 KB)
 ├── ✅ static/
 │   ├── ✅ css/
@@ -91,12 +92,12 @@ AUTO-GEN-FINAL-VERSION/
 ├──    tech_card_templates/
 
 ├──    tech_cards/
-│   ├──    generation_history.json (35.6 KB)
+│   ├──    generation_history.json (43.9 KB)
 ├── ✅ templates/
 │   ├── ✅ admin.html (76.4 KB)
 │   ├── ✅ history.html (7.6 KB)
 │   └── ✅ index.html (13.2 KB)
-├── ✅ test_generator.py (10.4 KB)
+├──    test_generator.py (10.4 KB)
 ├──    uploads/
 
 ├──    Контекст.txt (0.0 KB)
@@ -3804,6 +3805,7 @@ from generator.mapper import (
 
 # generator/docx_generator.py
 
+import traceback
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -3812,7 +3814,7 @@ from pathlib import Path
 from parser.models import ChecklistData, ChecklistItem, Category
 from db.models import (Instruction, Category as DBCategory, Object as DBObject,
                        RoomCategory, Product, ObjectProperty, ObjectGroup,
-                       CleaningMethodOrder, InventoryColor)
+                       CleaningMethodOrder, InventoryColor, CleaningTechnique)
 from db.database import SessionLocal
 from collections import defaultdict
 import re
@@ -3834,13 +3836,24 @@ class TechCardGenerator:
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
         self._config_loaded = False
         self._inventory_colors = {}
+        self._cleaning_techniques = {}  # {normalized_name: original_name}
         self._load_inventory_colors()
+        self._load_cleaning_techniques()
 
     def _load_inventory_colors(self):
         session = SessionLocal()
         try:
             colors = session.query(InventoryColor).all()
             self._inventory_colors = {c.name: c.hex_color for c in colors}
+        finally:
+            session.close()
+
+    def _load_cleaning_techniques(self):
+        """Загружает справочник методов уборки (нормализованное имя -> оригинальное)."""
+        session = SessionLocal()
+        try:
+            techniques = session.query(CleaningTechnique).all()
+            self._cleaning_techniques = {t.name.lower(): t.name for t in techniques}
         finally:
             session.close()
 
@@ -4077,10 +4090,12 @@ class TechCardGenerator:
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
                                       enterprise: str = None, room_name: str = None,
                                       product_name: str = None, application_method: str = None) -> list:
+        print(f"   -> _select_instructions_for_room: вход {len(all_instructions)} инструкций")
         if not all_instructions:
             return []
 
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
+        print(f"   -> после фильтрации по enterprise/room/room_category: {len(filtered)}")
         if not filtered:
             return []
 
@@ -4088,23 +4103,35 @@ class TechCardGenerator:
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
             if normalized_product:
+                before = len(filtered)
                 filtered = [
                     instr for instr in filtered
                     if instr.cleaning_method != "дезинфекция"
                     or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
+                print(f"   -> после фильтрации по product_name='{product_name}': {len(filtered)} (было {before})")
+            else:
+                print(f"   -> product_name невалидный: '{product_name}', фильтр не применяется")
+        else:
+            print(f"   -> product_name не передан, фильтр не применяется")
 
         # Фильтр по application_method (если передан)
         if application_method:
+            before = len(filtered)
             filtered = [
                 instr for instr in filtered
                 if not instr.application_method or instr.application_method == application_method
             ]
+            print(f"   -> после фильтрации по application_method='{application_method}': {len(filtered)} (было {before})")
+        else:
+            print(f"   -> application_method не передан, фильтр не применяется")
 
         by_method = defaultdict(list)
         for instr in filtered:
             method = instr.cleaning_method or ""
             by_method[method].append(instr)
+
+        print(f"   -> по методам: {dict((m, len(lst)) for m, lst in by_method.items())}")
 
         selected = []
         for method, instrs in by_method.items():
@@ -4122,11 +4149,15 @@ class TechCardGenerator:
                     break
             if best:
                 selected.append(best)
+                print(f"   -> для метода '{method}' выбран ID={best.id} (maintenance_type={best.maintenance_type})")
+            else:
+                print(f"   -> для метода '{method}' не найдена подходящая инструкция")
         selected.sort(
             key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
             )
         )
+        print(f"   -> итого выбрано: {len(selected)} инструкций")
         return selected
 
     def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int,
@@ -4173,15 +4204,33 @@ class TechCardGenerator:
                     break
         return result
 
+    # ===== ИЗМЕНЕНО: добавлен fallback для дезинфекции =====
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
-                                   enterprise: str = None, room_name: str = None) -> dict:
+                                   enterprise: str = None, room_name: str = None,
+                                   product_name: str = None, application_method: str = None) -> dict:
         result = {}
         surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
         for sf in surface_types:
             sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
             if not sf_instrs:
                 continue
-            selected = self._select_instructions_for_room(sf_instrs, room_category_id, enterprise, room_name)
+            selected = self._select_instructions_for_room(
+                sf_instrs, room_category_id, enterprise, room_name,
+                product_name=product_name, application_method=application_method
+            )
+            has_disinfection = any(instr.cleaning_method == "дезинфекция" for instr in selected)
+            if not has_disinfection and product_name:
+                disinfection_instrs = [i for i in sf_instrs if i.cleaning_method == "дезинфекция"]
+                if disinfection_instrs:
+                    disinfection_selected = self._select_instructions_for_room(
+                        disinfection_instrs, room_category_id, enterprise, room_name,
+                        product_name=None, application_method=None
+                    )
+                    if disinfection_selected:
+                        selected.append(disinfection_selected[0])
+                        selected.sort(key=lambda x: self.cleaning_method_order.get(
+                            (x.cleaning_method or "").lower().strip(), 99
+                        ))
             if selected:
                 result[sf] = selected
         return result
@@ -4345,171 +4394,245 @@ class TechCardGenerator:
 
     def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1,
                  enterprise_products_path: str = None, progress_callback=None) -> str:
-        doc = Document(self.template_path)
-        main_table = doc.tables[1]
+        try:
+            # Проверка шаблона
+            if not self.template_path.exists():
+                raise FileNotFoundError(f"Шаблон не найден: {self.template_path}")
 
-        room_cell = main_table.cell(1, 0)
-        if "Помещение:" in room_cell.text:
-            room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
-            for para in room_cell.paragraphs:
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run.font.size = Pt(9)
-                    run.font.bold = True
+            doc = Document(self.template_path)
+            if len(doc.tables) < 2:
+                raise ValueError("В шаблоне должно быть как минимум 2 таблицы")
+            main_table = doc.tables[1]
 
-        warning_row = main_table.rows[3]
-        if checklist_data.room_category not in ["производственное", "складское"]:
-            self._clear_cell_text(warning_row.cells[0])
+            room_cell = main_table.cell(1, 0)
+            if "Помещение:" in room_cell.text:
+                room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
+                for para in room_cell.paragraphs:
+                    for run in para.runs:
+                        run.font.name = 'Arial'
+                        run.font.size = Pt(9)
+                        run.font.bold = True
 
-        session = SessionLocal()
-        self._load_config(session)
+            warning_row = main_table.rows[3]
+            if checklist_data.room_category not in ["производственное", "складское"]:
+                self._clear_cell_text(warning_row.cells[0])
 
-        category_priority = self._get_category_priority(session)
-        product_colors = self._load_product_colors(session)
+            session = SessionLocal()
+            self._load_config(session)
 
-        target_enterprise = checklist_data.enterprise
-        target_room_name = checklist_data.room_name
+            category_priority = self._get_category_priority(session)
+            product_colors = self._load_product_colors(session)
 
-        room_category_id = None
-        if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
-            room_category_id = self._get_room_category_id(session, checklist_data.room_category)
-            if room_category_id:
-                print(f"🔍 Категория помещения: {checklist_data.room_category} (id={room_category_id})")
+            target_enterprise = checklist_data.enterprise
+            target_room_name = checklist_data.room_name
 
-        if enterprise_products_path and Path(enterprise_products_path).exists():
-            print(f"📦 Парсинг средств предприятия: {Path(enterprise_products_path).name}")
+            room_category_id = None
+            if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
+                room_category_id = self._get_room_category_id(session, checklist_data.room_category)
+                if room_category_id:
+                    print(f"🔍 Категория помещения: {checklist_data.room_category} (id={room_category_id})")
 
-        checked_items = checklist_data.get_checked_items()
-        all_names = [item.name for item in checked_items]
+            if enterprise_products_path and Path(enterprise_products_path).exists():
+                print(f"📦 Парсинг средств предприятия: {Path(enterprise_products_path).name}")
 
-        db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
-        objects_dict = {obj.normalized_name: obj for obj in db_objects}
+            checked_items = checklist_data.get_checked_items()
+            all_names = [item.name for item in checked_items]
 
-        object_ids = [obj.id for obj in db_objects]
-        db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
+            db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
+            objects_dict = {obj.normalized_name: obj for obj in db_objects}
 
-        instructions_dict = defaultdict(list)
-        for instr in db_instructions:
-            instructions_dict[instr.object_id].append(instr)
+            object_ids = [obj.id for obj in db_objects]
+            db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
 
-        # ===== 1. Находим общую инструкцию дезинфекции с учётом product_name и application_method =====
-        common_disinfection_instr = None
-        if checklist_data.disinfection_product:
-            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-            application_method = checklist_data.disinfection_method_text
-            candidates = []
-            for obj_id, instrs in instructions_dict.items():
-                for instr in instrs:
-                    if (instr.cleaning_method == "дезинфекция" and
-                        self._normalize_product_name(instr.product_name or "") == normalized_product):
-                        if self._filter_instructions([instr], target_enterprise, target_room_name, room_category_id):
-                            if application_method:
-                                if instr.application_method == application_method:
-                                    candidates.append(instr)
-                            else:
-                                candidates.append(instr)
-            if candidates:
-                candidates.sort(
-                    key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
-                )
-                common_disinfection_instr = candidates[0]
-                print(f"✅ Найдена общая инструкция для дезинфекции: {common_disinfection_instr.product_name}")
+            instructions_dict = defaultdict(list)
+            for instr in db_instructions:
+                instructions_dict[instr.object_id].append(instr)
 
-        category_object_instructions = defaultdict(list)
-        all_object_instructions = []
-        category_order = {}
-        unmatched_objects = []
+            # Удалён блок поиска общей инструкции дезинфекции
 
-        for item in checked_items:
-            obj = objects_dict.get(item.name)
-            cat_name = item.category.value
-            priority = category_priority.get(cat_name, 999)
-            category_order[cat_name] = priority
+            category_object_instructions = defaultdict(list)
+            all_object_instructions = []
+            category_order = {}
+            unmatched_objects = []
+            unmatched_reasons = {}
 
-            display_name = obj.display_name if obj else item.name
-            sort_priority = obj.sort_priority if obj else 999
-            normalized_name = item.name
+            for item in checked_items:
+                obj = objects_dict.get(item.name)
+                cat_name = item.category.value
+                priority = category_priority.get(cat_name, 999)
+                category_order[cat_name] = priority
 
-            if obj and obj.id in instructions_dict:
-                all_instrs = instructions_dict[obj.id]
+                display_name = obj.display_name if obj else item.name
+                sort_priority = obj.sort_priority if obj else 999
+                normalized_name = item.name
 
-                if normalized_name in self.split_objects:
-                    instructions = self._select_split_instructions(all_instrs, room_category_id,
-                                                                   target_enterprise, target_room_name)
-                    if instructions:
-                        category_object_instructions[cat_name].append(
-                            ('split', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append(
-                            (display_name, instructions, sort_priority, normalized_name, item))
-                    else:
+                # ===== ОТЛАДКА: вывод информации о инструкциях =====
+                print(f"\n🔍 Обработка объекта: {normalized_name}")
+                print(f"   sort_priority = {sort_priority}")
+                if obj:
+                    print(f"   ID объекта в БД: {obj.id}")
+                    all_instrs = instructions_dict.get(obj.id, [])
+                    print(f"   Всего инструкций в БД: {len(all_instrs)}")
+                else:
+                    print(f"   ⚠️ Объект не найден в БД")
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "Объект не найден в БД"
+                    continue
+
+                if obj and obj.id in instructions_dict:
+                    all_instrs = instructions_dict[obj.id]
+
+                    # Фильтруем инструкции по параметрам чек-листа для диагностики
+                    filtered_instrs = self._filter_instructions(all_instrs, target_enterprise, target_room_name, room_category_id)
+                    print(f"   После фильтрации по enterprise/room/room_category: {len(filtered_instrs)}")
+
+                    if len(filtered_instrs) == 0:
+                        print(f"   ⚠️ Нет инструкций после фильтрации. Проверьте параметры:")
+                        print(f"      - room_category_id: {room_category_id}")
+                        print(f"      - enterprise: {target_enterprise}")
+                        print(f"      - room_name: {target_room_name}")
+                        if all_instrs:
+                            print("   Примеры инструкций из БД (первые 3):")
+                            for idx, instr in enumerate(all_instrs[:3]):
+                                print(f"      {idx+1}. ID={instr.id}, cat_id={instr.room_category_id}, ent={instr.enterprise}, room={instr.room_name}, method={instr.cleaning_method}")
+                        else:
+                            print("   В БД нет инструкций для этого объекта.")
                         unmatched_objects.append(display_name)
-                elif normalized_name in self.support_objects:
-                    by_method = defaultdict(list)
-                    for instr in all_instrs:
-                        method = instr.cleaning_method or ""
-                        by_method[method].append(instr)
-                    instructions = []
-                    for method, instrs in by_method.items():
-                        for maint_level in ["основная", "поддерживающая"]:
-                            best = None
-                            for instr in instrs:
-                                if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
-                                    if self._get_instruction_priority(instr, target_enterprise, target_room_name,
-                                                                      room_category_id) <= 4:
-                                        best = instr
-                                        break
-                            if not best:
+                        unmatched_reasons[display_name] = "Нет инструкций после фильтрации"
+                        continue
+
+                    # Далее идёт обычная логика выбора инструкций (без изменений)
+                    if normalized_name in self.split_objects:
+                        print(f"   -> объект в split_objects")
+                        disinfection_product = checklist_data.disinfection_product
+                        disinfection_method = checklist_data.disinfection_method_text
+                        instructions = self._select_split_instructions(
+                            all_instrs, room_category_id,
+                            target_enterprise, target_room_name,
+                            product_name=disinfection_product,
+                            application_method=disinfection_method
+                        )
+                        if instructions:
+                            category_object_instructions[cat_name].append(
+                                ('split', display_name, instructions, normalized_name, item))
+                            all_object_instructions.append(
+                                (display_name, instructions, sort_priority, normalized_name, item))
+                        else:
+                            print(f"   ❌ split-инструкции не выбраны")
+                            unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "split-инструкции не выбраны"
+                    elif normalized_name in self.support_objects:
+                        print(f"   -> объект в support_objects")
+                        by_method = defaultdict(list)
+                        for instr in all_instrs:
+                            method = instr.cleaning_method or ""
+                            by_method[method].append(instr)
+                        instructions = []
+                        for method, instrs in by_method.items():
+                            for maint_level in ["основная", "поддерживающая"]:
+                                best = None
                                 for instr in instrs:
-                                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
+                                    if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id == room_category_id:
                                         if self._get_instruction_priority(instr, target_enterprise, target_room_name,
                                                                           room_category_id) <= 4:
                                             best = instr
                                             break
-                            if best:
-                                instructions.append(best)
-                    instructions.sort(
-                        key=lambda x: (
-                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
-                            self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
-                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                                if not best:
+                                    for instr in instrs:
+                                        if (instr.maintenance_type or "").lower() == maint_level and instr.room_category_id is None:
+                                            if self._get_instruction_priority(instr, target_enterprise, target_room_name,
+                                                                              room_category_id) <= 4:
+                                                best = instr
+                                                break
+                                if best:
+                                    instructions.append(best)
+                        instructions.sort(
+                            key=lambda x: (
+                                self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
+                                self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
+                                self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                            )
                         )
-                    )
-                    if instructions:
-                        category_object_instructions[cat_name].append(
-                            ('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append(
-                            (display_name, instructions, sort_priority, normalized_name, item))
+                        if instructions:
+                            category_object_instructions[cat_name].append(
+                                ('normal', display_name, instructions, normalized_name, item))
+                            all_object_instructions.append(
+                                (display_name, instructions, sort_priority, normalized_name, item))
+                        else:
+                            print(f"   ❌ support-инструкции не выбраны")
+                            unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "support-инструкции не выбраны"
+                    elif normalized_name in self.multi_method_objects:
+                        print(f"   -> объект в multi_method_objects")
+                        instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
+                                                                              target_enterprise, target_room_name)
+                        if instructions:
+                            category_object_instructions[cat_name].append(
+                                ('normal', display_name, instructions, normalized_name, item))
+                            all_object_instructions.append(
+                                (display_name, instructions, sort_priority, normalized_name, item))
+                        else:
+                            print(f"   ❌ multi-method инструкции не выбраны")
+                            unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "multi-method инструкции не выбраны"
                     else:
-                        unmatched_objects.append(display_name)
-                elif normalized_name in self.multi_method_objects:
-                    instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
-                                                                          target_enterprise, target_room_name)
-                    if instructions:
-                        category_object_instructions[cat_name].append(
-                            ('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append(
-                            (display_name, instructions, sort_priority, normalized_name, item))
-                    else:
-                        unmatched_objects.append(display_name)
-                else:
-                    # Обычный объект
-                    if common_disinfection_instr:
+                        # Обычный объект – индивидуальный выбор дезинфекции
+                        disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
                         other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        print(f"   -> обычный объект, disinfection_instrs={len(disinfection_instrs)}, other_instrs={len(other_instrs)}")
+
+                        # Выбираем инструкцию дезинфекции для этого объекта
+                        selected_disinfection = None
+                        if checklist_data.disinfection_product:
+                            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+                            filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
+                            candidates = [instr for instr in filtered_disinfection
+                                          if self._normalize_product_name(instr.product_name or "") == normalized_product]
+                            print(f"   кандидатов для дезинфекции с нужным product_name: {len(candidates)}")
+                            if candidates:
+                                candidates.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
+                                selected_disinfection = candidates[0]
+                                print(f"   выбрана дезинфекция ID={selected_disinfection.id}")
+                            else:
+                                if filtered_disinfection:
+                                    filtered_disinfection.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
+                                    selected_disinfection = filtered_disinfection[0]
+                                    print(f"   выбрана дезинфекция по приоритету ID={selected_disinfection.id} (без совпадения product_name)")
+                                else:
+                                    print("   нет дезинфекционных инструкций после фильтрации")
+                        else:
+                            if disinfection_instrs:
+                                disinfection_selected_list = self._select_instructions_for_room(
+                                    disinfection_instrs, room_category_id,
+                                    target_enterprise, target_room_name,
+                                    product_name=None, application_method=None
+                                )
+                                if disinfection_selected_list:
+                                    selected_disinfection = disinfection_selected_list[0]
+                                    print(f"   выбрана дезинфекция по стандартной логике ID={selected_disinfection.id}")
+                                else:
+                                    print("   дезинфекция не выбрана (нет подходящих)")
+                            else:
+                                print("   нет инструкций дезинфекции")
+
+                        # Выбираем инструкции для остальных методов (без application_method)
                         if other_instrs:
-                            app_method = checklist_data.cleaning_method_text
                             other_selected = self._select_instructions_for_room(
                                 other_instrs, room_category_id,
                                 target_enterprise, target_room_name,
-                                application_method=app_method
+                                application_method=None
                             )
+                            print(f"   выбрано других методов: {len(other_selected)}")
                         else:
                             other_selected = []
-                        instructions = other_selected + [common_disinfection_instr]
-                        instructions.sort(
-                            key=lambda x: self.cleaning_method_order.get(
-                                (x.cleaning_method or "").lower().strip(), 99
-                            )
-                        )
+                            print("   нет других методов")
+
+                        instructions = other_selected
+                        if selected_disinfection:
+                            instructions.append(selected_disinfection)
+
+                        instructions.sort(key=lambda x: self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99))
+
                         seen = set()
                         unique_instrs = []
                         for instr in instructions:
@@ -4518,39 +4641,83 @@ class TechCardGenerator:
                                 seen.add(key)
                                 unique_instrs.append(instr)
                         instructions = unique_instrs
-                    else:
-                        instructions = self._select_instructions_for_room(all_instrs, room_category_id,
-                                                                          target_enterprise, target_room_name)
 
-                    if instructions:
-                        category_object_instructions[cat_name].append(
-                            ('normal', display_name, instructions, normalized_name, item))
-                        all_object_instructions.append(
-                            (display_name, instructions, sort_priority, normalized_name, item))
-                    else:
-                        unmatched_objects.append(display_name)
-            elif obj:
-                unmatched_objects.append(display_name)
-            else:
-                unmatched_objects.append(item.name)
+                        if instructions:
+                            print(f"   итоговый набор инструкций: {[f'{i.cleaning_method} (ID={i.id})' for i in instructions]}")
+                            category_object_instructions[cat_name].append(
+                                ('normal', display_name, instructions, normalized_name, item))
+                            all_object_instructions.append(
+                                (display_name, instructions, sort_priority, normalized_name, item))
+                        else:
+                            print(f"   ❌ инструкции не выбраны для {normalized_name}")
+                            unmatched_objects.append(display_name)
+                            unmatched_reasons[display_name] = "инструкции не выбраны (пустой набор)"
+                else:
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "объект не найден в instructions_dict"
 
-        session.close()
+            session.close()
 
-        rows_data = []
-        merge_info_object = []
-        merge_info_columns = []
-        surface_merge_info = []
+            if unmatched_objects:
+                print(f"\n⚠️ Объекты без инструкций: {unmatched_objects}")
+                print("Причины:")
+                for obj in unmatched_objects:
+                    print(f"   - {obj}: {unmatched_reasons.get(obj, 'неизвестно')}")
 
-        if mode == 1:
-            sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
-            for cat_name in sorted_categories:
-                items = category_object_instructions[cat_name]
-                if not items:
-                    continue
-                items.sort(key=lambda x: x[1])
-                rows_data.append(('category', cat_name, None))
-                for typ, display_name, instructions, normalized_name, item in items:
-                    if typ == 'split':
+            rows_data = []
+            merge_info_object = []
+            merge_info_columns = []
+            surface_merge_info = []
+
+            if mode == 1:
+                sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
+                for cat_name in sorted_categories:
+                    items = category_object_instructions[cat_name]
+                    if not items:
+                        continue
+                    items.sort(key=lambda x: x[1])
+                    rows_data.append(('category', cat_name, None))
+                    for typ, display_name, instructions, normalized_name, item in items:
+                        if typ == 'split':
+                            surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                            first_surface = True
+                            group_start_row = len(rows_data)
+                            for sf in surfaces:
+                                if sf not in instructions:
+                                    continue
+                                sf_instrs = instructions[sf]
+                                sf_label = {"внешняя": "Внешние поверхности",
+                                            "внутренняя": "Внутренние поверхности",
+                                            "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                                if first_surface:
+                                    rows_data.append(('section_header', sf_label, display_name))
+                                    first_surface = False
+                                else:
+                                    rows_data.append(('section_header', sf_label, None))
+                                surface_start = len(rows_data)
+                                for instr in sf_instrs:
+                                    rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item, sort_priority))
+                                surface_end = len(rows_data) - 1
+                                if surface_end >= surface_start:
+                                    surface_merge_info.append((surface_start, surface_end))
+                            group_end_row = len(rows_data) - 1
+                            merge_info_object.append((group_start_row, group_end_row))
+                        else:
+                            group_start_row = len(rows_data)
+                            if instructions:
+                                for i, instr in enumerate(instructions):
+                                    cell_text = display_name if i == 0 else ""
+                                    rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item, sort_priority))
+                            else:
+                                rows_data.append(('object', display_name, None, normalized_name, None, item, sort_priority))
+                            group_end_row = len(rows_data) - 1
+                            if group_end_row > group_start_row:
+                                merge_info_object.append((group_start_row, group_end_row))
+                                merge_info_columns.append((group_start_row, group_end_row))
+            elif mode == 2:
+                all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+                for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
+                    if isinstance(instructions, dict):
                         surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
                         first_surface = True
                         group_start_row = len(rows_data)
@@ -4568,7 +4735,7 @@ class TechCardGenerator:
                                 rows_data.append(('section_header', sf_label, None))
                             surface_start = len(rows_data)
                             for instr in sf_instrs:
-                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item))
+                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item, sort_priority))
                             surface_end = len(rows_data) - 1
                             if surface_end >= surface_start:
                                 surface_merge_info.append((surface_start, surface_end))
@@ -4579,467 +4746,447 @@ class TechCardGenerator:
                         if instructions:
                             for i, instr in enumerate(instructions):
                                 cell_text = display_name if i == 0 else ""
-                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item))
+                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item, sort_priority))
                         else:
-                            rows_data.append(('object', display_name, None, normalized_name, None, item))
+                            rows_data.append(('object', display_name, None, normalized_name, None, item, sort_priority))
                         group_end_row = len(rows_data) - 1
                         if group_end_row > group_start_row:
                             merge_info_object.append((group_start_row, group_end_row))
                             merge_info_columns.append((group_start_row, group_end_row))
-        elif mode == 2:
-            all_object_instructions.sort(key=lambda x: (x[2], x[0]))
-            for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
-                if isinstance(instructions, dict):
-                    surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
-                    first_surface = True
-                    group_start_row = len(rows_data)
-                    for sf in surfaces:
-                        if sf not in instructions:
-                            continue
-                        sf_instrs = instructions[sf]
-                        sf_label = {"внешняя": "Внешние поверхности",
-                                    "внутренняя": "Внутренние поверхности",
-                                    "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
-                        if first_surface:
-                            rows_data.append(('section_header', sf_label, display_name))
-                            first_surface = False
+            elif mode == 3:
+                inserted_headers = set()
+                priority_groups = defaultdict(list)
+                for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
+                    priority_groups[sort_priority].append((display_name, instructions, normalized_name, item))
+
+                for priority in sorted(priority_groups.keys()):
+                    items = priority_groups[priority]
+                    normal_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if not isinstance(instr, dict)]
+                    split_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if isinstance(instr, dict)]
+
+                    groups = {}
+                    for dn, instr, nn, it in normal_items:
+                        signature = self._get_instruction_signature(instr)
+                        if signature not in groups:
+                            groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn, "item": it}
+                        groups[signature]["names"].append(dn)
+
+                    for sig, data in groups.items():
+                        current_nn = data["normalized_name"]
+                        item = data["item"]
+                        for group_set, header_text in self.group_headers.items():
+                            if current_nn in group_set and group_set not in inserted_headers:
+                                rows_data.append(('group_header', header_text, None))
+                                inserted_headers.add(group_set)
+                                break
+                        merged_name = ", ".join(sorted(data["names"]))
+                        group_start_row = len(rows_data)
+                        if data["instructions"]:
+                            for i, instr in enumerate(data["instructions"]):
+                                cell_text = merged_name if i == 0 else ""
+                                rows_data.append(
+                                    ('object', cell_text, instr, data["normalized_name"], instr.subgroup, item, priority))
                         else:
-                            rows_data.append(('section_header', sf_label, None))
-                        surface_start = len(rows_data)
-                        for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item))
-                        surface_end = len(rows_data) - 1
-                        if surface_end >= surface_start:
-                            surface_merge_info.append((surface_start, surface_end))
-                    group_end_row = len(rows_data) - 1
-                    merge_info_object.append((group_start_row, group_end_row))
-                else:
-                    group_start_row = len(rows_data)
-                    if instructions:
-                        for i, instr in enumerate(instructions):
-                            cell_text = display_name if i == 0 else ""
-                            rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item))
-                    else:
-                        rows_data.append(('object', display_name, None, normalized_name, None, item))
-                    group_end_row = len(rows_data) - 1
-                    if group_end_row > group_start_row:
+                            rows_data.append(('object', merged_name, None, data["normalized_name"], None, item, priority))
+                        group_end_row = len(rows_data) - 1
+                        if group_end_row > group_start_row:
+                            merge_info_object.append((group_start_row, group_end_row))
+                            merge_info_columns.append((group_start_row, group_end_row))
+
+                    for dn, split_instr, nn, it in split_items:
+                        for group_set, header_text in self.group_headers.items():
+                            if nn in group_set and group_set not in inserted_headers:
+                                rows_data.append(('group_header', header_text, None))
+                                inserted_headers.add(group_set)
+                                break
+                        surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                        first_surface = True
+                        group_start_row = len(rows_data)
+                        for sf in surfaces:
+                            if sf not in split_instr:
+                                continue
+                            sf_instrs = split_instr[sf]
+                            sf_label = {"внешняя": "Внешние поверхности",
+                                        "внутренняя": "Внутренние поверхности",
+                                        "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                            if first_surface:
+                                rows_data.append(('section_header', sf_label, dn))
+                                first_surface = False
+                            else:
+                                rows_data.append(('section_header', sf_label, None))
+                            surface_start = len(rows_data)
+                            for instr in sf_instrs:
+                                rows_data.append(('object', "", instr, nn, instr.subgroup, it, priority))
+                            surface_end = len(rows_data) - 1
+                            if surface_end >= surface_start:
+                                surface_merge_info.append((surface_start, surface_end))
+                        group_end_row = len(rows_data) - 1
                         merge_info_object.append((group_start_row, group_end_row))
-                        merge_info_columns.append((group_start_row, group_end_row))
-        elif mode == 3:
-            inserted_headers = set()
-            priority_groups = defaultdict(list)
-            for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
-                priority_groups[sort_priority].append((display_name, instructions, normalized_name, item))
 
-            for priority in sorted(priority_groups.keys()):
-                items = priority_groups[priority]
-                normal_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if not isinstance(instr, dict)]
-                split_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if isinstance(instr, dict)]
+            if unmatched_objects:
+                rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
+                for name in sorted(unmatched_objects):
+                    rows_data.append(('object', name, None, None, None, None, None))
 
-                groups = {}
-                for dn, instr, nn, it in normal_items:
-                    signature = self._get_instruction_signature(instr)
-                    if signature not in groups:
-                        groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn, "item": it}
-                    groups[signature]["names"].append(dn)
-
-                for sig, data in groups.items():
-                    current_nn = data["normalized_name"]
-                    item = data["item"]
-                    for group_set, header_text in self.group_headers.items():
-                        if current_nn in group_set and group_set not in inserted_headers:
-                            rows_data.append(('group_header', header_text, None))
-                            inserted_headers.add(group_set)
-                            break
-                    merged_name = ", ".join(sorted(data["names"]))
-                    group_start_row = len(rows_data)
-                    if data["instructions"]:
-                        for i, instr in enumerate(data["instructions"]):
-                            cell_text = merged_name if i == 0 else ""
-                            rows_data.append(
-                                ('object', cell_text, instr, data["normalized_name"], instr.subgroup, item))
-                    else:
-                        rows_data.append(('object', merged_name, None, data["normalized_name"], None, item))
-                    group_end_row = len(rows_data) - 1
-                    if group_end_row > group_start_row:
-                        merge_info_object.append((group_start_row, group_end_row))
-                        merge_info_columns.append((group_start_row, group_end_row))
-
-                for dn, split_instr, nn, item in split_items:
-                    for group_set, header_text in self.group_headers.items():
-                        if nn in group_set and group_set not in inserted_headers:
-                            rows_data.append(('group_header', header_text, None))
-                            inserted_headers.add(group_set)
-                            break
-                    surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
-                    first_surface = True
-                    group_start_row = len(rows_data)
-                    for sf in surfaces:
-                        if sf not in split_instr:
-                            continue
-                        sf_instrs = split_instr[sf]
-                        sf_label = {"внешняя": "Внешние поверхности",
-                                    "внутренняя": "Внутренние поверхности",
-                                    "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
-                        if first_surface:
-                            rows_data.append(('section_header', sf_label, dn))
-                            first_surface = False
-                        else:
-                            rows_data.append(('section_header', sf_label, None))
-                        surface_start = len(rows_data)
-                        for instr in sf_instrs:
-                            rows_data.append(('object', "", instr, nn, instr.subgroup, item))
-                        surface_end = len(rows_data) - 1
-                        if surface_end >= surface_start:
-                            surface_merge_info.append((surface_start, surface_end))
-                    group_end_row = len(rows_data) - 1
-                    merge_info_object.append((group_start_row, group_end_row))
-
-        if unmatched_objects:
-            rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
-            for name in sorted(unmatched_objects):
-                rows_data.append(('object', name, None, None, None, None))
-
-        # === ОЧИСТКА ТАБЛИЦЫ ===
-        start_row = 8
-        tbl = main_table._tbl
-        ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-        tr_elements = tbl.findall('.//w:tr', namespaces=ns)
-        while len(tr_elements) > start_row + 1:
-            tbl.remove(tr_elements[-1])
+            # === ОЧИСТКА ТАБЛИЦЫ ===
+            start_row = 8
+            tbl = main_table._tbl
+            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
             tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+            while len(tr_elements) > start_row + 1:
+                tbl.remove(tr_elements[-1])
+                tr_elements = tbl.findall('.//w:tr', namespaces=ns)
 
-        # === ДОБАВЛЕНИЕ СТРОК С КЛОНИРОВАНИЕМ ===
-        for _ in range(len(rows_data)):
-            main_table.add_row()
-            self._clone_row_formatting(main_table, start_row, len(main_table.rows) - 1)
+            # === ДОБАВЛЕНИЕ СТРОК С КЛОНИРОВАНИЕМ ===
+            for _ in range(len(rows_data)):
+                main_table.add_row()
+                self._clone_row_formatting(main_table, start_row, len(main_table.rows) - 1)
 
-        row_to_remove = main_table.rows[start_row]
-        tbl.remove(row_to_remove._tr)
+            row_to_remove = main_table.rows[start_row]
+            tbl.remove(row_to_remove._tr)
 
-        # === ЗАПОЛНЕНИЕ С НОВОЙ ЛОГИКОЙ ПОДСТАНОВКИ ===
-        current_row = start_row
-        for row_info in rows_data:
-            row = main_table.rows[current_row]
+            # === ЗАПОЛНЕНИЕ С НОВОЙ ЛОГИКОЙ ПОДСТАНОВКИ ===
+            current_row = start_row
+            for row_info in rows_data:
+                row = main_table.rows[current_row]
 
-            if row_info[0] == 'category':
-                self._merge_cells_horizontal(row, 0, 11)
-                self._set_cell_text(row.cells[0], row_info[1])
-                if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
-                    row.cells[0].paragraphs[0].runs[0].font.bold = True
+                if row_info[0] == 'category':
+                    self._merge_cells_horizontal(row, 0, 11)
+                    self._set_cell_text(row.cells[0], row_info[1])
+                    if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
+                        row.cells[0].paragraphs[0].runs[0].font.bold = True
 
-            elif row_info[0] == 'group_header':
-                self._merge_cells_horizontal(row, 0, 11)
-                self._set_cell_text(row.cells[0], row_info[1], bold=True)
-                self._set_cell_background(row.cells[0], "D2D2D2")
-                for para in row.cells[0].paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(7)
+                elif row_info[0] == 'group_header':
+                    self._merge_cells_horizontal(row, 0, 11)
+                    self._set_cell_text(row.cells[0], row_info[1], bold=True)
+                    self._set_cell_background(row.cells[0], "D2D2D2")
+                    for para in row.cells[0].paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
 
-            elif row_info[0] == 'section_header':
-                if len(row_info) > 2 and row_info[2] is not None:
-                    self._set_cell_text(row.cells[0], row_info[2])
-                else:
-                    self._set_cell_text(row.cells[0], "")
-                self._merge_cells_horizontal(row, 1, 11)
-                self._set_cell_text(row.cells[1], row_info[1], bold=True)
-                self._set_cell_background(row.cells[1], "D2D2D2")
-                for para in row.cells[1].paragraphs:
-                    for run in para.runs:
-                        run.font.size = Pt(7)
+                elif row_info[0] == 'section_header':
+                    if len(row_info) > 2 and row_info[2] is not None:
+                        self._set_cell_text(row.cells[0], row_info[2])
+                    else:
+                        self._set_cell_text(row.cells[0], "")
+                    self._merge_cells_horizontal(row, 1, 11)
+                    self._set_cell_text(row.cells[1], row_info[1], bold=True)
+                    self._set_cell_background(row.cells[1], "D2D2D2")
+                    for para in row.cells[1].paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
 
-            elif row_info[0] == 'object':
-                obj_name, instr = row_info[1], row_info[2]
-                normalized_name = row_info[3] if len(row_info) > 3 else None
-                item = row_info[5] if len(row_info) > 5 else None
-                self._set_cell_text(row.cells[0], obj_name)
+                elif row_info[0] == 'object':
+                    obj_name, instr = row_info[1], row_info[2]
+                    normalized_name = row_info[3] if len(row_info) > 3 else None
+                    item = row_info[5] if len(row_info) > 5 else None
+                    sort_priority = row_info[6] if len(row_info) > 6 else 999
 
-                if instr:
-                    cleaning_method = self._clean_text(instr.cleaning_method or "")
-                    cleaning_technique = self._clean_text(instr.cleaning_technique or "")
+                    self._set_cell_text(row.cells[0], obj_name)
 
-                    # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
-                    db_product = self._clean_text(instr.product_name or "")
-                    db_concentration = self._clean_text(instr.concentration or "")
-                    db_method = self._clean_text(instr.application_method or "")
+                    if instr:
+                        cleaning_method = self._clean_text(instr.cleaning_method or "")
+                        cleaning_technique = self._clean_text(instr.cleaning_technique or "")
 
-                    has_db_product = db_product and self._is_valid_product_name(db_product)
+                        # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
+                        db_product = self._clean_text(instr.product_name or "")
+                        db_concentration = self._clean_text(instr.concentration or "")
+                        db_method = self._clean_text(instr.application_method or "")
 
-                    is_disinfection = (cleaning_method == "дезинфекция")
+                        has_db_product = db_product and self._is_valid_product_name(db_product)
 
-                    if is_disinfection:
-                        # Для дезинфекции: средство, концентрация, метод разведения – из чек-листа (если есть) или из БД
-                        # Температура и время выдержки – всегда из БД (если есть в инструкции)
-                        checklist_product = checklist_data.disinfection_product
-                        checklist_concentration = checklist_data.disinfection_concentration
-                        checklist_method_text = checklist_data.disinfection_method_text
+                        is_disinfection = (cleaning_method == "дезинфекция")
 
-                        if checklist_product and self._is_valid_product_name(checklist_product):
-                            final_product = self._clean_text(checklist_product)
-                            final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                            final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
-                            if not final_concentration and db_concentration:
+                        if is_disinfection:
+                            # Название средства – всегда из БД
+                            final_product = db_product if db_product else ""
+
+                            # Концентрация и метод разведения: приоритет БД
+                            if db_concentration:
                                 final_concentration = db_concentration
-                            if not final_extra_method and db_method:
+                            else:
+                                checklist_concentration = checklist_data.disinfection_concentration
+                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+
+                            if db_method:
                                 final_extra_method = db_method
+                            else:
+                                checklist_method_text = checklist_data.disinfection_method_text
+                                final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+
+                            # Температура и время выдержки – всегда из БД
+                            final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
+                            final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+
+                            # Метод уборки – определяем по application_method (из БД или чек-листа)
+                            source_application_method = db_method if db_method else checklist_data.disinfection_method_text
+                            if source_application_method:
+                                method_text = source_application_method.lower()
+                                target_method_name = None
+                                if "promax" in method_text:
+                                    target_method_name = "протирание"
+                                elif "protwin" in method_text:
+                                    target_method_name = "орошение"
+                                elif "пенная станция" in method_text:
+                                    target_method_name = "запенивание"
+                                if target_method_name:
+                                    found = self._cleaning_techniques.get(target_method_name.lower())
+                                    if found:
+                                        cleaning_technique = found
+                                    # else оставляем значение из БД
+
+                            self._set_cell_text(row.cells[1], cleaning_method)
+                            self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                            if final_product:
+                                self._set_product_cell(row.cells[3], final_product, bold=True)
+                            else:
+                                self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                            self._set_cell_text(row.cells[4], cleaning_technique)
+
+                            para = row.cells[5].paragraphs[0]
+                            for r in para.runs:
+                                para._p.remove(r._r)
+                            conc_text = final_concentration if final_concentration else "___________________"
+                            run_conc = para.add_run(conc_text)
+                            run_conc.font.name = 'Arial'
+                            run_conc.font.size = Pt(7)
+                            if final_extra_method:
+                                run_br = para.add_run()
+                                br = OxmlElement('w:br')
+                                run_br._r.append(br)
+                                run_method = para.add_run(final_extra_method)
+                                run_method.font.name = 'Arial'
+                                run_method.font.size = Pt(7)
+
+                            self._set_cell_text(row.cells[6], final_temperature)
+                            self._set_cell_text(row.cells[7], final_exposure)
+
                         else:
+                            # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
                             if has_db_product:
                                 final_product = db_product
-                                final_concentration = db_concentration if db_concentration else ""
-                                final_extra_method = db_method if db_method else ""
+                                final_concentration = db_concentration
+                                final_extra_method = db_method
                             else:
                                 final_product = ""
                                 final_concentration = ""
                                 final_extra_method = ""
-
-                        final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
-                        final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
-
-                        self._set_cell_text(row.cells[1], cleaning_method)
-                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                        if final_product:
-                            self._set_product_cell(row.cells[3], final_product, bold=True)
-                        else:
-                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
-                        self._set_cell_text(row.cells[4], cleaning_technique)
-
-                        para = row.cells[5].paragraphs[0]
-                        for r in para.runs:
-                            para._p.remove(r._r)
-                        conc_text = final_concentration if final_concentration else "___________________"
-                        run_conc = para.add_run(conc_text)
-                        run_conc.font.name = 'Arial'
-                        run_conc.font.size = Pt(7)
-                        if final_extra_method:
-                            run_br = para.add_run()
-                            br = OxmlElement('w:br')
-                            run_br._r.append(br)
-                            run_method = para.add_run(final_extra_method)
-                            run_method.font.name = 'Arial'
-                            run_method.font.size = Pt(7)
-
-                        self._set_cell_text(row.cells[6], final_temperature)
-                        self._set_cell_text(row.cells[7], final_exposure)
-
-                    else:
-                        # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
-                        if has_db_product:
-                            final_product = db_product
-                            final_concentration = db_concentration
-                            final_extra_method = db_method
-                        else:
-                            final_product = ""
-                            final_concentration = ""
-                            final_extra_method = ""
-                            if normalized_name and normalized_name not in self.split_objects:
-                                checklist_product = None
-                                checklist_concentration = None
-                                checklist_method = None
-                                if cleaning_method == "мойка":
-                                    if normalized_name in self.floor_objects:
-                                        checklist_product = checklist_data.floor_cleaning_product
-                                        checklist_concentration = checklist_data.floor_cleaning_concentration
-                                        checklist_method = checklist_data.floor_cleaning_method_text
-                                    elif normalized_name in self.tech_objects:
-                                        checklist_product = checklist_data.tech_cleaning_product
-                                        checklist_concentration = checklist_data.tech_cleaning_concentration
-                                        checklist_method = checklist_data.tech_cleaning_method_text
-                                    elif normalized_name in self.thermal_objects:
-                                        checklist_product = checklist_data.thermal_cleaning_product
-                                        checklist_concentration = checklist_data.thermal_cleaning_concentration
-                                        checklist_method = checklist_data.thermal_cleaning_method_text
-                                    elif normalized_name in self.glass_objects:
-                                        checklist_product = checklist_data.glass_cleaning_product
-                                        checklist_concentration = checklist_data.glass_cleaning_concentration
-                                        checklist_method = checklist_data.glass_cleaning_method_text
-                                    else:
-                                        checklist_product = checklist_data.cleaning_product
-                                        checklist_concentration = checklist_data.cleaning_concentration
-                                        checklist_method = checklist_data.cleaning_method_text
-                                else:
+                                if normalized_name:
                                     checklist_product = None
+                                    checklist_concentration = None
+                                    checklist_method = None
+                                    if cleaning_method == "мойка":
+                                        if normalized_name in self.floor_objects:
+                                            checklist_product = checklist_data.floor_cleaning_product
+                                            checklist_concentration = checklist_data.floor_cleaning_concentration
+                                            checklist_method = checklist_data.floor_cleaning_method_text
+                                        elif normalized_name in self.tech_objects:
+                                            checklist_product = checklist_data.tech_cleaning_product
+                                            checklist_concentration = checklist_data.tech_cleaning_concentration
+                                            checklist_method = checklist_data.tech_cleaning_method_text
+                                        elif normalized_name in self.thermal_objects:
+                                            checklist_product = checklist_data.thermal_cleaning_product
+                                            checklist_concentration = checklist_data.thermal_cleaning_concentration
+                                            checklist_method = checklist_data.thermal_cleaning_method_text
+                                        elif normalized_name in self.glass_objects:
+                                            checklist_product = checklist_data.glass_cleaning_product
+                                            checklist_concentration = checklist_data.glass_cleaning_concentration
+                                            checklist_method = checklist_data.glass_cleaning_method_text
+                                        else:
+                                            checklist_product = checklist_data.cleaning_product
+                                            checklist_concentration = checklist_data.cleaning_concentration
+                                            checklist_method = checklist_data.cleaning_method_text
+                                    else:
+                                        checklist_product = None
 
-                                if checklist_product and self._is_valid_product_name(checklist_product):
-                                    final_product = self._clean_text(checklist_product)
-                                    final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                                    final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
-                                else:
-                                    final_product = ""
+                                    if checklist_product and self._is_valid_product_name(checklist_product):
+                                        final_product = self._clean_text(checklist_product)
+                                        final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                                        final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
+                                    else:
+                                        final_product = ""
 
-                        if not final_product:
-                            final_product = None
+                            if not final_product:
+                                final_product = None
 
-                        self._set_cell_text(row.cells[1], cleaning_method)
-                        self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
-                        if final_product:
-                            self._set_product_cell(row.cells[3], final_product, bold=True)
-                        else:
-                            self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                            self._set_cell_text(row.cells[1], cleaning_method)
+                            self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                            if final_product:
+                                self._set_product_cell(row.cells[3], final_product, bold=True)
+                            else:
+                                self._set_product_cell(row.cells[3], "_____________________", bold=False)
 
-                        self._set_cell_text(row.cells[4], cleaning_technique)
+                            self._set_cell_text(row.cells[4], cleaning_technique)
 
-                        para = row.cells[5].paragraphs[0]
-                        for r in para.runs:
-                            para._p.remove(r._r)
-                        conc_text = final_concentration if final_concentration else "___________________"
-                        run_conc = para.add_run(conc_text)
-                        run_conc.font.name = 'Arial'
-                        run_conc.font.size = Pt(7)
-                        if final_extra_method:
-                            run_br = para.add_run()
-                            br = OxmlElement('w:br')
-                            run_br._r.append(br)
-                            run_method = para.add_run(final_extra_method)
-                            run_method.font.name = 'Arial'
-                            run_method.font.size = Pt(7)
+                            para = row.cells[5].paragraphs[0]
+                            for r in para.runs:
+                                para._p.remove(r._r)
+                            conc_text = final_concentration if final_concentration else "___________________"
+                            run_conc = para.add_run(conc_text)
+                            run_conc.font.name = 'Arial'
+                            run_conc.font.size = Pt(7)
+                            if final_extra_method:
+                                run_br = para.add_run()
+                                br = OxmlElement('w:br')
+                                run_br._r.append(br)
+                                run_method = para.add_run(final_extra_method)
+                                run_method.font.name = 'Arial'
+                                run_method.font.size = Pt(7)
 
-                        self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
-                        self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
+                            self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
+                            self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
-                    # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
-                    if normalized_name and normalized_name in self.split_objects:
+                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ (унифицированная логика для всех объектов) =====
+                        # 1. Проверяем инструкцию БД
                         inv_text = self._clean_text(instr.inventory or "")
-                        if inv_text and inv_text.lower() in self._inventory_colors:
+                        is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
+
+                        if is_valid_color:
                             inv_color = self._inventory_colors[inv_text.lower()]
                             self._set_cell_text(row.cells[8], inv_text, bold=True)
                             self._set_cell_background(row.cells[8], inv_color)
                         else:
-                            self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
-                    else:
-                        if checklist_data.inventory_color:
-                            inv_color = self._inventory_colors.get(checklist_data.inventory_color)
-                            if inv_color:
-                                self._set_cell_text(row.cells[8], checklist_data.inventory_color, bold=True)
-                                self._set_cell_background(row.cells[8], inv_color)
+                            # 2. Fallback на чек-лист
+                            if checklist_data.inventory_color:
+                                inv_color = self._inventory_colors.get(checklist_data.inventory_color)
+                                if inv_color:
+                                    self._set_cell_text(row.cells[8], checklist_data.inventory_color, bold=True)
+                                    self._set_cell_background(row.cells[8], inv_color)
+                                else:
+                                    self._set_cell_text(row.cells[8], "промаркированный", bold=True)
                             else:
                                 self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+
+                        self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
+
+                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
+                        executor_value = None
+
+                        # 1. Если в инструкции БД есть исполнитель – используем его (приоритет)
+                        if instr.executor:
+                            executor_value = instr.executor
                         else:
-                            self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+                            # 2. Определяем по зоне для всех, кроме оборудования
+                            if item and isinstance(item, ChecklistItem):
+                                equipment_categories = {
+                                    Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
+                                    Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
+                                    Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT,
+                                    Category.HOUSEHOLD_APPLIANCES
+                                }
+                                is_equipment = (item.category in equipment_categories)
 
-                    self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
+                                if not is_equipment:
+                                    if sort_priority == -1:
+                                        executor_value = checklist_data.executor_high
+                                    elif 1 <= sort_priority <= 50:
+                                        executor_value = checklist_data.executor_low
+                                    # иначе не назначаем
+                                else:
+                                    executor_value = checklist_data.executor_equipment
 
-                    # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика по sort_priority) =====
-                    executor_value = None
+                        if not executor_value:
+                            executor_value = ""
 
-                    if instr.executor:
-                        executor_value = instr.executor
-                    else:
-                        if item and isinstance(item, ChecklistItem):
-                            # Определяем категорию объекта
-                            is_surface = (item.category == Category.SURFACE)
-                            equipment_categories = {
-                                Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
-                                Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
-                                Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT,
-                                Category.HOUSEHOLD_APPLIANCES
-                            }
-                            is_equipment = (item.category in equipment_categories)
+                        self._set_cell_text(row.cells[10], self._clean_text(executor_value))
 
-                            if is_surface:
-                                # Используем sort_priority для определения высоты
-                                if sort_priority == -1:
-                                    executor_value = checklist_data.executor_high
-                                elif 1 <= sort_priority <= 50:
-                                    executor_value = checklist_data.executor_low
-                                # Иначе оставляем None (не назначаем)
-                            elif is_equipment:
-                                executor_value = checklist_data.executor_equipment
+                        self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
 
-                    if not executor_value:
-                        executor_value = ""
+                        # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА =====
+                        if final_product:
+                            color = product_colors.get(final_product)
+                            if color:
+                                self._set_cell_background(row.cells[3], color)
 
-                    self._set_cell_text(row.cells[10], self._clean_text(executor_value))
+                current_row += 1
 
-                    self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
+            # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
+            for group_start, group_end in merge_info_object:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    for row in range(actual_start + 1, actual_end + 1):
+                        main_table.cell(row, 0).text = ""
+                    self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
 
-                    # ===== ЦВЕТ ФОНА ДЛЯ СРЕДСТВА =====
-                    if final_product:
-                        color = product_colors.get(final_product)
-                        if color:
-                            self._set_cell_background(row.cells[3], color)
+            # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 =====
+            for group_start, group_end in merge_info_columns:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    for col in [8, 9, 10, 11]:
+                        self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
-            current_row += 1
-
-        # === ВЕРТИКАЛЬНОЕ ОБЪЕДИНЕНИЕ ===
-        for group_start, group_end in merge_info_object:
-            actual_start = start_row + group_start
-            actual_end = start_row + group_end
-            if actual_end > actual_start:
-                for row in range(actual_start + 1, actual_end + 1):
-                    main_table.cell(row, 0).text = ""
-                self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
-
-        # ===== ОБЪЕДИНЕНИЕ КОЛОНОК 8,9,10,11 =====
-        for group_start, group_end in merge_info_columns:
-            actual_start = start_row + group_start
-            actual_end = start_row + group_end
-            if actual_end > actual_start:
-                for col in [8, 9, 10, 11]:
-                    self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
-
-        # ===== КОЛОНКА 2: ОБЪЕДИНЕНИЕ ПО (maintenance_type, subgroup) =====
-        for group_start, group_end in merge_info_columns:
-            actual_start = start_row + group_start
-            actual_end = start_row + group_end
-            if actual_end > actual_start:
-                keys = []
-                for row_idx in range(actual_start, actual_end + 1):
-                    row_data_index = row_idx - start_row
-                    if row_data_index < len(rows_data):
-                        row_data = rows_data[row_data_index]
-                        instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
-                        if instr:
-                            maint = (instr.maintenance_type or "").lower()
-                            subgroup = (instr.subgroup or "").strip() or "_default_"
-                            keys.append((maint, subgroup))
-                        else:
-                            keys.append(None)
-                    else:
-                        keys.append(None)
-
-                unique_keys = set([k for k in keys if k is not None])
-                if len(unique_keys) <= 1:
-                    self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
-                else:
-                    current_key = None
-                    sub_start = actual_start
+            # ===== КОЛОНКА 2: ОБЪЕДИНЕНИЕ ПО (maintenance_type, subgroup) =====
+            for group_start, group_end in merge_info_columns:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    keys = []
                     for row_idx in range(actual_start, actual_end + 1):
                         row_data_index = row_idx - start_row
                         if row_data_index < len(rows_data):
                             row_data = rows_data[row_data_index]
                             instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
-                            key = None
                             if instr:
                                 maint = (instr.maintenance_type or "").lower()
                                 subgroup = (instr.subgroup or "").strip() or "_default_"
-                                key = (maint, subgroup)
+                                keys.append((maint, subgroup))
+                            else:
+                                keys.append(None)
                         else:
-                            key = None
+                            keys.append(None)
 
-                        if key != current_key:
-                            if current_key is not None:
-                                if sub_start <= row_idx - 1:
-                                    self._merge_adjacent_equal_cells(main_table, 2, sub_start, row_idx - 1)
-                            current_key = key
-                            sub_start = row_idx
-                    if current_key is not None:
-                        if sub_start <= actual_end:
-                            self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
+                    unique_keys = set([k for k in keys if k is not None])
+                    if len(unique_keys) <= 1:
+                        self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
+                    else:
+                        current_key = None
+                        sub_start = actual_start
+                        for row_idx in range(actual_start, actual_end + 1):
+                            row_data_index = row_idx - start_row
+                            if row_data_index < len(rows_data):
+                                row_data = rows_data[row_data_index]
+                                instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                                key = None
+                                if instr:
+                                    maint = (instr.maintenance_type or "").lower()
+                                    subgroup = (instr.subgroup or "").strip() or "_default_"
+                                    key = (maint, subgroup)
+                            else:
+                                key = None
 
-        # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ ===
-        for group_start, group_end in surface_merge_info:
-            actual_start = start_row + group_start
-            actual_end = start_row + group_end
-            if actual_end > actual_start:
-                for col in [2, 8, 9, 10, 11]:
-                    self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+                            if key != current_key:
+                                if current_key is not None:
+                                    if sub_start <= row_idx - 1:
+                                        self._merge_adjacent_equal_cells(main_table, 2, sub_start, row_idx - 1)
+                                current_key = key
+                                sub_start = row_idx
+                        if current_key is not None:
+                            if sub_start <= actual_end:
+                                self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
 
-        output_file = Path(output_path)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        if output_file.exists():
-            output_file.unlink()
-        doc.save(str(output_file))
-        return str(output_file)
+            # === ОБЪЕДИНЕНИЕ ДЛЯ SPLIT-ОБЪЕКТОВ ===
+            for group_start, group_end in surface_merge_info:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    for col in [2, 8, 9, 10, 11]:
+                        self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            if output_file.exists():
+                output_file.unlink()
+            doc.save(str(output_file))
+            return str(output_file)
+
+        except Exception as e:
+            print("=" * 80)
+            print("❌ ОШИБКА В ГЕНЕРАТОРЕ:")
+            traceback.print_exc()
+            print("=" * 80)
+            raise
 
 ================================================================================
 ФАЙЛ: generator\mapper.py
@@ -6906,6 +7053,13 @@ class SDTChecklistParser:
                     if val:
                         data.executor_equipment = val
                         print(f"  👤 Исполнитель для оборудования: {val}")
+
+        print(f"🔍 Парсинг исполнителей, найдено параграфов: {len(paragraphs)}")
+        for p in paragraphs:
+            text = p.xpath('string()', namespaces=self.NAMESPACES).strip()
+            if text:
+                print(f"   Текст: {text[:100]}")
+
 
     def parse(self, file_path: str) -> ChecklistData:
         file_path = Path(file_path)
@@ -11379,265 +11533,3 @@ createApp({
     </footer>
 </body>
 </html>
-
-================================================================================
-ФАЙЛ: test_generator.py
-================================================================================
-
-#!/usr/bin/env python3
-"""
-test_generator.py - Пакетная генерация технологических карт
-Поддерживает .docx и .zip
-Режимы: 1 - по категориям, 2 - по приоритету (без категорий), 3 - по приоритету с группировкой
-"""
-
-import sys
-import zipfile
-import tempfile
-import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
-
-from parser.xml_parser import parse_checklist
-from generator.docx_generator import TechCardGenerator
-
-
-def extract_zip(archive_path: Path, extract_to: Path) -> list:
-    """Распаковывает ZIP и возвращает список .docx файлов"""
-    docx_files = []
-    try:
-        with zipfile.ZipFile(archive_path, 'r') as zf:
-            zf.extractall(extract_to)
-        for docx in extract_to.glob("**/*.docx"):
-            if not docx.name.startswith("~"):
-                docx_files.append(docx)
-    except Exception as e:
-        print(f"   ❌ Ошибка распаковки {archive_path.name}: {e}")
-    return docx_files
-
-
-def find_files(input_dir: Path) -> list:
-    """Находит все .docx и .zip файлы в папке"""
-    files = []
-    for f in input_dir.iterdir():
-        if f.is_file() and f.suffix.lower() in {'.docx', '.zip'}:
-            if not f.name.startswith("~") and "tech_card" not in f.name.lower():
-                files.append(f)
-    return files
-
-
-def process_docx(file_path: Path, generator: TechCardGenerator, output_dir: Path, mode: int) -> dict:
-    """Обрабатывает один .docx файл"""
-    result = {"file": file_path.name, "status": "error", "output": None, "error": None}
-    try:
-        print(f"   🔍 Парсинг чек-листа...")
-        parse_start = time.time()
-        checklist_data = parse_checklist(str(file_path))
-        parse_time = time.time() - parse_start
-
-        checked_count = len(checklist_data.get_checked_items())
-        print(f"   ✅ Найдено отмеченных объектов: {checked_count} (за {parse_time:.2f} сек)")
-
-        room_name = checklist_data.room_name or file_path.stem
-        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        output_path = output_dir / f"{safe_name}_tech_card.docx"
-
-        if mode == 1:
-            mode_str = "по категориям"
-        elif mode == 2:
-            mode_str = "по приоритету"
-        else:
-            mode_str = "по приоритету с группировкой"
-        print(f"   📝 Генерация техкарты (режим {mode}: {mode_str})...")
-        gen_start = time.time()
-        generator.generate(checklist_data, str(output_path), mode)
-        gen_time = time.time() - gen_start
-
-        result["status"] = "success"
-        result["output"] = str(output_path)
-        result["objects"] = checked_count
-        result["parse_time"] = parse_time
-        result["gen_time"] = gen_time
-        result["total_time"] = parse_time + gen_time
-        result["mode"] = mode
-
-        print(
-            f"   ✅ Готово! (парсинг: {parse_time:.2f}с, генерация: {gen_time:.2f}с, всего: {parse_time + gen_time:.2f}с)")
-    except Exception as e:
-        result["error"] = str(e)
-        import traceback
-        traceback.print_exc()
-    return result
-
-
-def process_zip(zip_path: Path, generator: TechCardGenerator, output_dir: Path, mode: int) -> list:
-    """Обрабатывает ZIP архив"""
-    results = []
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_path = Path(tmpdir)
-        docx_files = extract_zip(zip_path, temp_path)
-        if not docx_files:
-            results.append({
-                "file": zip_path.name,
-                "status": "error",
-                "error": "В архиве не найдено .docx файлов"
-            })
-            return results
-        for docx_file in docx_files:
-            results.append(process_docx(docx_file, generator, output_dir, mode))
-    return results
-
-
-def print_report(results: list, mode: int):
-    """Выводит отчёт о генерации"""
-    success = sum(1 for r in results if r["status"] == "success")
-    error = len(results) - success
-
-    total_objects = sum(r.get("objects", 0) for r in results if r["status"] == "success")
-    total_time = sum(r.get("total_time", 0) for r in results if r["status"] == "success")
-
-    if mode == 1:
-        mode_str = "по категориям"
-    elif mode == 2:
-        mode_str = "по приоритету"
-    else:
-        mode_str = "по приоритету с группировкой"
-    print("\n" + "=" * 70)
-    print(f"📊 ОТЧЁТ О ГЕНЕРАЦИИ (режим {mode}: {mode_str})")
-    print("=" * 70)
-
-    for r in results:
-        if r["status"] == "success":
-            print(f"✅ {r['file']} ({r.get('objects', 0)} об.)")
-            print(f"   → {r['output']}")
-            print(
-                f"   ⏱️ Парсинг: {r.get('parse_time', 0):.2f}с | Генерация: {r.get('gen_time', 0):.2f}с | Всего: {r.get('total_time', 0):.2f}с")
-        else:
-            print(f"❌ {r['file']} → {r.get('error', 'Ошибка')}")
-
-    print("-" * 70)
-    print(f"✅ Успешно обработано файлов: {success}")
-    print(f"❌ Ошибок: {error}")
-    print(f"📋 Всего объектов: {total_objects}")
-    print(f"⏱️ Общее время: {total_time:.2f} сек")
-    print("=" * 70)
-
-
-def select_mode() -> int:
-    """Интерактивный выбор режима"""
-    print("\nВыберите режим генерации:")
-    print("   1. По категориям (с заголовками, по алфавиту)")
-    print("   2. По приоритету (единый список, сверху вниз)")
-    print("   3. По приоритету с группировкой (объединение одинаковых инструкций в пределах приоритета)")
-
-    while True:
-        choice = input("\n🔢 Ваш выбор (1, 2 или 3): ").strip()
-        if choice in ['1', '2', '3']:
-            return int(choice)
-        print("❌ Введите 1, 2 или 3")
-
-
-def process_single_file(file_path: str, output_dir: str = "tech_cards", mode: int = None):
-    """Обрабатывает один файл (для тестирования)"""
-    input_path = Path(file_path)
-    if not input_path.exists():
-        print(f"❌ Файл не найден: {file_path}")
-        return None
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    if mode is None:
-        mode = select_mode()
-
-    generator = TechCardGenerator()
-
-    if input_path.suffix.lower() == '.docx':
-        return process_docx(input_path, generator, output_path, mode)
-    elif input_path.suffix.lower() == '.zip':
-        results = process_zip(input_path, generator, output_path, mode)
-        return results[0] if results else None
-    else:
-        print(f"❌ Неподдерживаемый формат: {input_path.suffix}")
-        return None
-
-
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="Пакетная генерация технологических карт")
-    parser.add_argument("--input", "-i", default="checklists", help="Папка с чек-листами")
-    parser.add_argument("--output", "-o", default="tech_cards", help="Папка для сохранения")
-    parser.add_argument("--single", "-s", help="Обработать один файл (для тестирования)")
-    parser.add_argument("--mode", "-m", type=int, choices=[1, 2, 3], help="Режим: 1 - по категориям, 2 - по приоритету, 3 - по приоритету с группировкой")
-    args = parser.parse_args()
-
-    # Определяем режим
-    if args.mode:
-        mode = args.mode
-    elif args.single:
-        mode = select_mode()
-    else:
-        mode = select_mode()
-
-    # Режим обработки одного файла
-    if args.single:
-        if mode == 1:
-            mode_str = "по категориям"
-        elif mode == 2:
-            mode_str = "по приоритету"
-        else:
-            mode_str = "по приоритету с группировкой"
-        print(f"🔧 ТЕСТОВАЯ ГЕНЕРАЦИЯ (режим {mode}: {mode_str})")
-        print("=" * 60)
-        result = process_single_file(args.single, args.output, mode)
-        if result:
-            print_report([result], mode)
-        return
-
-    # Режим пакетной обработки
-    input_dir = Path(args.input)
-    if not input_dir.exists():
-        print(f"❌ Папка не найдена: {input_dir}")
-        return
-
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    if mode == 1:
-        mode_str = "по категориям"
-    elif mode == 2:
-        mode_str = "по приоритету"
-    else:
-        mode_str = "по приоритету с группировкой"
-    print(f"🔧 ПАКЕТНАЯ ГЕНЕРАЦИЯ ТЕХНОЛОГИЧЕСКИХ КАРТ (режим {mode}: {mode_str})")
-    print("=" * 60)
-    print(f"📂 Входная папка: {input_dir}")
-    print(f"📂 Выходная папка: {output_dir}")
-
-    files = find_files(input_dir)
-    if not files:
-        print("\n❌ Не найдено файлов (.docx, .zip)")
-        return
-
-    print(f"\n📋 Найдено файлов: {len(files)}")
-    for f in files:
-        size = f.stat().st_size / 1024
-        print(f"   - {f.name} ({size:.1f} KB)")
-
-    generator = TechCardGenerator()
-    all_results = []
-
-    for file_path in files:
-        if file_path.suffix.lower() == '.docx':
-            print(f"\n📄 Обработка: {file_path.name}")
-            all_results.append(process_docx(file_path, generator, output_dir, mode))
-        elif file_path.suffix.lower() == '.zip':
-            print(f"\n📦 Обработка ZIP: {file_path.name}")
-            all_results.extend(process_zip(file_path, generator, output_dir, mode))
-
-    print_report(all_results, mode)
-
-
-if __name__ == "__main__":
-    main()

@@ -233,6 +233,13 @@ class TechCardGenerator:
             cat_ok = instr.room_category_id == target_room_category_id or instr.room_category_id is None
             if ent_ok and room_ok and cat_ok:
                 filtered.append(instr)
+
+        # Если указано предприятие, и есть инструкции с этим предприятием, то убираем общие
+        if target_enterprise and target_enterprise.strip():
+            enterprise_specific = [i for i in filtered if (i.enterprise or "") == target_enterprise]
+            if enterprise_specific:
+                filtered = enterprise_specific
+
         return filtered
 
     def _get_instruction_signature(self, instructions: list) -> tuple:
@@ -696,26 +703,83 @@ class TechCardGenerator:
                         unmatched_reasons[display_name] = "Нет инструкций после фильтрации"
                         continue
 
-                    # Далее идёт обычная логика выбора инструкций (без изменений)
-                    if normalized_name in self.split_objects:
-                        print(f"   -> объект в split_objects")
-                        disinfection_product = checklist_data.disinfection_product
-                        disinfection_method = checklist_data.disinfection_method_text
-                        instructions = self._select_split_instructions(
-                            all_instrs, room_category_id,
-                            target_enterprise, target_room_name,
-                            product_name=disinfection_product,
-                            application_method=disinfection_method
+                    # ===== ИЗМЕНЁННЫЙ ПОРЯДОК ПРОВЕРОК: сначала multi_method, потом support, потом split, потом обычный =====
+                    if normalized_name in self.multi_method_objects:
+                        print(f"   -> объект в multi_method_objects")
+                        # Разделяем на дезинфекцию и остальные
+                        disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
+                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+
+                        # Для остальных методов используем _select_all_instructions_for_room
+                        other_selected = []
+                        if other_instrs:
+                            other_selected = self._select_all_instructions_for_room(other_instrs, room_category_id,
+                                                                                    target_enterprise, target_room_name)
+                            print(f"   выбрано других методов: {len(other_selected)}")
+                        else:
+                            print("   нет других методов")
+
+                        # Для дезинфекции – выбираем ВСЕ подходящие инструкции
+                        disinfection_selected = []
+                        if disinfection_instrs:
+                            # Фильтруем по enterprise/room/room_category
+                            filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
+                            if filtered_disinfection:
+                                # Если задано средство – фильтруем по нему
+                                if checklist_data.disinfection_product:
+                                    normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+                                    if normalized_product:
+                                        filtered_disinfection = [
+                                            instr for instr in filtered_disinfection
+                                            if self._normalize_product_name(instr.product_name or "") == normalized_product
+                                        ]
+                                        print(f"   после фильтрации по product_name: {len(filtered_disinfection)} инструкций")
+                                # Сортируем: сначала по приоритету, затем по уровню, затем по подуровню
+                                filtered_disinfection.sort(
+                                    key=lambda i: (
+                                        self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
+                                        self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
+                                        (i.subgroup or "")  # подуровень
+                                    )
+                                )
+                                disinfection_selected = filtered_disinfection
+                                print(f"   выбрано инструкций дезинфекции: {len(disinfection_selected)}")
+                            else:
+                                print("   нет дезинфекционных инструкций после фильтрации")
+                        else:
+                            print("   нет инструкций дезинфекции")
+
+                        instructions = other_selected + disinfection_selected
+
+                        # ===== ИЗМЕНЕНО: сортировка по подуровню, внутри по порядку методов =====
+                        instructions.sort(
+                            key=lambda x: (
+                                (x.subgroup or ""),
+                                self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                            )
                         )
+
+                        # Удаляем дубли по cleaning_method, product_name, surface_type, subgroup
+                        seen = set()
+                        unique_instrs = []
+                        for instr in instructions:
+                            key = (instr.cleaning_method, instr.product_name, instr.surface_type, instr.subgroup)
+                            if key not in seen:
+                                seen.add(key)
+                                unique_instrs.append(instr)
+                        instructions = unique_instrs
+
                         if instructions:
+                            print(f"   итоговый набор инструкций: {[f'{i.cleaning_method} (ID={i.id})' for i in instructions]}")
                             category_object_instructions[cat_name].append(
-                                ('split', display_name, instructions, normalized_name, item))
+                                ('normal', display_name, instructions, normalized_name, item))
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
-                            print(f"   ❌ split-инструкции не выбраны")
+                            print(f"   ❌ multi-method инструкции не выбраны")
                             unmatched_objects.append(display_name)
-                            unmatched_reasons[display_name] = "split-инструкции не выбраны"
+                            unmatched_reasons[display_name] = "multi-method инструкции не выбраны"
+
                     elif normalized_name in self.support_objects:
                         print(f"   -> объект в support_objects")
                         by_method = defaultdict(list)
@@ -757,19 +821,27 @@ class TechCardGenerator:
                             print(f"   ❌ support-инструкции не выбраны")
                             unmatched_objects.append(display_name)
                             unmatched_reasons[display_name] = "support-инструкции не выбраны"
-                    elif normalized_name in self.multi_method_objects:
-                        print(f"   -> объект в multi_method_objects")
-                        instructions = self._select_all_instructions_for_room(all_instrs, room_category_id,
-                                                                              target_enterprise, target_room_name)
+
+                    elif normalized_name in self.split_objects:
+                        print(f"   -> объект в split_objects")
+                        disinfection_product = checklist_data.disinfection_product
+                        disinfection_method = checklist_data.disinfection_method_text
+                        instructions = self._select_split_instructions(
+                            all_instrs, room_category_id,
+                            target_enterprise, target_room_name,
+                            product_name=disinfection_product,
+                            application_method=disinfection_method
+                        )
                         if instructions:
                             category_object_instructions[cat_name].append(
-                                ('normal', display_name, instructions, normalized_name, item))
+                                ('split', display_name, instructions, normalized_name, item))
                             all_object_instructions.append(
                                 (display_name, instructions, sort_priority, normalized_name, item))
                         else:
-                            print(f"   ❌ multi-method инструкции не выбраны")
+                            print(f"   ❌ split-инструкции не выбраны")
                             unmatched_objects.append(display_name)
-                            unmatched_reasons[display_name] = "multi-method инструкции не выбраны"
+                            unmatched_reasons[display_name] = "split-инструкции не выбраны"
+
                     else:
                         # Обычный объект – индивидуальный выбор дезинфекции
                         disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
@@ -1158,48 +1230,23 @@ class TechCardGenerator:
 
                         else:
                             # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
+                            # Сначала пытаемся взять средство из БД (если есть)
                             if has_db_product:
                                 final_product = db_product
-                                final_concentration = db_concentration
-                                final_extra_method = db_method
+                                # Для концентрации и метода разведения: приоритет БД, если они заполнены
+                                if db_concentration:
+                                    final_concentration = db_concentration
+                                else:
+                                    final_concentration = self._get_checklist_concentration(cleaning_method, normalized_name, checklist_data)
+                                if db_method:
+                                    final_extra_method = db_method
+                                else:
+                                    final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
                             else:
-                                final_product = ""
-                                final_concentration = ""
-                                final_extra_method = ""
-                                if normalized_name:
-                                    checklist_product = None
-                                    checklist_concentration = None
-                                    checklist_method = None
-                                    if cleaning_method == "мойка":
-                                        if normalized_name in self.floor_objects:
-                                            checklist_product = checklist_data.floor_cleaning_product
-                                            checklist_concentration = checklist_data.floor_cleaning_concentration
-                                            checklist_method = checklist_data.floor_cleaning_method_text
-                                        elif normalized_name in self.tech_objects:
-                                            checklist_product = checklist_data.tech_cleaning_product
-                                            checklist_concentration = checklist_data.tech_cleaning_concentration
-                                            checklist_method = checklist_data.tech_cleaning_method_text
-                                        elif normalized_name in self.thermal_objects:
-                                            checklist_product = checklist_data.thermal_cleaning_product
-                                            checklist_concentration = checklist_data.thermal_cleaning_concentration
-                                            checklist_method = checklist_data.thermal_cleaning_method_text
-                                        elif normalized_name in self.glass_objects:
-                                            checklist_product = checklist_data.glass_cleaning_product
-                                            checklist_concentration = checklist_data.glass_cleaning_concentration
-                                            checklist_method = checklist_data.glass_cleaning_method_text
-                                        else:
-                                            checklist_product = checklist_data.cleaning_product
-                                            checklist_concentration = checklist_data.cleaning_concentration
-                                            checklist_method = checklist_data.cleaning_method_text
-                                    else:
-                                        checklist_product = None
-
-                                    if checklist_product and self._is_valid_product_name(checklist_product):
-                                        final_product = self._clean_text(checklist_product)
-                                        final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
-                                        final_extra_method = self._clean_text(checklist_method) if checklist_method else ""
-                                    else:
-                                        final_product = ""
+                                # Если в БД нет средства – берём всё из чек-листа
+                                final_product = self._get_checklist_product(cleaning_method, normalized_name, checklist_data)
+                                final_concentration = self._get_checklist_concentration(cleaning_method, normalized_name, checklist_data)
+                                final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
 
                             if not final_product:
                                 final_product = None
@@ -1382,3 +1429,49 @@ class TechCardGenerator:
             traceback.print_exc()
             print("=" * 80)
             raise
+
+    def _get_checklist_product(self, cleaning_method, normalized_name, checklist_data):
+        """Возвращает средство из чек-листа для данного метода и объекта."""
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_product
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_product
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_product
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_product
+            else:
+                return checklist_data.cleaning_product
+        # Для других методов (кроме дезинфекции) пока нет специальных средств, возвращаем None
+        return None
+
+    def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
+        """Возвращает концентрацию из чек-листа для данного метода и объекта."""
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_concentration
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_concentration
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_concentration
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_concentration
+            else:
+                return checklist_data.cleaning_concentration
+        return None
+
+    def _get_checklist_method(self, cleaning_method, normalized_name, checklist_data):
+        """Возвращает метод разведения из чек-листа для данного метода и объекта."""
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_method_text
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_method_text
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_method_text
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_method_text
+            else:
+                return checklist_data.cleaning_method_text
+        return None
