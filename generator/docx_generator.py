@@ -1235,16 +1235,17 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                             self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
-                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
-                        if normalized_name and normalized_name in self.split_objects:
-                            inv_text = self._clean_text(instr.inventory or "")
-                            if inv_text and inv_text.lower() in self._inventory_colors:
-                                inv_color = self._inventory_colors[inv_text.lower()]
-                                self._set_cell_text(row.cells[8], inv_text, bold=True)
-                                self._set_cell_background(row.cells[8], inv_color)
-                            else:
-                                self._set_cell_text(row.cells[8], inv_text if inv_text else "___________", bold=bool(inv_text))
+                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ (унифицированная логика для всех объектов) =====
+                        # 1. Проверяем инструкцию БД
+                        inv_text = self._clean_text(instr.inventory or "")
+                        is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
+
+                        if is_valid_color:
+                            inv_color = self._inventory_colors[inv_text.lower()]
+                            self._set_cell_text(row.cells[8], inv_text, bold=True)
+                            self._set_cell_background(row.cells[8], inv_color)
                         else:
+                            # 2. Fallback на чек-лист
                             if checklist_data.inventory_color:
                                 inv_color = self._inventory_colors.get(checklist_data.inventory_color)
                                 if inv_color:
