@@ -1313,8 +1313,7 @@ class TechCardGenerator:
                                 equipment_categories = {
                                     Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
                                     Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
-                                    Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT,
-                                    Category.HOUSEHOLD_APPLIANCES
+                                    Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT
                                 }
                                 is_equipment = (item.category in equipment_categories)
 
