@@ -98,17 +98,87 @@
             .admin-sidebar {
                 width: 100%;
                 display: flex;
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
+                overflow-x: auto;
                 border-right: none;
                 border-bottom: 1px solid var(--ct-border);
                 box-shadow: none;
                 position: static;
                 max-height: none;
+                padding: 8px 12px;
+                gap: 4px;
+                justify-content: flex-start;
             }
             .admin-sidebar .nav-item {
-                flex: 1 1 auto;
-                text-align: center;
-                padding: 8px 6px;
+                flex: 0 0 auto;
+                padding: 6px 10px;
+                font-size: 0.75rem;
+                white-space: nowrap;
+                border-left: none;
+                border-bottom: 3px solid transparent;
+            }
+            .admin-sidebar .nav-item.active {
+                border-bottom-color: var(--ct-primary);
+                border-left-color: transparent;
+                background: transparent;
+            }
+            .admin-sidebar .nav-item i {
+                margin-right: 4px;
+            }
+            .admin-content {
+                padding: 12px;
+            }
+            .section-header {
+                flex-direction: column;
+                align-items: stretch !important;
+                gap: 8px;
+            }
+            .section-header h3 {
+                font-size: 1.1rem;
+            }
+            .section-header .btn-ct-outline,
+            .section-header .btn-ct-primary {
+                width: 100%;
+                justify-content: center;
+            }
+            .section-header .btn-ct-outline.btn-sm,
+            .section-header .btn-ct-primary.btn-sm {
+                width: auto;
+                min-height: 36px;
+                font-size: 0.8rem;
+                padding: 4px 12px;
+            }
+            .section-header > div {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                justify-content: center;
+            }
+            .instructions-modal .modal-content-ct {
+                max-width: 100%;
+                width: 100%;
+                height: 100%;
+                max-height: 100vh;
+                border-radius: 0;
+                margin: 0;
+            }
+            .instructions-modal .modal-body-ct {
+                padding: 12px;
+            }
+            .instructions-modal .form-control-sm,
+            .instructions-modal .form-select-sm,
+            .instructions-modal .btn-sm {
+                height: 40px;
+                font-size: 0.9rem;
+            }
+            .instructions-modal .btn-sm {
+                min-height: 40px;
+            }
+        }
+        @media (max-width: 480px) {
+            .admin-sidebar .nav-item {
+                font-size: 0.7rem;
+                padding: 4px 8px;
             }
         }
     </style>
@@ -188,39 +258,41 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="sortable" @click="toggleSort('id')">ID <span class="sort-icon" :class="{active: sortField === 'id'}">{{ sortField === 'id' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅' }}</span></th>
-                                        <th class="sortable" @click="toggleSort('category_name')">Категория</th>
-                                        <th class="sortable" @click="toggleSort('display_name')">Объект</th>
-                                        <th class="sortable" @click="toggleSort('instruction_count')">Инстр.</th>
-                                        <th class="sortable" @click="toggleSort('sort_priority')">Приоритет</th>
-                                        <th style="width:140px">Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="obj in filteredObjects" :key="obj.id">
-                                        <td v-text="obj.id" style="width:50px"></td>
-                                        <td v-text="obj.category_name" style="font-size:0.8rem"></td>
-                                        <td><strong v-text="obj.display_name"></strong></td>
-                                        <td>
-                                            <span class="badge-ct badge-info" style="cursor:pointer" @click="openInstructions(obj)" v-text="obj.instruction_count || 0"></span>
-                                        </td>
-                                        <td v-text="obj.sort_priority" style="width:70px"></td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <button class="btn-ct-outline btn-sm flex-fill" @click="openEditModal(obj)"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-ct-outline btn-sm flex-fill" @click="openInstructions(obj)"><i class="bi bi-list-ul"></i></button>
-                                                <button class="btn-ct-outline btn-sm flex-fill text-danger" @click="deleteObject(obj)"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="filteredObjects.length === 0">
-                                        <td colspan="6" class="text-center text-muted py-4">Нет данных</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="sortable" @click="toggleSort('id')">ID <span class="sort-icon" :class="{active: sortField === 'id'}">{{ sortField === 'id' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅' }}</span></th>
+                                            <th class="sortable" @click="toggleSort('category_name')">Категория</th>
+                                            <th class="sortable" @click="toggleSort('display_name')">Объект</th>
+                                            <th class="sortable" @click="toggleSort('instruction_count')">Инстр.</th>
+                                            <th class="sortable" @click="toggleSort('sort_priority')">Приоритет</th>
+                                            <th style="width:140px">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="obj in filteredObjects" :key="obj.id">
+                                            <td v-text="obj.id" style="width:50px"></td>
+                                            <td v-text="obj.category_name" style="font-size:0.8rem"></td>
+                                            <td><strong v-text="obj.display_name"></strong></td>
+                                            <td>
+                                                <span class="badge-ct badge-info" style="cursor:pointer" @click="openInstructions(obj)" v-text="obj.instruction_count || 0"></span>
+                                            </td>
+                                            <td v-text="obj.sort_priority" style="width:70px"></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn-ct-outline btn-sm flex-fill" @click="openEditModal(obj)"><i class="bi bi-pencil"></i></button>
+                                                    <button class="btn-ct-outline btn-sm flex-fill" @click="openInstructions(obj)"><i class="bi bi-list-ul"></i></button>
+                                                    <button class="btn-ct-outline btn-sm flex-fill text-danger" @click="deleteObject(obj)"><i class="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="filteredObjects.length === 0">
+                                            <td colspan="6" class="text-center text-muted py-4">Нет данных</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                     <div class="text-muted mt-2" style="font-size:0.8rem">Всего: <span v-text="objects.length"></span> объектов | Отфильтровано: <span v-text="filteredObjects.length"></span></div>
@@ -270,34 +342,36 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Название</th>
-                                        <th>HEX</th>
-                                        <th>Пример</th>
-                                        <th style="width:120px">Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(c, idx) in inventoryColors" :key="c.id">
-                                        <td v-text="idx + 1"></td>
-                                        <td v-text="c.name"></td>
-                                        <td v-text="c.hex_color"></td>
-                                        <td><span class="color-preview" :style="{backgroundColor: c.hex_color}"></span></td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <button class="btn-ct-outline btn-sm" @click="editColor(c)"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteColor(c)"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="inventoryColors.length === 0">
-                                        <td colspan="5" class="text-center text-muted py-4">Нет цветов. Нажмите «Добавить».</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Название</th>
+                                            <th>HEX</th>
+                                            <th>Пример</th>
+                                            <th style="width:120px">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(c, idx) in inventoryColors" :key="c.id">
+                                            <td v-text="idx + 1"></td>
+                                            <td v-text="c.name"></td>
+                                            <td v-text="c.hex_color"></td>
+                                            <td><span class="color-preview" :style="{backgroundColor: c.hex_color}"></span></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn-ct-outline btn-sm" @click="editColor(c)"><i class="bi bi-pencil"></i></button>
+                                                    <button class="btn-ct-outline btn-sm text-danger" @click="deleteColor(c)"><i class="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="inventoryColors.length === 0">
+                                            <td colspan="5" class="text-center text-muted py-4">Нет цветов. Нажмите «Добавить».</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -353,44 +427,46 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Объект</th>
-                                        <th>Split</th>
-                                        <th>Multi-method</th>
-                                        <th>Поддерж. обработка</th>
-                                        <th>Спец. средство</th>
-                                        <th style="width:120px">Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="prop in filteredObjectProperties" :key="prop.id">
-                                        <td v-text="prop.object_name || prop.normalized_name"></td>
-                                        <td>
-                                            <input type="checkbox" v-model="prop.is_split" @change="updateProperty(prop)">
-                                        </td>
-                                        <td>
-                                            <input type="checkbox" v-model="prop.is_multi_method" @change="updateProperty(prop)">
-                                        </td>
-                                        <td>
-                                            <input type="checkbox" v-model="prop.has_support_maintenance" @change="updateProperty(prop)">
-                                        </td>
-                                        <td>
-                                            <select class="form-select-ct form-select-sm" v-model="prop.special_product_type" @change="updateProperty(prop)">
-                                                <option value="">–</option>
-                                                <option value="floor">Пол/трапы</option>
-                                                <option value="tech">Технологическое оборудование</option>
-                                                <option value="thermal">Тепловое</option>
-                                                <option value="glass">Стекло/зеркала</option>
-                                            </select>
-                                        </td>
-                                        <td>
-                                            <button class="btn-ct-outline btn-sm text-danger" @click="deleteProperty(prop)"><i class="bi bi-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Объект</th>
+                                            <th>Split</th>
+                                            <th>Multi-method</th>
+                                            <th>Поддерж. обработка</th>
+                                            <th>Спец. средство</th>
+                                            <th style="width:120px">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="prop in filteredObjectProperties" :key="prop.id">
+                                            <td v-text="prop.object_name || prop.normalized_name"></td>
+                                            <td>
+                                                <input type="checkbox" v-model="prop.is_split" @change="updateProperty(prop)">
+                                            </td>
+                                            <td>
+                                                <input type="checkbox" v-model="prop.is_multi_method" @change="updateProperty(prop)">
+                                            </td>
+                                            <td>
+                                                <input type="checkbox" v-model="prop.has_support_maintenance" @change="updateProperty(prop)">
+                                            </td>
+                                            <td>
+                                                <select class="form-select-ct form-select-sm" v-model="prop.special_product_type" @change="updateProperty(prop)">
+                                                    <option value="">–</option>
+                                                    <option value="floor">Пол/трапы</option>
+                                                    <option value="tech">Технологическое оборудование</option>
+                                                    <option value="thermal">Тепловое</option>
+                                                    <option value="glass">Стекло/зеркала</option>
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteProperty(prop)"><i class="bi bi-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -411,23 +487,25 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr><th>Группа</th><th>Объект</th><th style="width:120px">Действия</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="group in filteredObjectGroups" :key="group.id">
-                                        <td v-text="group.group_name"></td>
-                                        <td v-text="group.object_name || group.normalized_name"></td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <button class="btn-ct-outline btn-sm" @click="editGroup(group)"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteGroup(group)"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr><th>Группа</th><th>Объект</th><th style="width:120px">Действия</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="group in filteredObjectGroups" :key="group.id">
+                                            <td v-text="group.group_name"></td>
+                                            <td v-text="group.object_name || group.normalized_name"></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn-ct-outline btn-sm" @click="editGroup(group)"><i class="bi bi-pencil"></i></button>
+                                                    <button class="btn-ct-outline btn-sm text-danger" @click="deleteGroup(group)"><i class="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -444,23 +522,25 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr><th>Метод</th><th>Порядок</th><th style="width:120px">Действия</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="m in cleaningMethods" :key="m.id">
-                                        <td v-text="m.method_name"></td>
-                                        <td v-text="m.sort_order"></td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <button class="btn-ct-outline btn-sm" @click="editMethod(m)"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteMethod(m)"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr><th>Метод</th><th>Порядок</th><th style="width:120px">Действия</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="m in cleaningMethods" :key="m.id">
+                                            <td v-text="m.method_name"></td>
+                                            <td v-text="m.sort_order"></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn-ct-outline btn-sm" @click="editMethod(m)"><i class="bi bi-pencil"></i></button>
+                                                    <button class="btn-ct-outline btn-sm text-danger" @click="deleteMethod(m)"><i class="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -483,30 +563,32 @@
                     </div>
                     <div class="card-ct">
                         <div class="card-body p-0">
-                            <table class="table table-hover m-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Название</th>
-                                        <th style="width:120px">Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(t, idx) in cleaningTechniques" :key="t.id">
-                                        <td v-text="idx + 1"></td>
-                                        <td v-text="t.name"></td>
-                                        <td>
-                                            <div class="d-flex gap-1">
-                                                <button class="btn-ct-outline btn-sm" @click="editCleaningTechnique(t)"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-ct-outline btn-sm text-danger" @click="deleteCleaningTechnique(t)"><i class="bi bi-trash"></i></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="cleaningTechniques.length === 0">
-                                        <td colspan="3" class="text-center text-muted py-4">Нет методов. Нажмите «Добавить».</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive-ct">
+                                <table class="table table-hover m-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Название</th>
+                                            <th style="width:120px">Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="(t, idx) in cleaningTechniques" :key="t.id">
+                                            <td v-text="idx + 1"></td>
+                                            <td v-text="t.name"></td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn-ct-outline btn-sm" @click="editCleaningTechnique(t)"><i class="bi bi-pencil"></i></button>
+                                                    <button class="btn-ct-outline btn-sm text-danger" @click="deleteCleaningTechnique(t)"><i class="bi bi-trash"></i></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="cleaningTechniques.length === 0">
+                                            <td colspan="3" class="text-center text-muted py-4">Нет методов. Нажмите «Добавить».</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1164,5 +1246,7 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="/static/js/admin.js"></script>
+    <!-- Добавлен Bootstrap JS для работы гамбургера -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
