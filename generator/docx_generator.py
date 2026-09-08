@@ -199,48 +199,67 @@ class TechCardGenerator:
 
     def _get_instruction_priority(self, instr, target_enterprise: str = None,
                                   target_room_name: str = None, target_room_category_id: int = None) -> int:
-        ent_match = (instr.enterprise or "") == (target_enterprise or "")
-        room_match = (instr.room_name or "") == (target_room_name or "")
+        ent_match = (instr.enterprise or "").lower().strip() == (target_enterprise or "").lower().strip()
+        room_match = (instr.room_name or "").lower().strip() == (target_room_name or "").lower().strip()
         cat_match = (instr.room_category_id == target_room_category_id)
 
         if ent_match and room_match and cat_match:
             return 1
         elif ent_match and room_match:
             return 2
-        elif ent_match and cat_match and instr.room_name is None:
+        elif ent_match and cat_match and (instr.room_name or "").strip() == "":
             return 3
-        elif ent_match and instr.room_name is None and instr.room_category_id is None:
+        elif ent_match and (instr.room_name or "").strip() == "" and instr.room_category_id is None:
             return 4
         elif not ent_match and room_match and cat_match:
             return 5
         elif not ent_match and room_match:
             return 6
-        elif not ent_match and cat_match and instr.room_name is None:
+        elif not ent_match and cat_match and (instr.room_name or "").strip() == "":
             return 7
-        elif not ent_match and instr.room_name is None and instr.room_category_id is None:
+        elif not ent_match and (instr.room_name or "").strip() == "" and instr.room_category_id is None:
             return 8
         else:
             return 99
 
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None) -> list:
+        """
+        Фильтрует инструкции по категории помещения, предприятию и помещению.
+        Логика:
+        1. Сначала отбираем инструкции с совпадающими enterprise и room_name.
+        2. Если таких нет – отбираем с совпадающим enterprise (room_name пуст).
+        3. Если и таких нет – отбираем общие (enterprise и room_name пусты).
+        """
         if not instructions:
             return []
-        filtered = []
-        for instr in instructions:
-            ent_ok = (instr.enterprise or "") == (target_enterprise or "") or instr.enterprise is None
-            room_ok = (instr.room_name or "") == (target_room_name or "") or instr.room_name is None
-            cat_ok = instr.room_category_id == target_room_category_id or instr.room_category_id is None
-            if ent_ok and room_ok and cat_ok:
-                filtered.append(instr)
 
-        # Если указано предприятие, и есть инструкции с этим предприятием, то убираем общие
-        if target_enterprise and target_enterprise.strip():
-            enterprise_specific = [i for i in filtered if (i.enterprise or "") == target_enterprise]
-            if enterprise_specific:
-                filtered = enterprise_specific
+        target_ent = (target_enterprise or "").strip()
+        target_room = (target_room_name or "").strip()
 
-        return filtered
+        # Если нет ни предприятия, ни помещения – возвращаем все, что прошли категорию
+        if not target_ent and not target_room:
+            return [i for i in instructions if i.room_category_id == target_room_category_id or i.room_category_id is None]
+
+        # 1. Сначала фильтруем по категории помещения
+        filtered = [i for i in instructions if i.room_category_id == target_room_category_id or i.room_category_id is None]
+
+        if not filtered:
+            return []
+
+        # 2. Ищем с совпадающими enterprise И room_name
+        both = [i for i in filtered if (i.enterprise or "").strip() == target_ent and (i.room_name or "").strip() == target_room]
+        if both:
+            return both
+
+        # 3. Ищем с совпадающим enterprise (room_name пуст)
+        ent_only = [i for i in filtered if (i.enterprise or "").strip() == target_ent and (i.room_name or "").strip() == ""]
+        if ent_only:
+            return ent_only
+
+        # 4. Ищем общие (enterprise и room_name пусты)
+        general = [i for i in filtered if (i.enterprise or "").strip() == "" and (i.room_name or "").strip() == ""]
+        return general
 
     def _get_instruction_signature(self, instructions: list) -> tuple:
         if not instructions:
@@ -684,7 +703,7 @@ class TechCardGenerator:
                 if obj and obj.id in instructions_dict:
                     all_instrs = instructions_dict[obj.id]
 
-                    # Фильтруем инструкции по параметрам чек-листа для диагностики
+                    # ===== ИСПРАВЛЕНИЕ: применяем фильтр ко всем инструкциям объекта сразу =====
                     filtered_instrs = self._filter_instructions(all_instrs, target_enterprise, target_room_name, room_category_id)
                     print(f"   После фильтрации по enterprise/room/room_category: {len(filtered_instrs)}")
 
@@ -704,11 +723,12 @@ class TechCardGenerator:
                         continue
 
                     # ===== ИЗМЕНЁННЫЙ ПОРЯДОК ПРОВЕРОК: сначала multi_method, потом support, потом split, потом обычный =====
+                    # Теперь везде используем filtered_instrs вместо all_instrs
                     if normalized_name in self.multi_method_objects:
                         print(f"   -> объект в multi_method_objects")
-                        # Разделяем на дезинфекцию и остальные
-                        disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
-                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        # Разделяем на дезинфекцию и остальные из отфильтрованного списка
+                        disinfection_instrs = [instr for instr in filtered_instrs if instr.cleaning_method == "дезинфекция"]
+                        other_instrs = [instr for instr in filtered_instrs if instr.cleaning_method != "дезинфекция"]
 
                         # Для остальных методов используем _select_all_instructions_for_room
                         other_selected = []
@@ -722,7 +742,7 @@ class TechCardGenerator:
                         # Для дезинфекции – выбираем ВСЕ подходящие инструкции
                         disinfection_selected = []
                         if disinfection_instrs:
-                            # Фильтруем по enterprise/room/room_category
+                            # Фильтруем по enterprise/room/room_category (повторно не обязательно, но оставим)
                             filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
                             if filtered_disinfection:
                                 # Если задано средство – фильтруем по нему
@@ -783,7 +803,7 @@ class TechCardGenerator:
                     elif normalized_name in self.support_objects:
                         print(f"   -> объект в support_objects")
                         by_method = defaultdict(list)
-                        for instr in all_instrs:
+                        for instr in filtered_instrs:
                             method = instr.cleaning_method or ""
                             by_method[method].append(instr)
                         instructions = []
@@ -827,7 +847,7 @@ class TechCardGenerator:
                         disinfection_product = checklist_data.disinfection_product
                         disinfection_method = checklist_data.disinfection_method_text
                         instructions = self._select_split_instructions(
-                            all_instrs, room_category_id,
+                            filtered_instrs, room_category_id,
                             target_enterprise, target_room_name,
                             product_name=disinfection_product,
                             application_method=disinfection_method
@@ -844,16 +864,17 @@ class TechCardGenerator:
 
                     else:
                         # Обычный объект – индивидуальный выбор дезинфекции
-                        disinfection_instrs = [instr for instr in all_instrs if instr.cleaning_method == "дезинфекция"]
-                        other_instrs = [instr for instr in all_instrs if instr.cleaning_method != "дезинфекция"]
+                        # Используем filtered_instrs
+                        disinfection_instrs = [instr for instr in filtered_instrs if instr.cleaning_method == "дезинфекция"]
+                        other_instrs = [instr for instr in filtered_instrs if instr.cleaning_method != "дезинфекция"]
                         print(f"   -> обычный объект, disinfection_instrs={len(disinfection_instrs)}, other_instrs={len(other_instrs)}")
 
                         # Выбираем инструкцию дезинфекции для этого объекта
                         selected_disinfection = None
                         if checklist_data.disinfection_product:
                             normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-                            filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
-                            candidates = [instr for instr in filtered_disinfection
+                            # filtered_disinfection уже отфильтрован, но мы можем повторно отфильтровать по средству
+                            candidates = [instr for instr in disinfection_instrs
                                           if self._normalize_product_name(instr.product_name or "") == normalized_product]
                             print(f"   кандидатов для дезинфекции с нужным product_name: {len(candidates)}")
                             if candidates:
@@ -861,9 +882,9 @@ class TechCardGenerator:
                                 selected_disinfection = candidates[0]
                                 print(f"   выбрана дезинфекция ID={selected_disinfection.id}")
                             else:
-                                if filtered_disinfection:
-                                    filtered_disinfection.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
-                                    selected_disinfection = filtered_disinfection[0]
+                                if disinfection_instrs:
+                                    disinfection_instrs.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
+                                    selected_disinfection = disinfection_instrs[0]
                                     print(f"   выбрана дезинфекция по приоритету ID={selected_disinfection.id} (без совпадения product_name)")
                                 else:
                                     print("   нет дезинфекционных инструкций после фильтрации")
