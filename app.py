@@ -1625,7 +1625,8 @@ def api_export_csv():
     writer.writerow([
         'object_id', 'category_name', 'normalized_name', 'display_name', 'base_name',
         'modifier', 'sort_priority', 'instruction_id', 'room_category_name',
-        'maintenance_type', 'cleaning_method', 'instruction_number', 'product_name',
+        'maintenance_type', 'subgroup', 'enterprise', 'room_name',
+        'cleaning_method', 'instruction_number', 'product_name',
         'cleaning_technique', 'concentration', 'application_method',
         'temperature', 'exposure_time', 'inventory',
         'frequency', 'executor', 'control_method', 'surface_type'
@@ -1640,6 +1641,9 @@ def api_export_csv():
                     obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
                     instr.id, room_cat_name,
                     instr.maintenance_type or '',
+                    instr.subgroup or '',
+                    instr.enterprise or '',
+                    instr.room_name or '',
                     instr.cleaning_method or '', instr.instruction_number or '',
                     instr.product_name or '', instr.cleaning_technique or '',
                     instr.concentration or '',
@@ -1653,7 +1657,7 @@ def api_export_csv():
             writer.writerow([
                 obj.id, cats.get(obj.category_id, ''), obj.normalized_name,
                 obj.display_name, obj.base_name, obj.modifier or '', obj.sort_priority,
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ])
 
     session.close()
