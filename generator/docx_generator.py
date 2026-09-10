@@ -307,7 +307,6 @@ class TechCardGenerator:
             result.append((merged_name, data["instructions"]))
         return result
 
-    # ===== ИЗМЕНЕНО: добавлены параметры product_name и application_method =====
     def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
                                       enterprise: str = None, room_name: str = None,
                                       product_name: str = None, application_method: str = None) -> list:
@@ -320,7 +319,7 @@ class TechCardGenerator:
         if not filtered:
             return []
 
-        # Фильтр по product_name (только для дезинфекции)
+        # Фильтр по product_name (для дезинфекции)
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
             if normalized_product:
@@ -382,13 +381,31 @@ class TechCardGenerator:
         return selected
 
     def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int,
-                                          enterprise: str = None, room_name: str = None) -> list:
+                                          enterprise: str = None, room_name: str = None,
+                                          application_method: str = None) -> list:
+        """
+        Выбирает ВСЕ подходящие инструкции (для multi_method объектов).
+        Применяет фильтр по enterprise/room/room_category и по application_method
+        (если он передан – отбираются только инструкции с пустым application_method
+        или с совпадающим значением).
+        """
         if not all_instructions:
             return []
 
         filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
         if not filtered:
             return []
+
+        # ===== ДОБАВЛЕНО: фильтр по application_method =====
+        if application_method:
+            before = len(filtered)
+            filtered = [
+                instr for instr in filtered
+                if not instr.application_method or instr.application_method == application_method
+            ]
+            print(f"   -> _select_all: после фильтрации по application_method='{application_method}': {len(filtered)} (было {before})")
+            if not filtered:
+                return []
 
         sorted_instrs = sorted(
             filtered,
@@ -425,35 +442,86 @@ class TechCardGenerator:
                     break
         return result
 
-    # ===== ИЗМЕНЕНО: добавлен fallback для дезинфекции =====
     def _select_split_instructions(self, all_instructions: list, room_category_id: int,
                                    enterprise: str = None, room_name: str = None,
-                                   product_name: str = None, application_method: str = None) -> dict:
+                                   cleaning_application_method: str = None,
+                                   disinfection_product_name: str = None,
+                                   disinfection_application_method: str = None) -> dict:
+        """
+        Выбор инструкций для split-объектов.
+        Для каждого типа поверхности отдельно выбираются:
+        - инструкции для методов, отличных от дезинфекции (фильтр по cleaning_application_method);
+        - инструкция дезинфекции (фильтр по product_name и disinfection_application_method).
+        При отсутствии дезинфекции с нужным средством применяется fallback —
+        выбирается лучшая дезинфекция по приоритету.
+        """
         result = {}
         surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+
         for sf in surface_types:
             sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
             if not sf_instrs:
                 continue
-            selected = self._select_instructions_for_room(
-                sf_instrs, room_category_id, enterprise, room_name,
-                product_name=product_name, application_method=application_method
-            )
-            has_disinfection = any(instr.cleaning_method == "дезинфекция" for instr in selected)
-            if not has_disinfection and product_name:
-                disinfection_instrs = [i for i in sf_instrs if i.cleaning_method == "дезинфекция"]
-                if disinfection_instrs:
+
+            # Разделяем на дезинфекцию и остальные методы
+            disinfection_instrs = [i for i in sf_instrs if i.cleaning_method == "дезинфекция"]
+            other_instrs = [i for i in sf_instrs if i.cleaning_method != "дезинфекция"]
+
+            selected_other = []
+            if other_instrs:
+                selected_other = self._select_instructions_for_room(
+                    other_instrs, room_category_id, enterprise, room_name,
+                    product_name=None,
+                    application_method=cleaning_application_method
+                )
+
+            selected_disinfection = None
+            if disinfection_instrs:
+                if disinfection_product_name:
+                    normalized_product = self._normalize_product_name(disinfection_product_name)
+                    # Пытаемся найти дезинфекцию с нужным средством
+                    filtered_disinfection = self._filter_instructions(
+                        disinfection_instrs, enterprise, room_name, room_category_id
+                    )
+                    candidates = [
+                        instr for instr in filtered_disinfection
+                        if not normalized_product
+                        or self._normalize_product_name(instr.product_name or "") == normalized_product
+                    ]
+                    if candidates:
+                        candidates.sort(
+                            key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
+                        )
+                        selected_disinfection = candidates[0]
+                    else:
+                        # Fallback — берём лучшую дезинфекцию без фильтра по средству
+                        if filtered_disinfection:
+                            filtered_disinfection.sort(
+                                key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
+                            )
+                            selected_disinfection = filtered_disinfection[0]
+                else:
+                    # Средство не задано — выбираем по стандартной логике (без фильтра по средству)
                     disinfection_selected = self._select_instructions_for_room(
                         disinfection_instrs, room_category_id, enterprise, room_name,
-                        product_name=None, application_method=None
+                        product_name=None,
+                        application_method=disinfection_application_method
                     )
                     if disinfection_selected:
-                        selected.append(disinfection_selected[0])
-                        selected.sort(key=lambda x: self.cleaning_method_order.get(
-                            (x.cleaning_method or "").lower().strip(), 99
-                        ))
+                        selected_disinfection = disinfection_selected[0]
+
+            selected = list(selected_other)
+            if selected_disinfection:
+                selected.append(selected_disinfection)
+
             if selected:
+                selected.sort(
+                    key=lambda x: self.cleaning_method_order.get(
+                        (x.cleaning_method or "").lower().strip(), 99
+                    )
+                )
                 result[sf] = selected
+
         return result
 
     def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
@@ -669,8 +737,6 @@ class TechCardGenerator:
             for instr in db_instructions:
                 instructions_dict[instr.object_id].append(instr)
 
-            # Удалён блок поиска общей инструкции дезинфекции
-
             category_object_instructions = defaultdict(list)
             all_object_instructions = []
             category_order = {}
@@ -703,7 +769,16 @@ class TechCardGenerator:
                 if obj and obj.id in instructions_dict:
                     all_instrs = instructions_dict[obj.id]
 
-                    # ===== ИСПРАВЛЕНИЕ: применяем фильтр ко всем инструкциям объекта сразу =====
+                    # ===== Определяем способ разведения для мойки (из чек-листа) =====
+                    cleaning_application_method = self._get_checklist_method(
+                        'мойка', normalized_name, checklist_data
+                    )
+                    if cleaning_application_method:
+                        print(f"   💧 Способ разведения для мойки: '{cleaning_application_method}'")
+                    else:
+                        print(f"   💧 Способ разведения для мойки не задан")
+
+                    # ===== Применяем фильтр ко всем инструкциям объекта сразу =====
                     filtered_instrs = self._filter_instructions(all_instrs, target_enterprise, target_room_name, room_category_id)
                     print(f"   После фильтрации по enterprise/room/room_category: {len(filtered_instrs)}")
 
@@ -722,8 +797,7 @@ class TechCardGenerator:
                         unmatched_reasons[display_name] = "Нет инструкций после фильтрации"
                         continue
 
-                    # ===== ИЗМЕНЁННЫЙ ПОРЯДОК ПРОВЕРОК: сначала multi_method, потом support, потом split, потом обычный =====
-                    # Теперь везде используем filtered_instrs вместо all_instrs
+                    # ===== Порядок проверок: multi_method, support, split, обычный =====
                     if normalized_name in self.multi_method_objects:
                         print(f"   -> объект в multi_method_objects")
                         # Разделяем на дезинфекцию и остальные из отфильтрованного списка
@@ -731,10 +805,14 @@ class TechCardGenerator:
                         other_instrs = [instr for instr in filtered_instrs if instr.cleaning_method != "дезинфекция"]
 
                         # Для остальных методов используем _select_all_instructions_for_room
+                        # с фильтром по cleaning_application_method
                         other_selected = []
                         if other_instrs:
-                            other_selected = self._select_all_instructions_for_room(other_instrs, room_category_id,
-                                                                                    target_enterprise, target_room_name)
+                            other_selected = self._select_all_instructions_for_room(
+                                other_instrs, room_category_id,
+                                target_enterprise, target_room_name,
+                                application_method=cleaning_application_method
+                            )
                             print(f"   выбрано других методов: {len(other_selected)}")
                         else:
                             print("   нет других методов")
@@ -742,7 +820,6 @@ class TechCardGenerator:
                         # Для дезинфекции – выбираем ВСЕ подходящие инструкции
                         disinfection_selected = []
                         if disinfection_instrs:
-                            # Фильтруем по enterprise/room/room_category (повторно не обязательно, но оставим)
                             filtered_disinfection = self._filter_instructions(disinfection_instrs, target_enterprise, target_room_name, room_category_id)
                             if filtered_disinfection:
                                 # Если задано средство – фильтруем по нему
@@ -759,7 +836,7 @@ class TechCardGenerator:
                                     key=lambda i: (
                                         self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
                                         self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
-                                        (i.subgroup or "")  # подуровень
+                                        (i.subgroup or "")
                                     )
                                 )
                                 disinfection_selected = filtered_disinfection
@@ -771,7 +848,7 @@ class TechCardGenerator:
 
                         instructions = other_selected + disinfection_selected
 
-                        # ===== ИЗМЕНЕНО: сортировка по подуровню, внутри по порядку методов =====
+                        # ===== Сортировка: сначала по подуровню, затем по порядку методов =====
                         instructions.sort(
                             key=lambda x: (
                                 (x.subgroup or ""),
@@ -844,13 +921,13 @@ class TechCardGenerator:
 
                     elif normalized_name in self.split_objects:
                         print(f"   -> объект в split_objects")
-                        disinfection_product = checklist_data.disinfection_product
-                        disinfection_method = checklist_data.disinfection_method_text
+                        # ===== ИЗМЕНЕНО: передаём отдельные параметры для мойки и дезинфекции =====
                         instructions = self._select_split_instructions(
                             filtered_instrs, room_category_id,
                             target_enterprise, target_room_name,
-                            product_name=disinfection_product,
-                            application_method=disinfection_method
+                            cleaning_application_method=cleaning_application_method,
+                            disinfection_product_name=checklist_data.disinfection_product,
+                            disinfection_application_method=checklist_data.disinfection_method_text
                         )
                         if instructions:
                             category_object_instructions[cat_name].append(
@@ -864,7 +941,6 @@ class TechCardGenerator:
 
                     else:
                         # Обычный объект – индивидуальный выбор дезинфекции
-                        # Используем filtered_instrs
                         disinfection_instrs = [instr for instr in filtered_instrs if instr.cleaning_method == "дезинфекция"]
                         other_instrs = [instr for instr in filtered_instrs if instr.cleaning_method != "дезинфекция"]
                         print(f"   -> обычный объект, disinfection_instrs={len(disinfection_instrs)}, other_instrs={len(other_instrs)}")
@@ -873,7 +949,6 @@ class TechCardGenerator:
                         selected_disinfection = None
                         if checklist_data.disinfection_product:
                             normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-                            # filtered_disinfection уже отфильтрован, но мы можем повторно отфильтровать по средству
                             candidates = [instr for instr in disinfection_instrs
                                           if self._normalize_product_name(instr.product_name or "") == normalized_product]
                             print(f"   кандидатов для дезинфекции с нужным product_name: {len(candidates)}")
@@ -903,12 +978,12 @@ class TechCardGenerator:
                             else:
                                 print("   нет инструкций дезинфекции")
 
-                        # Выбираем инструкции для остальных методов (без application_method)
+                        # ===== ИЗМЕНЕНО: передаём application_method для мойки =====
                         if other_instrs:
                             other_selected = self._select_instructions_for_room(
                                 other_instrs, room_category_id,
                                 target_enterprise, target_room_name,
-                                application_method=None
+                                application_method=cleaning_application_method
                             )
                             print(f"   выбрано других методов: {len(other_selected)}")
                         else:
@@ -1133,7 +1208,7 @@ class TechCardGenerator:
             row_to_remove = main_table.rows[start_row]
             tbl.remove(row_to_remove._tr)
 
-            # === ЗАПОЛНЕНИЕ С НОВОЙ ЛОГИКОЙ ПОДСТАНОВКИ ===
+            # === ЗАПОЛНЕНИЕ ===
             current_row = start_row
             for row_info in rows_data:
                 row = main_table.rows[current_row]
@@ -1176,7 +1251,6 @@ class TechCardGenerator:
                         cleaning_method = self._clean_text(instr.cleaning_method or "")
                         cleaning_technique = self._clean_text(instr.cleaning_technique or "")
 
-                        # ---------- ЛОГИКА ОПРЕДЕЛЕНИЯ product_name, concentration, extra_method ----------
                         db_product = self._clean_text(instr.product_name or "")
                         db_concentration = self._clean_text(instr.concentration or "")
                         db_method = self._clean_text(instr.application_method or "")
@@ -1221,7 +1295,6 @@ class TechCardGenerator:
                                     found = self._cleaning_techniques.get(target_method_name.lower())
                                     if found:
                                         cleaning_technique = found
-                                    # else оставляем значение из БД
 
                             self._set_cell_text(row.cells[1], cleaning_method)
                             self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
@@ -1251,10 +1324,8 @@ class TechCardGenerator:
 
                         else:
                             # ===== МОЙКА И ДРУГИЕ МЕТОДЫ =====
-                            # Сначала пытаемся взять средство из БД (если есть)
                             if has_db_product:
                                 final_product = db_product
-                                # Для концентрации и метода разведения: приоритет БД, если они заполнены
                                 if db_concentration:
                                     final_concentration = db_concentration
                                 else:
@@ -1264,7 +1335,6 @@ class TechCardGenerator:
                                 else:
                                     final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
                             else:
-                                # Если в БД нет средства – берём всё из чек-листа
                                 final_product = self._get_checklist_product(cleaning_method, normalized_name, checklist_data)
                                 final_concentration = self._get_checklist_concentration(cleaning_method, normalized_name, checklist_data)
                                 final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
@@ -1299,8 +1369,7 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
                             self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
 
-                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ (унифицированная логика для всех объектов) =====
-                        # 1. Проверяем инструкцию БД
+                        # ===== КОЛОНКА 8: ИНВЕНТАРЬ =====
                         inv_text = self._clean_text(instr.inventory or "")
                         is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
 
@@ -1309,7 +1378,6 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[8], inv_text, bold=True)
                             self._set_cell_background(row.cells[8], inv_color)
                         else:
-                            # 2. Fallback на чек-лист
                             if checklist_data.inventory_color:
                                 inv_color = self._inventory_colors.get(checklist_data.inventory_color)
                                 if inv_color:
@@ -1322,14 +1390,11 @@ class TechCardGenerator:
 
                         self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
 
-                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ (обновлённая логика) =====
+                        # ===== КОЛОНКА 10: ИСПОЛНИТЕЛЬ =====
                         executor_value = None
-
-                        # 1. Если в инструкции БД есть исполнитель – используем его (приоритет)
                         if instr.executor:
                             executor_value = instr.executor
                         else:
-                            # 2. Определяем по зоне для всех, кроме оборудования
                             if item and isinstance(item, ChecklistItem):
                                 equipment_categories = {
                                     Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
@@ -1343,7 +1408,6 @@ class TechCardGenerator:
                                         executor_value = checklist_data.executor_high
                                     elif 1 <= sort_priority <= 50:
                                         executor_value = checklist_data.executor_low
-                                    # иначе не назначаем
                                 else:
                                     executor_value = checklist_data.executor_equipment
 
@@ -1463,7 +1527,6 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_product
             else:
                 return checklist_data.cleaning_product
-        # Для других методов (кроме дезинфекции) пока нет специальных средств, возвращаем None
         return None
 
     def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
