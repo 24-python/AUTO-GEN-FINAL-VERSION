@@ -9,6 +9,12 @@
 Добавлены поля enterprise, subgroup и room_name для инструкций.
 Добавлен справочник методов уборки (cleaning_techniques).
 Добавлен эндпоинт для копирования инструкций и свойств между объектами.
+
+ИСПРАВЛЕНИЯ БЕЗОПАСНОСТИ:
+- Path Traversal в /download/<filename>
+- Path Traversal в /api/history/delete
+- Zip Slip при распаковке ZIP-архивов
+- Ограничения на количество файлов и суммарный размер распакованных данных (защита от DoS)
 """
 
 import csv
@@ -22,7 +28,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from io import StringIO
 
-from flask import Flask, request, render_template, jsonify, send_file, Response
+from flask import Flask, request, render_template, jsonify, send_file, Response, abort
 
 from parser.xml_parser import parse_checklist
 from generator.docx_generator import TechCardGenerator
@@ -40,6 +46,10 @@ app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 app.config['HISTORY_FILE'] = 'tech_cards/generation_history.json'
 
+# ===== ОГРАНИЧЕНИЯ ДЛЯ РАСПАКОВКИ ZIP (защита от DoS) =====
+app.config['ZIP_MAX_FILES'] = 1000                          # макс. число файлов в архиве
+app.config['ZIP_MAX_TOTAL_SIZE'] = 500 * 1024 * 1024        # макс. суммарный размер (500 MB)
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TECH_CARDS_FOLDER'], exist_ok=True)
 
@@ -48,9 +58,91 @@ app.jinja_env.variable_start_string = '{?'
 app.jinja_env.variable_end_string = '?}'
 
 
+# ============================================================
+# ФУНКЦИИ БЕЗОПАСНОСТИ (защита от Path Traversal и Zip Slip)
+# ============================================================
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ['docx', 'zip']
 
+
+def get_safe_path(base_dir: str, filename: str):
+    """
+    Безопасно формирует путь к файлу внутри base_dir.
+    Защита от Path Traversal (../ и абсолютных путей).
+    Возвращает абсолютный путь или None, если путь небезопасен.
+    """
+    if not filename:
+        return None
+    # Отбрасываем любые компоненты пути, кроме имени файла
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        return None
+    abs_base = os.path.abspath(base_dir)
+    abs_target = os.path.abspath(os.path.join(abs_base, safe_name))
+    # Проверяем, что итоговый путь действительно внутри base_dir
+    try:
+        if os.path.commonpath([abs_base, abs_target]) != abs_base:
+            return None
+    except ValueError:
+        return None
+    return abs_target
+
+
+def is_within_directory(directory: str, target: str) -> bool:
+    """Проверяет, что target находится внутри directory (для Zip Slip)."""
+    abs_directory = os.path.abspath(directory)
+    abs_target = os.path.abspath(target)
+    try:
+        return os.path.commonpath([abs_directory, abs_target]) == abs_directory
+    except ValueError:
+        return False
+
+
+def safe_extract_zip(zip_path: str, target_dir: str,
+                     max_files: int = None, max_total_size: int = None):
+    """
+    Безопасная распаковка ZIP-архива:
+    - защита от Zip Slip (проверка каждого пути)
+    - ограничение количества файлов
+    - ограничение суммарного размера распакованных данных
+    """
+    if max_files is None:
+        max_files = app.config['ZIP_MAX_FILES']
+    if max_total_size is None:
+        max_total_size = app.config['ZIP_MAX_TOTAL_SIZE']
+
+    abs_target = os.path.abspath(target_dir)
+    total_size = 0
+    file_count = 0
+
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        # Первый проход – валидация всех записей
+        for member in zf.infolist():
+            file_count += 1
+            if file_count > max_files:
+                raise ValueError(
+                    f"Превышено максимальное количество файлов в архиве ({max_files})"
+                )
+
+            total_size += member.file_size
+            if total_size > max_total_size:
+                raise ValueError(
+                    f"Превышен максимальный суммарный размер распакованных данных "
+                    f"({max_total_size // (1024 * 1024)} MB)"
+                )
+
+            member_path = os.path.join(abs_target, member.filename)
+            if not is_within_directory(abs_target, member_path):
+                raise ValueError(f"Небезопасный путь в архиве: {member.filename}")
+
+        # Второй проход – распаковка
+        zf.extractall(target_dir)
+
+
+# ============================================================
+# ОБСЛУЖИВАЮЩИЕ ФУНКЦИИ
+# ============================================================
 
 def cleanup_old_files(folder: str, hours: int = 24):
     """Удаляет файлы старше N часов"""
@@ -134,7 +226,7 @@ def process_single_file(file, mode, generator):
 
 
 def process_zip_file(file, mode, generator):
-    """Обрабатывает ZIP архив"""
+    """Обрабатывает ZIP архив с защитой от Zip Slip и ограничениями"""
     results = []
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     unique_id = str(uuid.uuid4())[:8]
@@ -143,8 +235,11 @@ def process_zip_file(file, mode, generator):
     file.save(filepath)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        with zipfile.ZipFile(filepath, 'r') as zf:
-            zf.extractall(tmpdir)
+        # ===== ИСПРАВЛЕНИЕ: безопасная распаковка с проверками =====
+        try:
+            safe_extract_zip(filepath, tmpdir)
+        except Exception as e:
+            return [{'filename': file.filename, 'error': f'Ошибка распаковки архива: {e}'}]
 
         docx_files = list(Path(tmpdir).glob("**/*.docx"))
         for docx_path in docx_files:
@@ -248,31 +343,25 @@ def initialize_database():
         seed_cleaning_techniques()
 
         # ====== ДОБАВЛЕНО: миграция колонок enterprise, subgroup и room_name ======
-        # Добавляем колонку enterprise, если её нет
         try:
             session.execute("ALTER TABLE instructions ADD COLUMN enterprise VARCHAR(200) NULL")
             session.commit()
             print("✅ Добавлена колонка enterprise в instructions")
-        except Exception as e:
-            # Колонка уже существует или ошибка – игнорируем
+        except Exception:
             pass
 
-        # Добавляем колонку subgroup, если её нет
         try:
             session.execute("ALTER TABLE instructions ADD COLUMN subgroup VARCHAR(50) NULL")
             session.commit()
             print("✅ Добавлена колонка subgroup в instructions")
-        except Exception as e:
-            # Колонка уже существует или ошибка – игнорируем
+        except Exception:
             pass
 
-        # ====== ДОБАВЛЕНО: миграция колонки room_name ======
         try:
             session.execute("ALTER TABLE instructions ADD COLUMN room_name VARCHAR(200) NULL")
             session.commit()
             print("✅ Добавлена колонка room_name в instructions")
-        except Exception as e:
-            # Колонка уже существует или ошибка – игнорируем
+        except Exception:
             pass
 
     finally:
@@ -362,9 +451,15 @@ def api_generate():
 
 @app.route('/download/<filename>')
 def download(filename):
-    path = f"tech_cards/{filename}"
-    if os.path.exists(path):
-        return send_file(path, as_attachment=True)
+    """
+    Скачивание файла.
+    ИСПРАВЛЕНО: защита от Path Traversal.
+    """
+    file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
+    if not file_path:
+        abort(404)
+    if os.path.exists(file_path):
+        return send_file(file_path, as_attachment=True)
     return jsonify({'error': 'Файл не найден'}), 404
 
 
@@ -394,6 +489,10 @@ def api_history():
 
 @app.route('/api/history/delete', methods=['POST'])
 def api_delete_history():
+    """
+    Удаление файлов истории.
+    ИСПРАВЛЕНО: защита от Path Traversal при удалении.
+    """
     data = request.get_json()
     filenames = data.get('filenames', [])
     before_date = data.get('before_date', None)
@@ -410,10 +509,11 @@ def api_delete_history():
                 to_delete.append(item['filename'])
         filenames = to_delete
 
+    # ===== ИСПРАВЛЕНИЕ: безопасное удаление только внутри TECH_CARDS_FOLDER =====
     for filename in filenames:
-        path = os.path.join(app.config['TECH_CARDS_FOLDER'], filename)
-        if os.path.exists(path):
-            os.remove(path)
+        file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
             deleted += 1
 
     history = [h for h in history if h['filename'] not in filenames]
@@ -782,7 +882,7 @@ def api_import_inventory_colors_csv():
 
 
 # ============================================================
-# API: МЕТОДЫ УБОРКИ (ДОБАВЛЕНО)
+# API: МЕТОДЫ УБОРКИ
 # ============================================================
 
 @app.route('/api/cleaning-techniques', methods=['GET'])
@@ -898,7 +998,6 @@ def api_import_cleaning_techniques_csv():
                     continue
                 existing = session.query(CleaningTechnique).filter(CleaningTechnique.name == name).first()
                 if existing:
-                    # ничего не делаем – пропускаем
                     updated += 1
                 else:
                     session.add(CleaningTechnique(name=name))
@@ -988,7 +1087,7 @@ def api_delete_object(obj_id):
 
 
 # ============================================================
-# API: ИНСТРУКЦИИ (с поддержкой enterprise, subgroup и room_name)
+# API: ИНСТРУКЦИИ
 # ============================================================
 
 @app.route('/api/objects/<int:obj_id>/instructions')
@@ -1037,7 +1136,6 @@ def api_create_instruction(obj_id):
         except (ValueError, TypeError):
             room_category_id = None
 
-    # Безопасное извлечение строковых полей с обрезкой пробелов
     def safe_strip(value):
         return value.strip() if isinstance(value, str) else None
 
@@ -1092,19 +1190,16 @@ def api_update_instruction(instr_id):
                     rc_id = None
             instr.room_category_id = rc_id
 
-        # Обычные поля (безопасно присваиваем как есть, либо обрезаем пробелы для строк)
         fields = ['maintenance_type', 'cleaning_method', 'product_name', 'cleaning_technique',
                   'concentration', 'temperature', 'exposure_time', 'inventory',
                   'frequency', 'executor', 'control_method', 'instruction_number']
         for key in fields:
             if key in data:
-                # Если значение строка — обрезаем пробелы, иначе оставляем как есть (может быть None)
                 val = data[key]
                 if isinstance(val, str):
                     val = val.strip()
                 setattr(instr, key, val)
 
-        # Поля, требующие особой обработки (могут быть None, обрезаем пробелы)
         for key in ['subgroup', 'enterprise', 'room_name', 'surface_type', 'application_method']:
             if key in data:
                 val = data[key]
@@ -1313,6 +1408,8 @@ def api_delete_object_property(prop_id):
         return jsonify({'success': True})
     session.close()
     return jsonify({'success': False, 'error': 'Не найдено'}), 404
+
+
 # ============================================================
 # API: ГРУППЫ ОБЪЕКТОВ (ObjectGroup)
 # ============================================================
@@ -1344,7 +1441,6 @@ def api_create_object_group():
         return jsonify({'success': False, 'error': 'group_name и object_id обязательны'}), 400
 
     session = SessionLocal()
-    # Проверка существования объекта
     obj = session.get(Object, object_id)
     if not obj:
         session.close()
@@ -1368,7 +1464,6 @@ def api_update_object_group(group_id):
         if 'group_name' in data:
             group.group_name = data['group_name'].strip()
         if 'object_id' in data:
-            # Проверка существования нового объекта
             obj = session.get(Object, data['object_id'])
             if not obj:
                 session.close()
@@ -1449,13 +1544,11 @@ def api_import_object_groups_csv():
                     errors.append(f"Объект с ID {obj_id} не найден")
                     continue
 
-                # Проверяем на дубликат
                 existing = session.query(ObjectGroup).filter_by(group_name=group_name, object_id=obj_id).first()
                 if not existing:
                     group = ObjectGroup(group_name=group_name, object_id=obj_id)
                     session.add(group)
                     created += 1
-                # Если существует, можно пропустить или обновить – просто пропускаем
             session.commit()
             session.close()
     except Exception as e:
@@ -1721,13 +1814,11 @@ def api_copy_instructions():
 
     session = SessionLocal()
     try:
-        # Проверка существования объектов
         source = session.get(Object, source_id)
         target = session.get(Object, target_id)
         if not source or not target:
             return jsonify({'success': False, 'error': 'Один из объектов не найден'}), 404
 
-        # Копирование инструкций
         source_instructions = session.query(Instruction).filter(Instruction.object_id == source_id).all()
         copied_count = 0
         for instr in source_instructions:
@@ -1755,20 +1846,17 @@ def api_copy_instructions():
             session.add(new_instr)
             copied_count += 1
 
-        # Копирование свойств объекта (ObjectProperty)
         source_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == source_id).first()
         target_prop = session.query(ObjectProperty).filter(ObjectProperty.object_id == target_id).first()
 
         property_copied = False
         if source_prop:
             if target_prop:
-                # Обновляем существующее свойство у получателя
                 target_prop.is_split = source_prop.is_split
                 target_prop.is_multi_method = source_prop.is_multi_method
                 target_prop.has_support_maintenance = source_prop.has_support_maintenance
                 target_prop.special_product_type = source_prop.special_product_type
             else:
-                # Создаём новое свойство для получателя
                 new_prop = ObjectProperty(
                     object_id=target_id,
                     is_split=source_prop.is_split,
@@ -1779,7 +1867,6 @@ def api_copy_instructions():
                 session.add(new_prop)
             property_copied = True
         else:
-            # Если у источника нет свойства, удаляем свойство у получателя (если есть)
             if target_prop:
                 session.delete(target_prop)
 

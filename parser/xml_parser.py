@@ -15,6 +15,10 @@
 Добавлено: парсинг цвета инвентаря из выпадающего списка.
 Доработано: категории помещений и цвета инвентаря загружаются из БД (справочники).
 Добавлено: парсинг зональных исполнителей (поверхности выше 2 м, до 2 м, оборудование).
+
+ИСПРАВЛЕНИЯ БЕЗОПАСНОСТИ:
+- Защита от XXE (XML External Entity): отключены DTD, внешние сущности и сетевые запросы
+  при парсинге XML через lxml.
 """
 
 import zipfile
@@ -29,6 +33,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db.database import SessionLocal
 from db.models import Object as DBObject, RoomCategory, InventoryColor
+
+
+# ============================================================
+# БЕЗОПАСНЫЙ ПАРСЕР XML (защита от XXE)
+# ============================================================
+def _create_safe_xml_parser() -> etree.XMLParser:
+    """
+    Создаёт XML-парсер с отключёнными DTD, внешними сущностями и сетью.
+    Защита от XXE (XML External Entity): чтения локальных файлов,
+    SSRF-атак и DoS через «billion laughs».
+    """
+    return etree.XMLParser(
+        load_dtd=False,           # не загружать DTD
+        no_network=True,          # запретить сетевые запросы
+        resolve_entities=False,   # не разрешать внешние сущности
+        huge_tree=False,          # защита от гигантских деревьев (DoS)
+        dtd_validation=False,     # не валидировать по DTD
+        attribute_defaults=False, # не подставлять значения из DTD
+    )
+
+
+def _safe_fromstring(xml_content: bytes) -> etree._Element:
+    """Безопасный парсинг XML из байтов (защита от XXE)."""
+    parser = _create_safe_xml_parser()
+    return etree.fromstring(xml_content, parser=parser)
 
 
 # ============================================================
@@ -570,7 +599,8 @@ class SDTChecklistParser:
         with zipfile.ZipFile(file_path, 'r') as docx_zip:
             with docx_zip.open('word/document.xml') as xml_file:
                 xml_content = xml_file.read()
-                root = etree.fromstring(xml_content)
+                # ===== ИСПРАВЛЕНИЕ: безопасный парсинг XML (защита от XXE) =====
+                root = _safe_fromstring(xml_content)
 
                 self._parse_header(root, data)
                 self._parse_room_category(root, data)
