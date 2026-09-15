@@ -247,6 +247,28 @@ class TechCardGenerator:
         general = [i for i in filtered if (i.enterprise or "").strip() == "" and (i.room_name or "").strip() == ""]
         return general
 
+    def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
+                           target_room_name: str = None, target_room_category_id: int = None) -> list:
+        """
+        Применяет фильтр по предприятию/помещению ОТДЕЛЬНО по каждому способу обработки
+        и типу поверхности. Это не даёт специфичной инструкции одного метода/поверхности
+        вытеснять общие инструкции другого метода/поверхности.
+        """
+        if not instructions:
+            return []
+
+        groups = defaultdict(list)
+        for i in instructions:
+            key = (i.cleaning_method or "", (i.surface_type or "").lower())
+            groups[key].append(i)
+
+        result = []
+        for key, group in groups.items():
+            filtered_group = self._filter_instructions(
+                group, target_enterprise, target_room_name, target_room_category_id
+            )
+            result.extend(filtered_group)
+        return result
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id):
         """Строгий фильтр: enterprise == target (не NULL) И room_category_id == target (без fallback)."""
         target_ent = (target_enterprise or "").strip()
@@ -272,14 +294,10 @@ class TechCardGenerator:
                 appended.append(instr)
         if not appended:
             return instructions
-        # Поддержку добавляем отдельным блоком в конце, не сортируя с основными
         return list(instructions) + appended
 
     def _append_support_to_multi(self, instructions, support_additions):
-        """
-        Для multi_method: основные инструкции сохраняют свой порядок,
-        поддержка добавляется отдельным блоком в конце.
-        """
+        """Для multi_method: основные инструкции сохраняют свой порядок, поддержка добавляется отдельным блоком в конце."""
         if not support_additions:
             return instructions
         if instructions is None:
@@ -806,10 +824,13 @@ class TechCardGenerator:
 
                 print(f"   Разделение: не-поддерживающих {len(non_maintenance_instrs)}, поддерживающих {len(maintenance_instrs)}")
 
-                filtered_instrs = self._filter_instructions(
+                # ===== ФИЛЬТР ПО ПРЕДПРИЯТИЮ ОТДЕЛЬНО ПО КАЖДОМУ МЕТОДУ =====
+                # Это не даёт специфичной инструкции одного метода (напр. дезинфекции)
+                # вытеснять общие инструкции другого метода (напр. мойки).
+                filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name, room_category_id
                 )
-                print(f"   После фильтрации (основная логика): {len(filtered_instrs)}")
+                print(f"   После фильтрации (по методам): {len(filtered_instrs)}")
 
                 result_instructions = None
                 result_type = 'normal'
@@ -940,7 +961,6 @@ class TechCardGenerator:
                                 result_instructions, support_additions
                             )
                         elif is_multi:
-                            # Для multi_method: поддержка добавляется в конец без пересортировки
                             result_instructions = self._append_support_to_multi(
                                 result_instructions, support_additions
                             )
