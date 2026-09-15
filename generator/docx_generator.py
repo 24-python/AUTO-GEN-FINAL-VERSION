@@ -248,18 +248,19 @@ class TechCardGenerator:
         return general
 
     def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
-                           target_room_name: str = None, target_room_category_id: int = None) -> list:
-        """
-        Применяет фильтр по предприятию/помещению ОТДЕЛЬНО по каждому способу обработки
-        и типу поверхности. Это не даёт специфичной инструкции одного метода/поверхности
-        вытеснять общие инструкции другого метода/поверхности.
-        """
+                           target_room_name: str = None, target_room_category_id: int = None,
+                           grouping: str = 'method') -> list:
         if not instructions:
             return []
 
         groups = defaultdict(list)
         for i in instructions:
-            key = (i.cleaning_method or "", (i.surface_type or "").lower())
+            if grouping == 'method_subgroup':
+                key = (i.cleaning_method or "", (i.subgroup or "").strip())
+            elif grouping == 'method_surface':
+                key = (i.cleaning_method or "", (i.surface_type or "").lower())
+            else:
+                key = (i.cleaning_method or "",)
             groups[key].append(i)
 
         result = []
@@ -269,8 +270,8 @@ class TechCardGenerator:
             )
             result.extend(filtered_group)
         return result
+
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id):
-        """Строгий фильтр: enterprise == target (не NULL) И room_category_id == target (без fallback)."""
         target_ent = (target_enterprise or "").strip()
         if not target_ent or room_category_id is None:
             return []
@@ -282,7 +283,6 @@ class TechCardGenerator:
         ]
 
     def _append_support_to_list(self, instructions, support_additions):
-        """Добавляет поддержку в конец списка, без пересортировки основных инструкций."""
         if not support_additions:
             return instructions
         if instructions is None:
@@ -297,7 +297,6 @@ class TechCardGenerator:
         return list(instructions) + appended
 
     def _append_support_to_multi(self, instructions, support_additions):
-        """Для multi_method: основные инструкции сохраняют свой порядок, поддержка добавляется отдельным блоком в конце."""
         if not support_additions:
             return instructions
         if instructions is None:
@@ -514,11 +513,8 @@ class TechCardGenerator:
             if disinfection_instrs:
                 if disinfection_product_name:
                     normalized_product = self._normalize_product_name(disinfection_product_name)
-                    filtered_disinfection = self._filter_instructions(
-                        disinfection_instrs, enterprise, room_name, room_category_id
-                    )
                     candidates = [
-                        instr for instr in filtered_disinfection
+                        instr for instr in disinfection_instrs
                         if not normalized_product
                         or self._normalize_product_name(instr.product_name or "") == normalized_product
                     ]
@@ -528,11 +524,12 @@ class TechCardGenerator:
                         )
                         selected_disinfection = candidates[0]
                     else:
-                        if filtered_disinfection:
-                            filtered_disinfection.sort(
+                        if disinfection_instrs:
+                            disinfection_instrs_sorted = sorted(
+                                disinfection_instrs,
                                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
                             )
-                            selected_disinfection = filtered_disinfection[0]
+                            selected_disinfection = disinfection_instrs_sorted[0]
                 else:
                     disinfection_selected = self._select_instructions_for_room(
                         disinfection_instrs, room_category_id, enterprise, room_name,
@@ -812,7 +809,6 @@ class TechCardGenerator:
                 if cleaning_application_method:
                     print(f"   💧 Способ разведения для мойки: '{cleaning_application_method}'")
 
-                # ===== РАЗДЕЛЯЕМ ИНСТРУКЦИИ ДО ФИЛЬТРАЦИИ =====
                 maintenance_instrs = [
                     i for i in all_instrs
                     if (i.maintenance_type or "").lower() == "поддерживающая"
@@ -824,13 +820,18 @@ class TechCardGenerator:
 
                 print(f"   Разделение: не-поддерживающих {len(non_maintenance_instrs)}, поддерживающих {len(maintenance_instrs)}")
 
-                # ===== ФИЛЬТР ПО ПРЕДПРИЯТИЮ ОТДЕЛЬНО ПО КАЖДОМУ МЕТОДУ =====
-                # Это не даёт специфичной инструкции одного метода (напр. дезинфекции)
-                # вытеснять общие инструкции другого метода (напр. мойки).
+                if is_multi:
+                    grouping = 'method_subgroup'
+                elif is_split:
+                    grouping = 'method_surface'
+                else:
+                    grouping = 'method'
+
                 filtered_instrs = self._filter_by_methods(
-                    non_maintenance_instrs, target_enterprise, target_room_name, room_category_id
+                    non_maintenance_instrs, target_enterprise, target_room_name,
+                    room_category_id, grouping=grouping
                 )
-                print(f"   После фильтрации (по методам): {len(filtered_instrs)}")
+                print(f"   После фильтрации ({grouping}): {len(filtered_instrs)}")
 
                 result_instructions = None
                 result_type = 'normal'
@@ -840,35 +841,48 @@ class TechCardGenerator:
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
+                    # ===== Mойка и другие методы: НЕ схлопываем по методу.
+                    # Оставляем все инструкции, прошедшие фильтр, только применяем
+                    # фильтр по application_method (способ разведения) для мойки.
                     other_selected = []
                     if other_instrs:
-                        other_selected = self._select_all_instructions_for_room(
-                            other_instrs, room_category_id,
-                            target_enterprise, target_room_name,
-                            application_method=cleaning_application_method
-                        )
+                        if cleaning_application_method:
+                            other_selected = [
+                                i for i in other_instrs
+                                if not i.application_method
+                                or i.application_method == cleaning_application_method
+                            ]
+                        else:
+                            other_selected = list(other_instrs)
 
                     disinfection_selected = []
                     if disinfection_instrs:
-                        filtered_disinfection = self._filter_instructions(
-                            disinfection_instrs, target_enterprise, target_room_name, room_category_id
-                        )
-                        if filtered_disinfection:
-                            if checklist_data.disinfection_product:
-                                normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-                                if normalized_product:
-                                    filtered_disinfection = [
-                                        instr for instr in filtered_disinfection
-                                        if self._normalize_product_name(instr.product_name or "") == normalized_product
-                                    ]
-                            filtered_disinfection.sort(
-                                key=lambda i: (
-                                    self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
-                                    self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
-                                    (i.subgroup or "")
-                                )
+                        normalized_product = None
+                        if checklist_data.disinfection_product:
+                            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
+
+                        subgroup_groups = defaultdict(list)
+                        for instr in disinfection_instrs:
+                            subgroup_groups[(instr.subgroup or "").strip()].append(instr)
+
+                        for sg, group in subgroup_groups.items():
+                            if normalized_product:
+                                candidates = [
+                                    instr for instr in group
+                                    if self._normalize_product_name(instr.product_name or "") == normalized_product
+                                ]
+                                if candidates:
+                                    disinfection_selected.extend(candidates)
+                                    continue
+                            disinfection_selected.extend(group)
+
+                        disinfection_selected.sort(
+                            key=lambda i: (
+                                self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
+                                self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
+                                (i.subgroup or "")
                             )
-                            disinfection_selected = filtered_disinfection
+                        )
 
                     instructions = other_selected + disinfection_selected
                     instructions.sort(
@@ -949,7 +963,6 @@ class TechCardGenerator:
                     result_instructions = unique_instrs
                     result_type = 'normal'
 
-                # ===== SUPPORT КАК НАДСТРОЙКА =====
                 if is_support:
                     support_additions = self._get_support_additions(
                         all_instrs, target_enterprise, room_category_id
@@ -971,7 +984,6 @@ class TechCardGenerator:
                     else:
                         print(f"   -> support: поддерживающих инструкций не найдено (надстройка не применяется)")
 
-                # ===== ДОБАВЛЕНИЕ РЕЗУЛЬТАТА =====
                 if result_type == 'split':
                     non_empty = {sf: instrs for sf, instrs in (result_instructions or {}).items() if instrs}
                     if non_empty:
