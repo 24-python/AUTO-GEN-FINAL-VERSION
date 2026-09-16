@@ -486,12 +486,6 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        # ===== ИСПРАВЛЕНИЕ =====
-        # Сначала группируем инструкции по cleaning_method и применяем ВСЕ фильтры
-        # (enterprise / room_name / room_category_id, product_name, application_method)
-        # НЕЗАВИСИМО внутри каждого метода. Это гарантирует, что специфичная инструкция
-        # одного метода (например, "мойка жаропрочного стекла" с указанным предприятием)
-        # не вытеснит общую инструкцию другого метода (например, общую "мойку").
         by_method = defaultdict(list)
         for instr in all_instructions:
             by_method[instr.cleaning_method or ""].append(instr)
@@ -502,14 +496,12 @@ class TechCardGenerator:
 
         selected = []
         for method, method_instrs in by_method.items():
-            # 1) Фильтр по enterprise / room_name / room_category_id — внутри метода
             filtered = self._filter_instructions(
                 method_instrs, enterprise, room_name, room_category_id
             )
             if not filtered:
                 continue
 
-            # 2) Фильтр по названию средства (действует только для дезинфекции) — внутри метода
             if normalized_product:
                 filtered = [
                     instr for instr in filtered
@@ -519,12 +511,10 @@ class TechCardGenerator:
                 if not filtered:
                     continue
 
-            # 3) Фильтр по способу разведения — внутри метода
             filtered = self._apply_application_method_filter(filtered, application_method)
             if not filtered:
                 continue
 
-            # 4) Выбор лучшей инструкции по приоритету и уровню обработки
             sorted_instrs = sorted(
                 filtered,
                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
@@ -957,10 +947,6 @@ class TechCardGenerator:
 
                     other_selected = []
                     if other_instrs:
-                        # ===== Применяем фильтр по способу разведения ОТДЕЛЬНО
-                        # по каждой паре (subgroup, cleaning_method), чтобы специфичные
-                        # инструкции одного метода в одной подгруппе не вытесняли общие
-                        # инструкции другого метода в той же подгруппе.
                         other_selected = self._apply_application_method_filter_by_subgroup(
                             other_instrs, cleaning_application_method
                         )
@@ -1644,6 +1630,9 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_product
             else:
                 return checklist_data.cleaning_product
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_product
         return None
 
     def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
@@ -1658,6 +1647,9 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_concentration
             else:
                 return checklist_data.cleaning_concentration
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_concentration
         return None
 
     def _get_checklist_method(self, cleaning_method, normalized_name, checklist_data):
@@ -1672,4 +1664,7 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_method_text
             else:
                 return checklist_data.cleaning_method_text
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_method_text
         return None
