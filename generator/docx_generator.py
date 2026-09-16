@@ -186,6 +186,53 @@ class TechCardGenerator:
                 table.cell(r, col).text = ""
             self._merge_cells_vertical(table, col, range_start, end_row)
 
+    def _merge_column_2_by_level(self, table, start_row, actual_start, actual_end, rows_data):
+        """Объединяет колонку 2 (№ инструкции) по (maintenance_type, subgroup)."""
+        if actual_end <= actual_start:
+            return
+
+        keys = []
+        for row_idx in range(actual_start, actual_end + 1):
+            row_data_index = row_idx - start_row
+            if row_data_index < len(rows_data):
+                row_data = rows_data[row_data_index]
+                instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                if instr:
+                    maint = (instr.maintenance_type or "").lower()
+                    subgroup = (instr.subgroup or "").strip() or "_default_"
+                    keys.append((maint, subgroup))
+                else:
+                    keys.append(None)
+            else:
+                keys.append(None)
+
+        unique_keys = set([k for k in keys if k is not None])
+        if len(unique_keys) <= 1:
+            self._merge_adjacent_equal_cells(table, 2, actual_start, actual_end)
+        else:
+            current_key = None
+            sub_start = actual_start
+            for row_idx in range(actual_start, actual_end + 1):
+                row_data_index = row_idx - start_row
+                key = None
+                if row_data_index < len(rows_data):
+                    row_data = rows_data[row_data_index]
+                    instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                    if instr:
+                        maint = (instr.maintenance_type or "").lower()
+                        subgroup = (instr.subgroup or "").strip() or "_default_"
+                        key = (maint, subgroup)
+
+                if key != current_key:
+                    if current_key is not None:
+                        if sub_start <= row_idx - 1:
+                            self._merge_adjacent_equal_cells(table, 2, sub_start, row_idx - 1)
+                    current_key = key
+                    sub_start = row_idx
+            if current_key is not None:
+                if sub_start <= actual_end:
+                    self._merge_adjacent_equal_cells(table, 2, sub_start, actual_end)
+
     def _get_category_priority(self, session) -> dict:
         categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
         return {cat.name: cat.sort_order for cat in categories}
@@ -842,8 +889,7 @@ class TechCardGenerator:
 
                 if is_multi:
                     print(f"   -> объект в multi_method_objects")
-                    # ===== Отсев инструкций с заполненным surface_type.
-                    # Они предназначены для split-объектов и не должны применяться в multi.
+                    # Отсев инструкций с заполненным surface_type
                     filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
                     print(f"   После отсева по surface_type: {len(filtered_instrs)}")
 
@@ -1504,55 +1550,16 @@ class TechCardGenerator:
             for group_start, group_end in merge_info_columns:
                 actual_start = start_row + group_start
                 actual_end = start_row + group_end
-                if actual_end > actual_start:
-                    keys = []
-                    for row_idx in range(actual_start, actual_end + 1):
-                        row_data_index = row_idx - start_row
-                        if row_data_index < len(rows_data):
-                            row_data = rows_data[row_data_index]
-                            instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
-                            if instr:
-                                maint = (instr.maintenance_type or "").lower()
-                                subgroup = (instr.subgroup or "").strip() or "_default_"
-                                keys.append((maint, subgroup))
-                            else:
-                                keys.append(None)
-                        else:
-                            keys.append(None)
+                self._merge_column_2_by_level(main_table, start_row, actual_start, actual_end, rows_data)
 
-                    unique_keys = set([k for k in keys if k is not None])
-                    if len(unique_keys) <= 1:
-                        self._merge_adjacent_equal_cells(main_table, 2, actual_start, actual_end)
-                    else:
-                        current_key = None
-                        sub_start = actual_start
-                        for row_idx in range(actual_start, actual_end + 1):
-                            row_data_index = row_idx - start_row
-                            if row_data_index < len(rows_data):
-                                row_data = rows_data[row_data_index]
-                                instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
-                                key = None
-                                if instr:
-                                    maint = (instr.maintenance_type or "").lower()
-                                    subgroup = (instr.subgroup or "").strip() or "_default_"
-                                    key = (maint, subgroup)
-                            else:
-                                key = None
-                            if key != current_key:
-                                if current_key is not None:
-                                    if sub_start <= row_idx - 1:
-                                        self._merge_adjacent_equal_cells(main_table, 2, sub_start, row_idx - 1)
-                                current_key = key
-                                sub_start = row_idx
-                        if current_key is not None:
-                            if sub_start <= actual_end:
-                                self._merge_adjacent_equal_cells(main_table, 2, sub_start, actual_end)
-
+            # ===== ИСПРАВЛЕНО: для split-объектов колонка 2 тоже объединяется
+            # по (maintenance_type, subgroup), а не по равенству текста =====
             for group_start, group_end in surface_merge_info:
                 actual_start = start_row + group_start
                 actual_end = start_row + group_end
                 if actual_end > actual_start:
-                    for col in [2, 8, 9, 10, 11]:
+                    self._merge_column_2_by_level(main_table, start_row, actual_start, actual_end, rows_data)
+                    for col in [8, 9, 10, 11]:
                         self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
 
             output_file = Path(output_path)
