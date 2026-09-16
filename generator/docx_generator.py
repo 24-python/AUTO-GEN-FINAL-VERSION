@@ -344,22 +344,27 @@ class TechCardGenerator:
                                                      application_method: str = None) -> list:
         """
         Для multi-объектов: применяет фильтр по способу разведения ОТДЕЛЬНО
-        по каждой подгруппе (subgroup).
-        Внутри каждой подгруппы работает логика _apply_application_method_filter:
-        специфичные инструкции предприятия приоритетнее общих, а общие из другой
-        подгруппы не вытесняются специфичными из этой.
+        по каждой паре (subgroup, cleaning_method).
+
+        Это гарантирует, что:
+        - каждая подгруппа обрабатывается независимо;
+        - внутри подгруппы каждый метод фильтруется независимо, поэтому
+          специфичная инструкция одного метода (например, "мойка жаропрочного
+          стекла" с указанным предприятием) не вытесняет общую инструкцию
+          другого метода (например, общую "мойку") в той же подгруппе.
         """
         if not instructions:
             return []
         if not application_method:
             return list(instructions)
 
-        subgroups = defaultdict(list)
+        sub_method_groups = defaultdict(list)
         for instr in instructions:
-            subgroups[(instr.subgroup or "").strip()].append(instr)
+            key = ((instr.subgroup or "").strip(), instr.cleaning_method or "")
+            sub_method_groups[key].append(instr)
 
         result = []
-        for sg, group in subgroups.items():
+        for key, group in sub_method_groups.items():
             result.extend(self._apply_application_method_filter(group, application_method))
         return result
 
@@ -481,30 +486,47 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
-        if not filtered:
-            return []
+        # ===== ИСПРАВЛЕНИЕ =====
+        # Сначала группируем инструкции по cleaning_method и применяем ВСЕ фильтры
+        # (enterprise / room_name / room_category_id, product_name, application_method)
+        # НЕЗАВИСИМО внутри каждого метода. Это гарантирует, что специфичная инструкция
+        # одного метода (например, "мойка жаропрочного стекла" с указанным предприятием)
+        # не вытеснит общую инструкцию другого метода (например, общую "мойку").
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            by_method[instr.cleaning_method or ""].append(instr)
 
+        normalized_product = None
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
+
+        selected = []
+        for method, method_instrs in by_method.items():
+            # 1) Фильтр по enterprise / room_name / room_category_id — внутри метода
+            filtered = self._filter_instructions(
+                method_instrs, enterprise, room_name, room_category_id
+            )
+            if not filtered:
+                continue
+
+            # 2) Фильтр по названию средства (действует только для дезинфекции) — внутри метода
             if normalized_product:
                 filtered = [
                     instr for instr in filtered
                     if instr.cleaning_method != "дезинфекция"
                     or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
+                if not filtered:
+                    continue
 
-        filtered = self._apply_application_method_filter(filtered, application_method)
+            # 3) Фильтр по способу разведения — внутри метода
+            filtered = self._apply_application_method_filter(filtered, application_method)
+            if not filtered:
+                continue
 
-        by_method = defaultdict(list)
-        for instr in filtered:
-            method = instr.cleaning_method or ""
-            by_method[method].append(instr)
-
-        selected = []
-        for method, instrs in by_method.items():
+            # 4) Выбор лучшей инструкции по приоритету и уровню обработки
             sorted_instrs = sorted(
-                instrs,
+                filtered,
                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
             )
             best = None
@@ -517,6 +539,7 @@ class TechCardGenerator:
                     break
             if best:
                 selected.append(best)
+
         selected.sort(
             key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
@@ -935,8 +958,9 @@ class TechCardGenerator:
                     other_selected = []
                     if other_instrs:
                         # ===== Применяем фильтр по способу разведения ОТДЕЛЬНО
-                        # по каждой подгруппе (subgroup), чтобы специфичные инструкции
-                        # в одной подгруппе не вытесняли общие в другой.
+                        # по каждой паре (subgroup, cleaning_method), чтобы специфичные
+                        # инструкции одного метода в одной подгруппе не вытесняли общие
+                        # инструкции другого метода в той же подгруппе.
                         other_selected = self._apply_application_method_filter_by_subgroup(
                             other_instrs, cleaning_application_method
                         )
