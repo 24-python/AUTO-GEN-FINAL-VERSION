@@ -187,7 +187,6 @@ class TechCardGenerator:
             self._merge_cells_vertical(table, col, range_start, end_row)
 
     def _merge_column_2_by_level(self, table, start_row, actual_start, actual_end, rows_data):
-        """Объединяет колонку 2 (№ инструкции) по (maintenance_type, subgroup)."""
         if actual_end <= actual_start:
             return
 
@@ -882,6 +881,14 @@ class TechCardGenerator:
                 else:
                     grouping = 'method'
 
+                # ===== ИСПРАВЛЕНО: отсев по surface_type ДО фильтрации по предприятию
+                # для не-split объектов. Это не даёт специфичным инструкциям с surface_type
+                # вытеснять общие без surface_type, а потом самим отсеиваться.
+                if not is_split:
+                    non_maintenance_instrs = [
+                        i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
+                    ]
+
                 filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name,
                     room_category_id, grouping=grouping
@@ -893,9 +900,6 @@ class TechCardGenerator:
 
                 if is_multi:
                     print(f"   -> объект в multi_method_objects")
-                    filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
-                    print(f"   После отсева по surface_type: {len(filtered_instrs)}")
-
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
@@ -971,10 +975,6 @@ class TechCardGenerator:
 
                 else:
                     print(f"   -> обычный объект")
-                    # Отсев инструкций с заполненным surface_type (только для split-объектов)
-                    filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
-                    print(f"   После отсева по surface_type: {len(filtered_instrs)}")
-
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
