@@ -399,10 +399,16 @@ class TechCardGenerator:
                 ]
 
         if application_method:
+            # ===== ИСПРАВЛЕНО: fallback по способу разведения =====
+            # Специфичная для предприятия инструкция приоритетнее способа разведения.
+            # Если по способу разведения ничего не подошло — возвращаемся к исходному набору.
+            filtered_before = list(filtered)
             filtered = [
                 instr for instr in filtered
                 if not instr.application_method or instr.application_method == application_method
             ]
+            if not filtered:
+                filtered = filtered_before
 
         by_method = defaultdict(list)
         for instr in filtered:
@@ -443,12 +449,13 @@ class TechCardGenerator:
             return []
 
         if application_method:
+            filtered_before = list(filtered)
             filtered = [
                 instr for instr in filtered
                 if not instr.application_method or instr.application_method == application_method
             ]
             if not filtered:
-                return []
+                filtered = filtered_before
 
         sorted_instrs = sorted(
             filtered,
@@ -841,9 +848,6 @@ class TechCardGenerator:
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
-                    # ===== Mойка и другие методы: НЕ схлопываем по методу.
-                    # Оставляем все инструкции, прошедшие фильтр, только применяем
-                    # фильтр по application_method (способ разведения) для мойки.
                     other_selected = []
                     if other_instrs:
                         if cleaning_application_method:
@@ -852,6 +856,8 @@ class TechCardGenerator:
                                 if not i.application_method
                                 or i.application_method == cleaning_application_method
                             ]
+                            if not other_selected:
+                                other_selected = list(other_instrs)
                         else:
                             other_selected = list(other_instrs)
 
