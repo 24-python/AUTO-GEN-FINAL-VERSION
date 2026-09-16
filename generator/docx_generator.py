@@ -320,16 +320,6 @@ class TechCardGenerator:
     def _apply_application_method_filter(self, instructions: list, application_method: str = None) -> list:
         """
         Фильтр по способу разведения с приоритетом специфичных инструкций.
-
-        Логика:
-        - Если application_method не задан — возвращаем список как есть.
-        - Разделяем на специфичные (enterprise заполнен) и общие.
-        - Если специфичные есть: фильтр по application_method применяется только к ним.
-          Если есть совпадения — берём только совпавшие.
-          Если совпадений нет — берём все специфичные (данные из БД).
-          Общие отбрасываются.
-        - Если специфичных нет: фильтр по application_method применяется к общим.
-          Если совпадений нет — берём все общие (fallback).
         """
         if not instructions:
             return []
@@ -349,6 +339,29 @@ class TechCardGenerator:
         if specific:
             return _filter_group(specific)
         return _filter_group(general)
+
+    def _apply_application_method_filter_by_subgroup(self, instructions: list,
+                                                     application_method: str = None) -> list:
+        """
+        Для multi-объектов: применяет фильтр по способу разведения ОТДЕЛЬНО
+        по каждой подгруппе (subgroup).
+        Внутри каждой подгруппы работает логика _apply_application_method_filter:
+        специфичные инструкции предприятия приоритетнее общих, а общие из другой
+        подгруппы не вытесняются специфичными из этой.
+        """
+        if not instructions:
+            return []
+        if not application_method:
+            return list(instructions)
+
+        subgroups = defaultdict(list)
+        for instr in instructions:
+            subgroups[(instr.subgroup or "").strip()].append(instr)
+
+        result = []
+        for sg, group in subgroups.items():
+            result.extend(self._apply_application_method_filter(group, application_method))
+        return result
 
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
                                 filter_surface_type: bool = False):
@@ -921,7 +934,10 @@ class TechCardGenerator:
 
                     other_selected = []
                     if other_instrs:
-                        other_selected = self._apply_application_method_filter(
+                        # ===== Применяем фильтр по способу разведения ОТДЕЛЬНО
+                        # по каждой подгруппе (subgroup), чтобы специфичные инструкции
+                        # в одной подгруппе не вытесняли общие в другой.
+                        other_selected = self._apply_application_method_filter_by_subgroup(
                             other_instrs, cleaning_application_method
                         )
 
