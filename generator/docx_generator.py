@@ -318,16 +318,27 @@ class TechCardGenerator:
             result.extend(filtered_group)
         return result
 
-    def _get_support_additions(self, all_instrs, target_enterprise, room_category_id):
+    def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
+                                filter_surface_type: bool = False):
+        """
+        Строгий фильтр: enterprise == target (не NULL) И room_category_id == target (без fallback).
+
+        filter_surface_type=True — дополнительно отбрасывает инструкции с заполненным
+        surface_type. Используется для обычных и multi объектов (там surface_type не применяется).
+        Для split-объектов filter_surface_type=False — surface_type нужен для раскладки.
+        """
         target_ent = (target_enterprise or "").strip()
         if not target_ent or room_category_id is None:
             return []
-        return [
+        result = [
             instr for instr in all_instrs
             if (instr.enterprise or "").strip().lower() == target_ent.lower()
             and instr.room_category_id == room_category_id
             and (instr.maintenance_type or "").lower() == "поддерживающая"
         ]
+        if filter_surface_type:
+            result = [i for i in result if not (i.surface_type or "").strip()]
+        return result
 
     def _append_support_to_list(self, instructions, support_additions):
         if not support_additions:
@@ -889,7 +900,6 @@ class TechCardGenerator:
 
                 if is_multi:
                     print(f"   -> объект в multi_method_objects")
-                    # Отсев инструкций с заполненным surface_type
                     filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
                     print(f"   После отсева по surface_type: {len(filtered_instrs)}")
 
@@ -1018,8 +1028,12 @@ class TechCardGenerator:
                     result_type = 'normal'
 
                 if is_support:
+                    # Для обычных и multi-объектов поддерживающие инструкции с surface_type
+                    # не применяются — они предназначены только для split-объектов.
+                    filter_surface = not is_split
                     support_additions = self._get_support_additions(
-                        all_instrs, target_enterprise, room_category_id
+                        all_instrs, target_enterprise, room_category_id,
+                        filter_surface_type=filter_surface
                     )
                     if support_additions:
                         print(f"   -> support: добавлено {len(support_additions)} поддерживающих инструкций")
@@ -1552,8 +1566,6 @@ class TechCardGenerator:
                 actual_end = start_row + group_end
                 self._merge_column_2_by_level(main_table, start_row, actual_start, actual_end, rows_data)
 
-            # ===== ИСПРАВЛЕНО: для split-объектов колонка 2 тоже объединяется
-            # по (maintenance_type, subgroup), а не по равенству текста =====
             for group_start, group_end in surface_merge_info:
                 actual_start = start_row + group_start
                 actual_end = start_row + group_end
