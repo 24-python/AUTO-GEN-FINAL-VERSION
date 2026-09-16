@@ -1631,8 +1631,8 @@ class TechCardGenerator:
             else:
                 return checklist_data.cleaning_product
         elif cleaning_method == "мойка жаропрочного стекла":
-            if normalized_name in self.tech_objects:
-                return checklist_data.tech_cleaning_product
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_product
         return None
 
     def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
@@ -1648,8 +1648,8 @@ class TechCardGenerator:
             else:
                 return checklist_data.cleaning_concentration
         elif cleaning_method == "мойка жаропрочного стекла":
-            if normalized_name in self.tech_objects:
-                return checklist_data.tech_cleaning_concentration
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_concentration
         return None
 
     def _get_checklist_method(self, cleaning_method, normalized_name, checklist_data):
@@ -1665,6 +1665,6 @@ class TechCardGenerator:
             else:
                 return checklist_data.cleaning_method_text
         elif cleaning_method == "мойка жаропрочного стекла":
-            if normalized_name in self.tech_objects:
-                return checklist_data.tech_cleaning_method_text
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_method_text
         return None
