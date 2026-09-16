@@ -317,6 +317,39 @@ class TechCardGenerator:
             result.extend(filtered_group)
         return result
 
+    def _apply_application_method_filter(self, instructions: list, application_method: str = None) -> list:
+        """
+        Фильтр по способу разведения с приоритетом специфичных инструкций.
+
+        Логика:
+        - Если application_method не задан — возвращаем список как есть.
+        - Разделяем на специфичные (enterprise заполнен) и общие.
+        - Если специфичные есть: фильтр по application_method применяется только к ним.
+          Если есть совпадения — берём только совпавшие.
+          Если совпадений нет — берём все специфичные (данные из БД).
+          Общие отбрасываются.
+        - Если специфичных нет: фильтр по application_method применяется к общим.
+          Если совпадений нет — берём все общие (fallback).
+        """
+        if not instructions:
+            return []
+        if not application_method:
+            return list(instructions)
+
+        specific = [i for i in instructions if (i.enterprise or "").strip()]
+        general = [i for i in instructions if not (i.enterprise or "").strip()]
+
+        def _filter_group(group):
+            matched = [
+                i for i in group
+                if not i.application_method or i.application_method == application_method
+            ]
+            return matched if matched else list(group)
+
+        if specific:
+            return _filter_group(specific)
+        return _filter_group(general)
+
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
                                 filter_surface_type: bool = False):
         target_ent = (target_enterprise or "").strip()
@@ -448,14 +481,7 @@ class TechCardGenerator:
                     or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
 
-        if application_method:
-            filtered_before = list(filtered)
-            filtered = [
-                instr for instr in filtered
-                if not instr.application_method or instr.application_method == application_method
-            ]
-            if not filtered:
-                filtered = filtered_before
+        filtered = self._apply_application_method_filter(filtered, application_method)
 
         by_method = defaultdict(list)
         for instr in filtered:
@@ -495,14 +521,7 @@ class TechCardGenerator:
         if not filtered:
             return []
 
-        if application_method:
-            filtered_before = list(filtered)
-            filtered = [
-                instr for instr in filtered
-                if not instr.application_method or instr.application_method == application_method
-            ]
-            if not filtered:
-                filtered = filtered_before
+        filtered = self._apply_application_method_filter(filtered, application_method)
 
         sorted_instrs = sorted(
             filtered,
@@ -881,9 +900,6 @@ class TechCardGenerator:
                 else:
                     grouping = 'method'
 
-                # ===== ИСПРАВЛЕНО: отсев по surface_type ДО фильтрации по предприятию
-                # для не-split объектов. Это не даёт специфичным инструкциям с surface_type
-                # вытеснять общие без surface_type, а потом самим отсеиваться.
                 if not is_split:
                     non_maintenance_instrs = [
                         i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
@@ -905,16 +921,9 @@ class TechCardGenerator:
 
                     other_selected = []
                     if other_instrs:
-                        if cleaning_application_method:
-                            other_selected = [
-                                i for i in other_instrs
-                                if not i.application_method
-                                or i.application_method == cleaning_application_method
-                            ]
-                            if not other_selected:
-                                other_selected = list(other_instrs)
-                        else:
-                            other_selected = list(other_instrs)
+                        other_selected = self._apply_application_method_filter(
+                            other_instrs, cleaning_application_method
+                        )
 
                     disinfection_selected = []
                     if disinfection_instrs:
