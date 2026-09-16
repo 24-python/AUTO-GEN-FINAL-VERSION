@@ -320,13 +320,6 @@ class TechCardGenerator:
 
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
                                 filter_surface_type: bool = False):
-        """
-        Строгий фильтр: enterprise == target (не NULL) И room_category_id == target (без fallback).
-
-        filter_surface_type=True — дополнительно отбрасывает инструкции с заполненным
-        surface_type. Используется для обычных и multi объектов (там surface_type не применяется).
-        Для split-объектов filter_surface_type=False — surface_type нужен для раскладки.
-        """
         target_ent = (target_enterprise or "").strip()
         if not target_ent or room_category_id is None:
             return []
@@ -978,6 +971,10 @@ class TechCardGenerator:
 
                 else:
                     print(f"   -> обычный объект")
+                    # Отсев инструкций с заполненным surface_type (только для split-объектов)
+                    filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
+                    print(f"   После отсева по surface_type: {len(filtered_instrs)}")
+
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
@@ -1028,8 +1025,6 @@ class TechCardGenerator:
                     result_type = 'normal'
 
                 if is_support:
-                    # Для обычных и multi-объектов поддерживающие инструкции с surface_type
-                    # не применяются — они предназначены только для split-объектов.
                     filter_surface = not is_split
                     support_additions = self._get_support_additions(
                         all_instrs, target_enterprise, room_category_id,
