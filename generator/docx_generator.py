@@ -399,9 +399,6 @@ class TechCardGenerator:
                 ]
 
         if application_method:
-            # ===== ИСПРАВЛЕНО: fallback по способу разведения =====
-            # Специфичная для предприятия инструкция приоритетнее способа разведения.
-            # Если по способу разведения ничего не подошло — возвращаемся к исходному набору.
             filtered_before = list(filtered)
             filtered = [
                 instr for instr in filtered
@@ -845,6 +842,11 @@ class TechCardGenerator:
 
                 if is_multi:
                     print(f"   -> объект в multi_method_objects")
+                    # ===== Отсев инструкций с заполненным surface_type.
+                    # Они предназначены для split-объектов и не должны применяться в multi.
+                    filtered_instrs = [i for i in filtered_instrs if not (i.surface_type or "").strip()]
+                    print(f"   После отсева по surface_type: {len(filtered_instrs)}")
+
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
