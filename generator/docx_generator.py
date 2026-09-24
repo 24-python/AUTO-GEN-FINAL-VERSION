@@ -269,29 +269,61 @@ class TechCardGenerator:
 
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None) -> list:
+        """
+        Двухэтапный отбор инструкций:
+
+        Этап A — каскад по (enterprise, room_name):
+          1) both:      enterprise == target_ent И room_name == target_room
+          2) ent_only:  enterprise == target_ent И room_name == ""
+          3) room_only: enterprise == ""          И room_name == target_room
+          4) general:   enterprise == ""          И room_name == ""
+
+        Этап B — внутри выбранной ступени по категории помещения:
+          - специфичная (room_category_id == target) — приоритетно,
+          - общая (room_category_id IS NULL) — fallback,
+          - если нет ни той, ни другой — пусто.
+        """
         if not instructions:
             return []
 
         target_ent = (target_enterprise or "").strip()
         target_room = (target_room_name or "").strip()
 
-        if not target_ent and not target_room:
-            return [i for i in instructions if i.room_category_id == target_room_category_id or i.room_category_id is None]
+        # ===== Этап A — каскад по (enterprise, room_name) =====
+        both = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == target_ent
+            and (i.room_name or "").strip() == target_room
+        ]
+        ent_only = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == target_ent
+            and (i.room_name or "").strip() == ""
+        ]
+        room_only = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == ""
+            and (i.room_name or "").strip() == target_room
+            and target_room != ""
+        ]
+        general = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == ""
+            and (i.room_name or "").strip() == ""
+        ]
 
-        filtered = [i for i in instructions if i.room_category_id == target_room_category_id or i.room_category_id is None]
-        if not filtered:
+        stage = both or ent_only or room_only or general
+        if not stage:
             return []
 
-        both = [i for i in filtered if (i.enterprise or "").strip() == target_ent and (i.room_name or "").strip() == target_room]
-        if both:
-            return both
+        # ===== Этап B — внутри ступени по категории помещения =====
+        if target_room_category_id is not None:
+            specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
+            if specific_cat:
+                return specific_cat
 
-        ent_only = [i for i in filtered if (i.enterprise or "").strip() == target_ent and (i.room_name or "").strip() == ""]
-        if ent_only:
-            return ent_only
-
-        general = [i for i in filtered if (i.enterprise or "").strip() == "" and (i.room_name or "").strip() == ""]
-        return general
+        cat_null = [i for i in stage if i.room_category_id is None]
+        return cat_null
 
     def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
                            target_room_name: str = None, target_room_category_id: int = None,
@@ -370,15 +402,32 @@ class TechCardGenerator:
 
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
                                 filter_surface_type: bool = False):
+        """
+        Отбор поддерживающих инструкций для надстройки.
+        Категория помещения: специфичная == target, иначе NULL (fallback).
+        """
         target_ent = (target_enterprise or "").strip()
-        if not target_ent or room_category_id is None:
+        if not target_ent:
             return []
-        result = [
+
+        candidates = [
             instr for instr in all_instrs
             if (instr.enterprise or "").strip().lower() == target_ent.lower()
-            and instr.room_category_id == room_category_id
             and (instr.maintenance_type or "").lower() == "поддерживающая"
         ]
+        if not candidates:
+            return []
+
+        # Категория помещения: специфичная приоритетно, иначе NULL
+        if room_category_id is not None:
+            specific_cat = [i for i in candidates if i.room_category_id == room_category_id]
+            if specific_cat:
+                result = specific_cat
+            else:
+                result = [i for i in candidates if i.room_category_id is None]
+        else:
+            result = [i for i in candidates if i.room_category_id is None]
+
         if filter_surface_type:
             result = [i for i in result if not (i.surface_type or "").strip()]
         return result
@@ -981,8 +1030,10 @@ class TechCardGenerator:
                         )
 
                     instructions = other_selected + disinfection_selected
+
                     instructions.sort(
                         key=lambda x: (
+                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
                             (x.subgroup or ""),
                             self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
                         )
@@ -994,6 +1045,13 @@ class TechCardGenerator:
                         if key not in seen:
                             seen.add(key)
                             unique_instrs.append(instr)
+
+                    unique_instrs.sort(
+                        key=lambda x: (
+                            (x.subgroup or ""),
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                        )
+                    )
                     result_instructions = unique_instrs
                     result_type = 'normal'
 
@@ -1047,8 +1105,12 @@ class TechCardGenerator:
                     if selected_disinfection:
                         instructions.append(selected_disinfection)
 
-                    instructions.sort(key=lambda x: self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99))
-
+                    instructions.sort(
+                        key=lambda x: (
+                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                        )
+                    )
                     seen = set()
                     unique_instrs = []
                     for instr in instructions:
@@ -1056,6 +1118,12 @@ class TechCardGenerator:
                         if key not in seen:
                             seen.add(key)
                             unique_instrs.append(instr)
+
+                    unique_instrs.sort(
+                        key=lambda x: self.cleaning_method_order.get(
+                            (x.cleaning_method or "").lower().strip(), 99
+                        )
+                    )
                     result_instructions = unique_instrs
                     result_type = 'normal'
 
@@ -1426,16 +1494,35 @@ class TechCardGenerator:
 
                         if is_disinfection:
                             final_product = db_product if db_product else ""
+
+                            # ===== Проверка совпадения средства в БД и в чек-листе.
+                            # Если средство из БД НЕ совпадает со средством из чек-листа,
+                            # запрещаем fallback на чек-лист — пустые поля останутся пустыми
+                            # (концентрация станет прочерком, способ разведения — не подставится).
+                            checklist_disinfection_product = checklist_data.disinfection_product
+                            products_match = (
+                                bool(db_product)
+                                and bool(checklist_disinfection_product)
+                                and self._normalize_product_name(db_product)
+                                    == self._normalize_product_name(checklist_disinfection_product)
+                            )
+
                             if db_concentration:
                                 final_concentration = db_concentration
-                            else:
+                            elif products_match:
                                 checklist_concentration = checklist_data.disinfection_concentration
                                 final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                            else:
+                                final_concentration = ""
+
                             if db_method:
                                 final_extra_method = db_method
-                            else:
+                            elif products_match:
                                 checklist_method_text = checklist_data.disinfection_method_text
                                 final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+                            else:
+                                final_extra_method = ""
+
                             final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
                             final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
 
@@ -1481,20 +1568,46 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[7], final_exposure)
 
                         else:
+                            # ===== Моющие средства.
+                            # Проверяем совпадение средства из БД со средством из чек-листа.
+                            # Если НЕ совпадает — fallback на чек-лист запрещён, ставим прочерк.
+                            checklist_product = self._get_checklist_product(
+                                cleaning_method, normalized_name, checklist_data
+                            )
+                            products_match = (
+                                has_db_product
+                                and bool(checklist_product)
+                                and self._normalize_product_name(db_product)
+                                    == self._normalize_product_name(checklist_product)
+                            )
+
                             if has_db_product:
                                 final_product = db_product
                                 if db_concentration:
                                     final_concentration = db_concentration
+                                elif products_match:
+                                    final_concentration = self._get_checklist_concentration(
+                                        cleaning_method, normalized_name, checklist_data
+                                    )
                                 else:
-                                    final_concentration = self._get_checklist_concentration(cleaning_method, normalized_name, checklist_data)
+                                    final_concentration = ""
+
                                 if db_method:
                                     final_extra_method = db_method
+                                elif products_match:
+                                    final_extra_method = self._get_checklist_method(
+                                        cleaning_method, normalized_name, checklist_data
+                                    )
                                 else:
-                                    final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
+                                    final_extra_method = ""
                             else:
-                                final_product = self._get_checklist_product(cleaning_method, normalized_name, checklist_data)
-                                final_concentration = self._get_checklist_concentration(cleaning_method, normalized_name, checklist_data)
-                                final_extra_method = self._get_checklist_method(cleaning_method, normalized_name, checklist_data)
+                                final_product = checklist_product
+                                final_concentration = self._get_checklist_concentration(
+                                    cleaning_method, normalized_name, checklist_data
+                                )
+                                final_extra_method = self._get_checklist_method(
+                                    cleaning_method, normalized_name, checklist_data
+                                )
 
                             if not final_product:
                                 final_product = None
