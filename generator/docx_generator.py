@@ -537,7 +537,20 @@ class TechCardGenerator:
 
     def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
                            target_room_name: str = None, target_room_category_id: int = None,
-                           grouping: str = 'method') -> list:
+                           grouping: str = 'method',
+                           disinfection_product_name: str = None) -> list:
+        """
+        Группирует инструкции по ключу (method, subgroup/surface/…) и внутри
+        КАЖДОЙ группы применяет фильтры в следующем порядке:
+
+        1) Если метод — «дезинфекция» и указано средство — оставляем только
+           инструкции с этим средством (первый фильтр по ТЗ).
+        2) Применяем каскад _filter_instructions (enterprise/room → категория).
+
+        Это гарантирует, что специфичная инструкция из одной ступени каскада
+        с ЧУЖИМ средством не вытеснит целевую инструкцию с нужным средством
+        из другой ступени.
+        """
         if not instructions:
             return []
 
@@ -551,8 +564,24 @@ class TechCardGenerator:
                 key = (i.cleaning_method or "",)
             groups[key].append(i)
 
+        normalized_product = None
+        if disinfection_product_name:
+            normalized_product = self._normalize_product_name(disinfection_product_name)
+
         result = []
         for key, group in groups.items():
+            method = key[0]
+
+            # ===== 1) Первый фильтр — по средству (для дезинфекции) =====
+            if method == "дезинфекция" and normalized_product:
+                group = [
+                    i for i in group
+                    if self._normalize_product_name(i.product_name or "") == normalized_product
+                ]
+                if not group:
+                    continue
+
+            # ===== 2) Второй фильтр — каскад по enterprise/room → категории =====
             filtered_group = self._filter_instructions(
                 group, target_enterprise, target_room_name, target_room_category_id
             )
@@ -736,20 +765,20 @@ class TechCardGenerator:
 
         selected = []
         for method, method_instrs in by_method.items():
+            # Первый фильтр — по средству (только для дезинфекции)
+            if method == "дезинфекция" and normalized_product:
+                method_instrs = [
+                    instr for instr in method_instrs
+                    if self._normalize_product_name(instr.product_name or "") == normalized_product
+                ]
+                if not method_instrs:
+                    continue
+
             filtered = self._filter_instructions(
                 method_instrs, enterprise, room_name, room_category_id
             )
             if not filtered:
                 continue
-
-            if normalized_product:
-                filtered = [
-                    instr for instr in filtered
-                    if instr.cleaning_method != "дезинфекция"
-                    or self._normalize_product_name(instr.product_name or "") == normalized_product
-                ]
-                if not filtered:
-                    continue
 
             filtered = self._apply_application_method_filter(filtered, application_method)
             if not filtered:
@@ -850,28 +879,23 @@ class TechCardGenerator:
 
             selected_disinfection = None
             if disinfection_instrs:
+                # Средство уже отфильтровано на предыдущем шаге, но подстрахуемся:
+                # если product_name указан и ни одна инструкция ему не соответствует — пропускаем.
                 if disinfection_product_name:
-                    # Средство указано — ищем только совпадающие.
-                    # Не нашли — дезинфекцию по этой поверхности не выводим.
                     normalized_product = self._normalize_product_name(disinfection_product_name)
                     candidates = [
                         instr for instr in disinfection_instrs
                         if not normalized_product
                         or self._normalize_product_name(instr.product_name or "") == normalized_product
                     ]
-                    if candidates:
-                        candidates.sort(
-                            key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
-                        )
-                        selected_disinfection = candidates[0]
                 else:
-                    disinfection_selected = self._select_instructions_for_room(
-                        disinfection_instrs, room_category_id, enterprise, room_name,
-                        product_name=None,
-                        application_method=disinfection_application_method
+                    candidates = list(disinfection_instrs)
+
+                if candidates:
+                    candidates.sort(
+                        key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
                     )
-                    if disinfection_selected:
-                        selected_disinfection = disinfection_selected[0]
+                    selected_disinfection = candidates[0]
 
             selected = list(selected_other)
             if selected_disinfection:
@@ -1166,9 +1190,14 @@ class TechCardGenerator:
                         i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
                     ]
 
+                # ===== Отбор с учётом средства из чек-листа.
+                # Внутри каждой группы (method, subgroup/surface) фильтр по средству
+                # применяется РАНЬШЕ каскада, чтобы специфичная инструкция с чужим
+                # средством не вытеснила целевую инструкцию с нужным средством.
                 filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name,
-                    room_category_id, grouping=grouping
+                    room_category_id, grouping=grouping,
+                    disinfection_product_name=checklist_data.disinfection_product
                 )
                 print(f"   После фильтрации ({grouping}): {len(filtered_instrs)}")
 
@@ -1186,20 +1215,8 @@ class TechCardGenerator:
                             other_instrs, cleaning_application_method
                         )
 
-                    disinfection_selected = []
-                    if disinfection_instrs:
-                        if checklist_data.disinfection_product:
-                            # Средство указано — фильтруем глобально.
-                            # Если совпадений нет — дезинфекцию не выводим вообще.
-                            normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-                            disinfection_selected = [
-                                instr for instr in disinfection_instrs
-                                if self._normalize_product_name(instr.product_name or "") == normalized_product
-                            ]
-                        else:
-                            # Средство не указано — берём все
-                            disinfection_selected = list(disinfection_instrs)
-
+                    disinfection_selected = list(disinfection_instrs)
+                    if disinfection_selected:
                         disinfection_selected.sort(
                             key=lambda i: (
                                 self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
@@ -1251,25 +1268,12 @@ class TechCardGenerator:
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
 
                     selected_disinfection = None
-                    if checklist_data.disinfection_product:
-                        # Средство указано — ищем только совпадающие.
-                        # Если нет — дезинфекцию не выводим (без fallback).
-                        normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-                        candidates = [i for i in disinfection_instrs
-                                      if self._normalize_product_name(i.product_name or "") == normalized_product]
-                        if candidates:
-                            candidates.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
-                            selected_disinfection = candidates[0]
-                    else:
-                        # Средство не указано — берём лучшую по приоритету
-                        if disinfection_instrs:
-                            disinfection_selected_list = self._select_instructions_for_room(
-                                disinfection_instrs, room_category_id,
-                                target_enterprise, target_room_name,
-                                product_name=None, application_method=None
-                            )
-                            if disinfection_selected_list:
-                                selected_disinfection = disinfection_selected_list[0]
+                    if disinfection_instrs:
+                        disinfection_sorted = sorted(
+                            disinfection_instrs,
+                            key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
+                        )
+                        selected_disinfection = disinfection_sorted[0]
 
                     other_selected = []
                     if other_instrs:
