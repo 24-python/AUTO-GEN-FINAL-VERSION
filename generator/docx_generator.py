@@ -559,9 +559,13 @@ class TechCardGenerator:
                            disinfection_product_name: str = None) -> list:
         """
         Группирует инструкции по ключу (method, subgroup/surface/…) и внутри
-        КАЖДОЙ группы применяет _filter_instructions. Параметр
-        disinfection_product_name передаётся дальше — сам фильтр по средству
-        сработает только для ступени general (см. _filter_instructions).
+        КАЖДОЙ группы применяет _filter_instructions.
+
+        Параметр disinfection_product_name передаётся дальше ТОЛЬКО для метода
+        «дезинфекция». Для остальных методов (мойка, очистка, ополаскивание,
+        обеспыливание и т.п.) фильтр по средству не применяется — иначе общие
+        инструкции этих методов были бы ошибочно отфильтрованы по средству
+        из чек-листа, предназначенному для дезинфекции, и выпали бы из выборки.
         """
         if not instructions:
             return []
@@ -578,9 +582,11 @@ class TechCardGenerator:
 
         result = []
         for key, group in groups.items():
+            method = key[0]
+            product_for_filter = disinfection_product_name if method == "дезинфекция" else None
             filtered_group = self._filter_instructions(
                 group, target_enterprise, target_room_name, target_room_category_id,
-                disinfection_product_name=disinfection_product_name
+                disinfection_product_name=product_for_filter
             )
             result.extend(filtered_group)
         return result
@@ -1181,8 +1187,9 @@ class TechCardGenerator:
                     ]
 
                 # ===== Отбор. Фильтр по средству применяется ТОЛЬКО к ступени
-                # general внутри _filter_instructions. Индивидуальные инструкции
-                # (по предприятию / помещению) берутся как есть, без учёта средства.
+                # general внутри _filter_instructions и ТОЛЬКО для метода
+                # «дезинфекция» (см. _filter_by_methods). Индивидуальные
+                # инструкции (по предприятию / помещению) берутся как есть.
                 filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name,
                     room_category_id, grouping=grouping,
