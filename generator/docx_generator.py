@@ -27,6 +27,107 @@ class TechCardGenerator:
         "", None
     }
 
+    # ===== Матрица методов уборки для дезинфекции =====
+    # Ключ: (тип_объекта, нормализованный_способ_разведения)
+    # Значение: строка для колонки "Метод уборки" (как в справочнике)
+    #
+    # Типы объектов:
+    #   CLEANING_EQUIPMENT — Моечный, уборочный инвентарь и оборудование (по категории)
+    #   INVENTORY          — Инвентарь, посуда и т.д. (по категории)
+    #   PPE                — Многоразовые резиновые СИЗ (по категории)
+    #   surface            — приоритет -1, 1–47
+    #   surface_priority   — приоритет 48, 49, 50
+    #   working_surface    — приоритет 65
+    #   equipment          — приоритет 90–199 (кроме 154, 155)
+    #   measuring          — приоритет 154, 155
+    #
+    # Способы разведения:
+    #   готовая_форма     — "готовая форма"
+    #   ручное_разведение — "ручное разведение" (в т.ч. "ручной")
+    #   promax            — "дозирующая система ProMax"
+    #   dema              — "пенная станция DEMA"
+    #   vema              — "пенная станция VEMA"
+    #   protwin           — "спрей-система ProTwin"
+    #   помповый          — "помповый дозатор"
+    #
+    # ВАЖНО: значения должны присутствовать в справочнике БД `cleaning_techniques`,
+    # иначе подстановка не произойдёт (поведение как сейчас — ничего не ставим).
+    CLEANING_TECHNIQUE_MATRIX = {
+        # ===== По категории =====
+        # CLEANING_EQUIPMENT (Моечный, уборочный инвентарь и оборудование)
+        ('CLEANING_EQUIPMENT', 'готовая_форма'):         'ручной (протирание)',
+        ('CLEANING_EQUIPMENT', 'ручное_разведение'):     'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'promax'):                'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'dema'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'vema'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'protwin'):               'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'помповый'):              'ручной (протирание, замачивание)',
+
+        # INVENTORY (Инвентарь, посуда и т.д.)
+        ('INVENTORY', 'готовая_форма'):                  'ручной (протирание)',
+        ('INVENTORY', 'ручное_разведение'):              'ручной (протирание, замачивание)',
+        ('INVENTORY', 'promax'):                         'ручной (протирание, замачивание)',
+        ('INVENTORY', 'dema'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'vema'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'protwin'):                        'ручной (протирание, замачивание)',
+        ('INVENTORY', 'помповый'):                       'ручной (протирание, замачивание)',
+
+        # PPE (Многоразовые резиновые СИЗ)
+        ('PPE', 'готовая_форма'):                        'ручной (протирание)',
+        ('PPE', 'ручное_разведение'):                    'ручной (замачивание)',
+        ('PPE', 'promax'):                               'ручной (замачивание)',
+        ('PPE', 'dema'):                                 'ручной (замачивание)',
+        ('PPE', 'vema'):                                 'ручной (замачивание)',
+        ('PPE', 'protwin'):                              'ручной (замачивание)',
+        ('PPE', 'помповый'):                             'ручной (замачивание)',
+
+        # ===== По приоритету =====
+        # surface (приоритет -1, 1–47)
+        ('surface', 'готовая_форма'):                    'ручной (протирание)',
+        ('surface', 'ручное_разведение'):                'ручной (протирание)',
+        ('surface', 'promax'):                           'ручной (протирание)',
+        ('surface', 'dema'):                             'ручной (протирание)',
+        ('surface', 'vema'):                             'ручной (протирание)',
+        ('surface', 'protwin'):                          'ручной (протирание)',
+        ('surface', 'помповый'):                         'ручной (протирание)',
+
+        # surface_priority (приоритет 48, 49, 50)
+        ('surface_priority', 'готовая_форма'):           'ручной (протирание)',
+        ('surface_priority', 'ручное_разведение'):       'ручной (протирание)',
+        ('surface_priority', 'promax'):                  'ручной (протирание)',
+        ('surface_priority', 'dema'):                    'ручной (орошение)',
+        ('surface_priority', 'vema'):                    'ручной (орошение)',
+        ('surface_priority', 'protwin'):                 'ручной (орошение)',
+        ('surface_priority', 'помповый'):                'ручной (орошение)',
+
+        # equipment (приоритет 90–199 кроме 154/155)
+        ('equipment', 'готовая_форма'):                  'ручной (протирание)',
+        ('equipment', 'ручное_разведение'):              'ручной (протирание)',
+        ('equipment', 'promax'):                         'ручной (протирание)',
+        ('equipment', 'dema'):                           'ручной (орошение)',
+        ('equipment', 'vema'):                           'ручной (орошение)',
+        ('equipment', 'protwin'):                        'ручной (орошение)',
+        ('equipment', 'помповый'):                       'ручной (орошение)',
+
+        # measuring (приоритет 154, 155)
+        ('measuring', 'готовая_форма'):                  'ручной (протирание)',
+        ('measuring', 'ручное_разведение'):              'ручной (протирание)',
+        ('measuring', 'promax'):                         'ручной (протирание)',
+        ('measuring', 'dema'):                           'ручной (протирание)',
+        ('measuring', 'vema'):                           'ручной (протирание)',
+        ('measuring', 'protwin'):                        'ручной (протирание)',
+        ('measuring', 'помповый'):                       'ручной (протирание)',
+
+        # working_surface (приоритет 65)
+        ('working_surface', 'готовая_форма'):            'ручной (протирание)',
+        ('working_surface', 'ручное_разведение'):        'ручной (протирание)',
+        ('working_surface', 'promax'):                   'ручной (протирание)',
+        ('working_surface', 'dema'):                     'ручной (орошение)',
+        ('working_surface', 'vema'):                     'ручной (орошение)',
+        ('working_surface', 'protwin'):                  'ручной (орошение)',
+        ('working_surface', 'помповый'):                 'ручной (орошение)',
+    }
+
     def __init__(self, template_path: str = None):
         self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
         self._config_loaded = False
@@ -110,6 +211,108 @@ class TechCardGenerator:
         normalized = normalized.lower()
         normalized = re.sub(r'\s+', ' ', normalized)
         return normalized.strip()
+
+    # ===== Нормализация способа разведения =====
+    def _normalize_application_method(self, text: str) -> str:
+        """
+        Приводит строку способа разведения к каноническому ключу матрицы.
+        Возвращает "" если способ не распознан.
+        """
+        if not text:
+            return ""
+        t = text.lower()
+        if 'готовая форма' in t:
+            return 'готовая_форма'
+        if 'promax' in t or 'pro max' in t:
+            return 'promax'
+        if 'dema' in t:
+            return 'dema'
+        if 'vema' in t:
+            return 'vema'
+        if 'protwin' in t or 'pro twin' in t:
+            return 'protwin'
+        if 'помповый' in t:
+            return 'помповый'
+        if 'ручн' in t:
+            return 'ручное_разведение'
+        return ""
+
+    # ===== Определение типа объекта =====
+    def _detect_object_type(self, item, sort_priority, normalized_name) -> str:
+        """
+        Определяет тип объекта для матрицы методов уборки.
+
+        Шаг 1 — категория (жёстко):
+            CLEANING_EQUIPMENT → CLEANING_EQUIPMENT
+            INVENTORY          → INVENTORY
+            PPE                → PPE
+
+        Шаг 2 — по sort_priority:
+            -1, 1–47                  → surface
+            48, 49, 50                → surface_priority
+            65                        → working_surface
+            90–199 (кроме 154, 155)   → equipment
+            154, 155                  → measuring
+
+        Шаг 3 — фолбэк для «дырок» (0, 51–64, 66–89, 200+):
+            TECH / THERMAL / REFRIGERATION / PACKAGING / DISHWASHING / DOSING → equipment
+            всё остальное → surface
+        """
+        cat = getattr(item, 'category', None) if item is not None else None
+
+        # Шаг 1 — категория (ключ = имя enum)
+        if cat == Category.CLEANING_EQUIPMENT:
+            return 'CLEANING_EQUIPMENT'
+        if cat == Category.INVENTORY:
+            return 'INVENTORY'
+        if cat == Category.PPE:
+            return 'PPE'
+
+        # Шаг 2 — по приоритету
+        if sort_priority is not None:
+            sp = sort_priority
+            if sp == -1 or 1 <= sp <= 47:
+                return 'surface'
+            if sp in (48, 49, 50):
+                return 'surface_priority'
+            if sp == 65:
+                return 'working_surface'
+            if sp in (154, 155):
+                return 'measuring'
+            if 90 <= sp <= 199:
+                return 'equipment'
+
+        # Шаг 3 — фолбэк по категории
+        equipment_cats = {
+            Category.TECH_EQUIPMENT, Category.THERMAL_EQUIPMENT,
+            Category.REFRIGERATION_EQUIPMENT, Category.PACKAGING_EQUIPMENT,
+            Category.DISHWASHING_EQUIPMENT, Category.DOSING_EQUIPMENT,
+        }
+        if cat in equipment_cats:
+            return 'equipment'
+        return 'surface'
+
+    # ===== Резолв метода уборки по матрице =====
+    def _resolve_cleaning_technique_by_matrix(self, object_type: str,
+                                              application_method: str) -> str:
+        """
+        Возвращает метод уборки из зашитой матрицы.
+        ПРАВИЛА:
+          - если способ разведения не распознан → ""
+          - если в матрице нет записи для пары (объект, способ) → ""
+          - если значение есть в матрице, но отсутствует в справочнике БД
+            `cleaning_techniques` → "" (поведение "как сейчас" — не подставляем)
+        """
+        key_method = self._normalize_application_method(application_method)
+        if not key_method:
+            return ""
+        resolved = self.CLEANING_TECHNIQUE_MATRIX.get((object_type, key_method), "")
+        if not resolved:
+            return ""
+        found = self._cleaning_techniques.get(resolved.lower())
+        if not found:
+            return ""
+        return found
 
     def _set_cell_background(self, cell, hex_color: str):
         shading = OxmlElement('w:shd')
@@ -289,7 +492,6 @@ class TechCardGenerator:
         target_ent = (target_enterprise or "").strip()
         target_room = (target_room_name or "").strip()
 
-        # ===== Этап A — каскад по (enterprise, room_name) =====
         both = [
             i for i in instructions
             if (i.enterprise or "").strip() == target_ent
@@ -316,7 +518,6 @@ class TechCardGenerator:
         if not stage:
             return []
 
-        # ===== Этап B — внутри ступени по категории помещения =====
         if target_room_category_id is not None:
             specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
             if specific_cat:
@@ -350,9 +551,6 @@ class TechCardGenerator:
         return result
 
     def _apply_application_method_filter(self, instructions: list, application_method: str = None) -> list:
-        """
-        Фильтр по способу разведения с приоритетом специфичных инструкций.
-        """
         if not instructions:
             return []
         if not application_method:
@@ -374,17 +572,6 @@ class TechCardGenerator:
 
     def _apply_application_method_filter_by_subgroup(self, instructions: list,
                                                      application_method: str = None) -> list:
-        """
-        Для multi-объектов: применяет фильтр по способу разведения ОТДЕЛЬНО
-        по каждой паре (subgroup, cleaning_method).
-
-        Это гарантирует, что:
-        - каждая подгруппа обрабатывается независимо;
-        - внутри подгруппы каждый метод фильтруется независимо, поэтому
-          специфичная инструкция одного метода (например, "мойка жаропрочного
-          стекла" с указанным предприятием) не вытесняет общую инструкцию
-          другого метода (например, общую "мойку") в той же подгруппе.
-        """
         if not instructions:
             return []
         if not application_method:
@@ -402,10 +589,6 @@ class TechCardGenerator:
 
     def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
                                 filter_surface_type: bool = False):
-        """
-        Отбор поддерживающих инструкций для надстройки.
-        Категория помещения: специфичная == target, иначе NULL (fallback).
-        """
         target_ent = (target_enterprise or "").strip()
         if not target_ent:
             return []
@@ -418,7 +601,6 @@ class TechCardGenerator:
         if not candidates:
             return []
 
-        # Категория помещения: специфичная приоритетно, иначе NULL
         if room_category_id is not None:
             specific_cat = [i for i in candidates if i.room_category_id == room_category_id]
             if specific_cat:
@@ -660,6 +842,8 @@ class TechCardGenerator:
             selected_disinfection = None
             if disinfection_instrs:
                 if disinfection_product_name:
+                    # Средство указано — ищем только совпадающие.
+                    # Не нашли — дезинфекцию по этой поверхности не выводим.
                     normalized_product = self._normalize_product_name(disinfection_product_name)
                     candidates = [
                         instr for instr in disinfection_instrs
@@ -671,13 +855,6 @@ class TechCardGenerator:
                             key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
                         )
                         selected_disinfection = candidates[0]
-                    else:
-                        if disinfection_instrs:
-                            disinfection_instrs_sorted = sorted(
-                                disinfection_instrs,
-                                key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
-                            )
-                            selected_disinfection = disinfection_instrs_sorted[0]
                 else:
                     disinfection_selected = self._select_instructions_for_room(
                         disinfection_instrs, room_category_id, enterprise, room_name,
@@ -1002,24 +1179,17 @@ class TechCardGenerator:
 
                     disinfection_selected = []
                     if disinfection_instrs:
-                        normalized_product = None
                         if checklist_data.disinfection_product:
+                            # Средство указано — фильтруем глобально.
+                            # Если совпадений нет — дезинфекцию не выводим вообще.
                             normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
-
-                        subgroup_groups = defaultdict(list)
-                        for instr in disinfection_instrs:
-                            subgroup_groups[(instr.subgroup or "").strip()].append(instr)
-
-                        for sg, group in subgroup_groups.items():
-                            if normalized_product:
-                                candidates = [
-                                    instr for instr in group
-                                    if self._normalize_product_name(instr.product_name or "") == normalized_product
-                                ]
-                                if candidates:
-                                    disinfection_selected.extend(candidates)
-                                    continue
-                            disinfection_selected.extend(group)
+                            disinfection_selected = [
+                                instr for instr in disinfection_instrs
+                                if self._normalize_product_name(instr.product_name or "") == normalized_product
+                            ]
+                        else:
+                            # Средство не указано — берём все
+                            disinfection_selected = list(disinfection_instrs)
 
                         disinfection_selected.sort(
                             key=lambda i: (
@@ -1073,17 +1243,16 @@ class TechCardGenerator:
 
                     selected_disinfection = None
                     if checklist_data.disinfection_product:
+                        # Средство указано — ищем только совпадающие.
+                        # Если нет — дезинфекцию не выводим (без fallback).
                         normalized_product = self._normalize_product_name(checklist_data.disinfection_product)
                         candidates = [i for i in disinfection_instrs
                                       if self._normalize_product_name(i.product_name or "") == normalized_product]
                         if candidates:
                             candidates.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
                             selected_disinfection = candidates[0]
-                        else:
-                            if disinfection_instrs:
-                                disinfection_instrs.sort(key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id))
-                                selected_disinfection = disinfection_instrs[0]
                     else:
+                        # Средство не указано — берём лучшую по приоритету
                         if disinfection_instrs:
                             disinfection_selected_list = self._select_instructions_for_room(
                                 disinfection_instrs, room_category_id,
@@ -1495,10 +1664,6 @@ class TechCardGenerator:
                         if is_disinfection:
                             final_product = db_product if db_product else ""
 
-                            # ===== Проверка совпадения средства в БД и в чек-листе.
-                            # Если средство из БД НЕ совпадает со средством из чек-листа,
-                            # запрещаем fallback на чек-лист — пустые поля останутся пустыми
-                            # (концентрация станет прочерком, способ разведения — не подставится).
                             checklist_disinfection_product = checklist_data.disinfection_product
                             products_match = (
                                 bool(db_product)
@@ -1526,20 +1691,15 @@ class TechCardGenerator:
                             final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
                             final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
 
-                            source_application_method = db_method if db_method else checklist_data.disinfection_method_text
-                            if source_application_method:
-                                method_text = source_application_method.lower()
-                                target_method_name = None
-                                if "promax" in method_text:
-                                    target_method_name = "протирание"
-                                elif "protwin" in method_text:
-                                    target_method_name = "орошение"
-                                elif "пенная станция" in method_text:
-                                    target_method_name = "запенивание"
-                                if target_method_name:
-                                    found = self._cleaning_techniques.get(target_method_name.lower())
-                                    if found:
-                                        cleaning_technique = found
+                            # ===== Матрица методов уборки (fallback).
+                            # БД приоритетнее: если cleaning_technique уже задан,
+                            # матрица не применяется.
+                            if not cleaning_technique:
+                                source_application_method = db_method if db_method else checklist_data.disinfection_method_text
+                                obj_type = self._detect_object_type(item, sort_priority, normalized_name)
+                                resolved = self._resolve_cleaning_technique_by_matrix(obj_type, source_application_method)
+                                if resolved:
+                                    cleaning_technique = resolved
 
                             self._set_cell_text(row.cells[1], cleaning_method)
                             self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
@@ -1568,9 +1728,6 @@ class TechCardGenerator:
                             self._set_cell_text(row.cells[7], final_exposure)
 
                         else:
-                            # ===== Моющие средства.
-                            # Проверяем совпадение средства из БД со средством из чек-листа.
-                            # Если НЕ совпадает — fallback на чек-лист запрещён, ставим прочерк.
                             checklist_product = self._get_checklist_product(
                                 cleaning_method, normalized_name, checklist_data
                             )
