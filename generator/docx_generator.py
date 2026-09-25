@@ -471,7 +471,8 @@ class TechCardGenerator:
             return 99
 
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
-                             target_room_name: str = None, target_room_category_id: int = None) -> list:
+                             target_room_name: str = None, target_room_category_id: int = None,
+                             disinfection_product_name: str = None) -> list:
         """
         Двухэтапный отбор инструкций с перебором ступеней.
 
@@ -485,16 +486,23 @@ class TechCardGenerator:
           - специфичная (room_category_id == target) — приоритетно,
           - общая (room_category_id IS NULL) — fallback.
 
-        ВАЖНО: перебираем ступени последовательно и останавливаемся на первой,
-        где после этапа B получен непустой результат. Если ступень проходит
-        этап A, но на этапе B внутри неё ничего не найдено — переходим к
-        следующей ступени (а не возвращаем пусто).
+        Перебор ступеней: останавливаемся на первой, где после этапа B получен
+        непустой результат. Если ступень проходит этап A, но на этапе B внутри
+        неё ничего не найдено — переходим к следующей ступени.
+
+        ВАЖНО: фильтр по средству из чек-листа (disinfection_product_name)
+        применяется ИСКЛЮЧИТЕЛЬНО к ступени general. Индивидуальные ступени
+        (both / ent_only / room_only) берутся как есть, без фильтра по средству —
+        приоритет предприятия/помещения выше приоритета средства.
         """
         if not instructions:
             return []
 
         target_ent = (target_enterprise or "").strip()
         target_room = (target_room_name or "").strip()
+        normalized_product = None
+        if disinfection_product_name:
+            normalized_product = self._normalize_product_name(disinfection_product_name)
 
         # ===== Этап A — четыре ступени каскада =====
         both = [
@@ -520,9 +528,19 @@ class TechCardGenerator:
         ]
 
         # ===== Этап B + перебор ступеней =====
-        for stage in (both, ent_only, room_only, general):
+        for stage_name, stage in (("both", both), ("ent_only", ent_only),
+                                  ("room_only", room_only), ("general", general)):
             if not stage:
                 continue
+
+            # Фильтр по средству — ТОЛЬКО для ступени general
+            if stage_name == "general" and normalized_product:
+                stage = [
+                    i for i in stage
+                    if self._normalize_product_name(i.product_name or "") == normalized_product
+                ]
+                if not stage:
+                    continue
 
             if target_room_category_id is not None:
                 specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
@@ -541,15 +559,9 @@ class TechCardGenerator:
                            disinfection_product_name: str = None) -> list:
         """
         Группирует инструкции по ключу (method, subgroup/surface/…) и внутри
-        КАЖДОЙ группы применяет фильтры в следующем порядке:
-
-        1) Если метод — «дезинфекция» и указано средство — оставляем только
-           инструкции с этим средством (первый фильтр по ТЗ).
-        2) Применяем каскад _filter_instructions (enterprise/room → категория).
-
-        Это гарантирует, что специфичная инструкция из одной ступени каскада
-        с ЧУЖИМ средством не вытеснит целевую инструкцию с нужным средством
-        из другой ступени.
+        КАЖДОЙ группы применяет _filter_instructions. Параметр
+        disinfection_product_name передаётся дальше — сам фильтр по средству
+        сработает только для ступени general (см. _filter_instructions).
         """
         if not instructions:
             return []
@@ -564,26 +576,11 @@ class TechCardGenerator:
                 key = (i.cleaning_method or "",)
             groups[key].append(i)
 
-        normalized_product = None
-        if disinfection_product_name:
-            normalized_product = self._normalize_product_name(disinfection_product_name)
-
         result = []
         for key, group in groups.items():
-            method = key[0]
-
-            # ===== 1) Первый фильтр — по средству (для дезинфекции) =====
-            if method == "дезинфекция" and normalized_product:
-                group = [
-                    i for i in group
-                    if self._normalize_product_name(i.product_name or "") == normalized_product
-                ]
-                if not group:
-                    continue
-
-            # ===== 2) Второй фильтр — каскад по enterprise/room → категории =====
             filtered_group = self._filter_instructions(
-                group, target_enterprise, target_room_name, target_room_category_id
+                group, target_enterprise, target_room_name, target_room_category_id,
+                disinfection_product_name=disinfection_product_name
             )
             result.extend(filtered_group)
         return result
@@ -759,23 +756,15 @@ class TechCardGenerator:
         for instr in all_instructions:
             by_method[instr.cleaning_method or ""].append(instr)
 
-        normalized_product = None
-        if product_name:
-            normalized_product = self._normalize_product_name(product_name)
-
         selected = []
         for method, method_instrs in by_method.items():
-            # Первый фильтр — по средству (только для дезинфекции)
-            if method == "дезинфекция" and normalized_product:
-                method_instrs = [
-                    instr for instr in method_instrs
-                    if self._normalize_product_name(instr.product_name or "") == normalized_product
-                ]
-                if not method_instrs:
-                    continue
+            # Для дезинфекции передаём средство в _filter_instructions —
+            # фильтр применится только к ступени general.
+            disinfection_product_name = product_name if method == "дезинфекция" else None
 
             filtered = self._filter_instructions(
-                method_instrs, enterprise, room_name, room_category_id
+                method_instrs, enterprise, room_name, room_category_id,
+                disinfection_product_name=disinfection_product_name
             )
             if not filtered:
                 continue
@@ -879,8 +868,9 @@ class TechCardGenerator:
 
             selected_disinfection = None
             if disinfection_instrs:
-                # Средство уже отфильтровано на предыдущем шаге, но подстрахуемся:
-                # если product_name указан и ни одна инструкция ему не соответствует — пропускаем.
+                # disinfection_instrs уже отфильтрованы по средству/каскаду
+                # (в _filter_by_methods). Дополнительная проверка по средству —
+                # для страховки, если split вызывается отдельно.
                 if disinfection_product_name:
                     normalized_product = self._normalize_product_name(disinfection_product_name)
                     candidates = [
@@ -1190,10 +1180,9 @@ class TechCardGenerator:
                         i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
                     ]
 
-                # ===== Отбор с учётом средства из чек-листа.
-                # Внутри каждой группы (method, subgroup/surface) фильтр по средству
-                # применяется РАНЬШЕ каскада, чтобы специфичная инструкция с чужим
-                # средством не вытеснила целевую инструкцию с нужным средством.
+                # ===== Отбор. Фильтр по средству применяется ТОЛЬКО к ступени
+                # general внутри _filter_instructions. Индивидуальные инструкции
+                # (по предприятию / помещению) берутся как есть, без учёта средства.
                 filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name,
                     room_category_id, grouping=grouping,
