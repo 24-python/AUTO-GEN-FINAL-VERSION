@@ -473,7 +473,7 @@ class TechCardGenerator:
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None) -> list:
         """
-        Двухэтапный отбор инструкций:
+        Двухэтапный отбор инструкций с перебором ступеней.
 
         Этап A — каскад по (enterprise, room_name):
           1) both:      enterprise == target_ent И room_name == target_room
@@ -481,10 +481,14 @@ class TechCardGenerator:
           3) room_only: enterprise == ""          И room_name == target_room
           4) general:   enterprise == ""          И room_name == ""
 
-        Этап B — внутри выбранной ступени по категории помещения:
+        Этап B — внутри ступени по категории помещения:
           - специфичная (room_category_id == target) — приоритетно,
-          - общая (room_category_id IS NULL) — fallback,
-          - если нет ни той, ни другой — пусто.
+          - общая (room_category_id IS NULL) — fallback.
+
+        ВАЖНО: перебираем ступени последовательно и останавливаемся на первой,
+        где после этапа B получен непустой результат. Если ступень проходит
+        этап A, но на этапе B внутри неё ничего не найдено — переходим к
+        следующей ступени (а не возвращаем пусто).
         """
         if not instructions:
             return []
@@ -492,6 +496,7 @@ class TechCardGenerator:
         target_ent = (target_enterprise or "").strip()
         target_room = (target_room_name or "").strip()
 
+        # ===== Этап A — четыре ступени каскада =====
         both = [
             i for i in instructions
             if (i.enterprise or "").strip() == target_ent
@@ -514,17 +519,21 @@ class TechCardGenerator:
             and (i.room_name or "").strip() == ""
         ]
 
-        stage = both or ent_only or room_only or general
-        if not stage:
-            return []
+        # ===== Этап B + перебор ступеней =====
+        for stage in (both, ent_only, room_only, general):
+            if not stage:
+                continue
 
-        if target_room_category_id is not None:
-            specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
-            if specific_cat:
-                return specific_cat
+            if target_room_category_id is not None:
+                specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
+                if specific_cat:
+                    return specific_cat
 
-        cat_null = [i for i in stage if i.room_category_id is None]
-        return cat_null
+            cat_null = [i for i in stage if i.room_category_id is None]
+            if cat_null:
+                return cat_null
+
+        return []
 
     def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
                            target_room_name: str = None, target_room_category_id: int = None,
