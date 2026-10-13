@@ -2,7 +2,7 @@
 Модели данных для базы данных технологических карт
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, Boolean, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -191,8 +191,46 @@ class CleaningTechnique(Base):
         return f"<CleaningTechnique(id={self.id}, name='{self.name}')>"
 
 
+# ===================== ДОБАВЛЕНО: ИСТОРИЯ ГЕНЕРАЦИЙ =====================
+
+class GenerationHistory(Base):
+    """
+    История сгенерированных техкарт.
+
+    Ранее хранилась в JSON-файле (tech_cards/generation_history.json).
+    Теперь — в БД, чтобы избежать потерь при параллельной работе воркеров.
+    """
+    __tablename__ = 'generation_history'
+
+    id = Column(Integer, primary_key=True)
+    filename = Column(String(500), nullable=False)
+    display_name = Column(String(500), nullable=False)
+    objects = Column(Integer, nullable=False, default=0)
+    datetime_str = Column(String(50), nullable=False)          # '15.09.2026 17:06' — для UI
+    timestamp = Column(DateTime, nullable=False, index=True)   # для сортировки и фильтра по дате
+    download_url = Column(String(500), nullable=False)
+    size_kb = Column(Float, nullable=True, default=0.0)
+
+    def __repr__(self):
+        return f"<GenerationHistory(id={self.id}, filename='{self.filename}', datetime='{self.datetime_str}')>"
+
+    def to_dict(self) -> dict:
+        """Формат для API — совместим с прежним JSON."""
+        return {
+            'filename': self.filename,
+            'display_name': self.display_name,
+            'objects': self.objects,
+            'datetime': self.datetime_str,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else '',
+            'download_url': self.download_url,
+            'size_kb': self.size_kb or 0.0,
+        }
+
+
 # Индексы для ускорения поиска
 Index('idx_object_normalized_name', Object.normalized_name)
 Index('idx_object_category', Object.category_id)
 Index('idx_instruction_object', Instruction.object_id)
 Index('idx_instruction_room_category', Instruction.room_category_id)
+Index('idx_generation_history_timestamp', GenerationHistory.timestamp)
+Index('idx_generation_history_filename', GenerationHistory.filename)

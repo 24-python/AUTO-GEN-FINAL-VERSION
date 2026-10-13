@@ -15,6 +15,14 @@
 - Path Traversal в /api/history/delete
 - Zip Slip при распаковке ZIP-архивов
 - Ограничения на количество файлов и суммарный размер распакованных данных (защита от DoS)
+
+ИЗМЕНЕНИЯ:
+- История генераций перенесена из JSON-файла в БД (таблица generation_history).
+  Таблица создаётся автоматически при старте. JSON-файл больше не используется.
+- Имена техкарт теперь содержат timestamp и UUID — защита от коллизий
+  при параллельной генерации (два и более воркеров/копий).
+- Пути к папкам uploads и tech_cards можно задать через переменные окружения
+  UPLOAD_DIR и TECH_CARDS_DIR (для монтирования на volume в Docker/Dokploy).
 """
 
 import csv
@@ -35,16 +43,21 @@ from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
 from db.models import (Object, Instruction, Category as DBCategory, RoomCategory, Product,
                        ObjectProperty, ObjectGroup, CleaningMethodOrder, InventoryColor,
-                       CleaningTechnique)
+                       CleaningTechnique, GenerationHistory)
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
 import mimetypes
 mimetypes.add_type('text/markdown', '.md')
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
+
+# ===== ПУТИ К ПАПКАМ (задаются через env-переменные для гибкости) =====
+# UPLOAD_DIR      — куда сохраняются загруженные чек-листы (временные файлы)
+# TECH_CARDS_DIR  — куда сохраняются сгенерированные техкарты и история
+# По умолчанию — относительные пути 'uploads' и 'tech_cards' (как было раньше).
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_DIR', 'uploads')
+app.config['TECH_CARDS_FOLDER'] = os.environ.get('TECH_CARDS_DIR', 'tech_cards')
+
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
-app.config['HISTORY_FILE'] = 'tech_cards/generation_history.json'
 
 # ===== ОГРАНИЧЕНИЯ ДЛЯ РАСПАКОВКИ ZIP (защита от DoS) =====
 app.config['ZIP_MAX_FILES'] = 1000                          # макс. число файлов в архиве
@@ -145,55 +158,81 @@ def safe_extract_zip(zip_path: str, target_dir: str,
 # ============================================================
 
 def cleanup_old_files(folder: str, hours: int = 24):
-    """Удаляет файлы старше N часов"""
+    """
+    Удаляет файлы старше N часов.
+
+    Безопасна при одновременном запуске нескольких workers (gunicorn и т.п.):
+    - FileNotFoundError от stat()/unlink() — файл уже удалён другим worker'ом,
+      игнорируем и продолжаем.
+    - OSError (файл занят, нет прав) — не валим старт приложения.
+
+    Итог: два и более worker'а могут параллельно чистить одну папку без падений.
+    """
     now = time.time()
     folder_path = Path(folder)
     if not folder_path.exists():
         return
     count = 0
     for f in folder_path.glob("*"):
-        if f.is_file() and (now - f.stat().st_mtime) > hours * 3600:
+        if not f.is_file():
+            continue
+        try:
+            if (now - f.stat().st_mtime) <= hours * 3600:
+                continue
             f.unlink()
             count += 1
+        except FileNotFoundError:
+            # Файл уже удалён другим worker'ом — это нормально, идём дальше
+            continue
+        except OSError:
+            # Прочие проблемы ФС (занят, нет прав) — не валим старт
+            continue
     if count > 0:
         print(f"🧹 Очищено {count} файлов из {folder} (старше {hours} ч)")
 
 
-def load_history() -> list:
-    """Загружает историю генераций"""
-    import json
-    history_path = Path(app.config['HISTORY_FILE'])
-    if history_path.exists():
-        with open(history_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-
-def save_history(history: list):
-    """Сохраняет историю генераций (не более 1000 записей)"""
-    import json
-    history_path = Path(app.config['HISTORY_FILE'])
-    history = history[:1000]
-    with open(history_path, 'w', encoding='utf-8') as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-
-
 def add_to_history(filename: str, objects_count: int, room_name: str = ""):
-    """Добавляет запись в историю"""
-    history = load_history()
-    file_path = Path(f"tech_cards/{filename}")
-    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0
+    """
+    Добавляет запись в историю генераций (таблица generation_history).
+    """
+    file_path = Path(app.config['TECH_CARDS_FOLDER']) / filename
+    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0.0
 
-    history.insert(0, {
-        'filename': filename,
-        'display_name': room_name or Path(filename).stem,
-        'objects': objects_count,
-        'datetime': datetime.now().strftime('%d.%m.%Y %H:%M'),
-        'timestamp': datetime.now().isoformat(),
-        'download_url': f'/download/{filename}',
-        'size_kb': size_kb
-    })
-    save_history(history)
+    now = datetime.now()
+    session = SessionLocal()
+    try:
+        record = GenerationHistory(
+            filename=filename,
+            display_name=room_name or Path(filename).stem,
+            objects=objects_count,
+            datetime_str=now.strftime('%d.%m.%Y %H:%M'),
+            timestamp=now,
+            download_url=f'/download/{filename}',
+            size_kb=size_kb,
+        )
+        session.add(record)
+        session.commit()
+    finally:
+        session.close()
+
+
+def _make_output_filename(room_name: str) -> str:
+    """
+    Формирует уникальное имя файла техкарты.
+
+    Состав: <помещение>_<YYYYMMDD_HHMMSS>_<uuid8>_tech_card.docx
+
+    - timestamp + uuid8 гарантируют уникальность при параллельной генерации
+      из двух и более воркеров/копий — файлы не перезаписывают друг друга.
+    - safe_name — «человекочитаемая» часть (имя помещения), очищенная
+      от небезопасных символов.
+    """
+    safe_name = "".join(
+        c for c in (room_name or "") if c.isalnum() or c in (' ', '-', '_')
+    ).strip() or "tech_card"
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = str(uuid.uuid4())[:8]
+    return f"{safe_name}_{timestamp}_{unique_id}_tech_card.docx"
 
 
 def process_single_file(file, mode, generator):
@@ -209,8 +248,8 @@ def process_single_file(file, mode, generator):
         room_name = checklist_data.room_name or Path(filepath).stem
         # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
         room_name = re.sub(r'\s+', ' ', room_name).strip()
-        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        output_filename = f"{safe_name}_tech_card.docx"
+
+        output_filename = _make_output_filename(room_name)
         output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
         generator.generate(checklist_data, output_path, mode)
 
@@ -250,8 +289,8 @@ def process_zip_file(file, mode, generator):
                 room_name = checklist_data.room_name or docx_path.stem
                 # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
                 room_name = re.sub(r'\s+', ' ', room_name).strip()
-                safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-                output_filename = f"{safe_name}_tech_card.docx"
+
+                output_filename = _make_output_filename(room_name)
                 output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
                 generator.generate(checklist_data, output_path, mode)
 
@@ -276,7 +315,10 @@ def create_zip_archive(files_info):
 
     with zipfile.ZipFile(zip_path, 'w') as zf:
         for f in files_info:
-            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
+            # download_url формируется как /download/<filename>.
+            # Здесь берём только имя файла и присоединяем к TECH_CARDS_FOLDER.
+            docx_name = os.path.basename(f['download_url'])
+            docx_path = os.path.join(app.config['TECH_CARDS_FOLDER'], docx_name)
             if os.path.exists(docx_path):
                 zf.write(docx_path, Path(docx_path).name)
 
@@ -293,7 +335,7 @@ def initialize_database():
     from db.database import engine
     from db.models import Base, Category as DBCategory, RoomCategory, CleaningMethodOrder
 
-    # Создаём таблицы, если их нет
+    # Создаём таблицы, если их нет (включая generation_history)
     Base.metadata.create_all(bind=engine)
 
     # Проверяем и заполняем категории объектов
@@ -469,18 +511,32 @@ def download(filename):
 
 @app.route('/api/history')
 def api_history():
+    """
+    История генераций с пагинацией (из БД, таблица generation_history).
+    Сортировка: от новых к старым (по timestamp desc).
+    """
     page = int(request.args.get('page', 1))
     per_page = 100
 
-    history = load_history()
-    total = len(history)
-    total_pages = max(1, (total + per_page - 1) // per_page)
+    session = SessionLocal()
+    try:
+        total = session.query(GenerationHistory).count()
+        total_pages = max(1, (total + per_page - 1) // per_page)
 
-    start = (page - 1) * per_page
-    end = start + per_page
+        start = (page - 1) * per_page
+        records = (
+            session.query(GenerationHistory)
+            .order_by(GenerationHistory.timestamp.desc())
+            .offset(start)
+            .limit(per_page)
+            .all()
+        )
+        history = [r.to_dict() for r in records]
+    finally:
+        session.close()
 
     return jsonify({
-        'history': history[start:end],
+        'history': history,
         'page': page,
         'total_pages': total_pages,
         'total': total
@@ -492,32 +548,47 @@ def api_delete_history():
     """
     Удаление файлов истории.
     ИСПРАВЛЕНО: защита от Path Traversal при удалении.
+    ПЕРЕВЕДЕНО на БД: записи удаляются из generation_history.
     """
     data = request.get_json()
     filenames = data.get('filenames', [])
     before_date = data.get('before_date', None)
 
     deleted = 0
-    history = load_history()
+    session = SessionLocal()
+    try:
+        if before_date:
+            try:
+                cutoff = datetime.strptime(before_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Неверный формат даты'}), 400
 
-    if before_date:
-        cutoff = datetime.strptime(before_date, '%Y-%m-%d')
-        to_delete = []
-        for item in history:
-            item_date = datetime.fromisoformat(item['timestamp'])
-            if item_date < cutoff:
-                to_delete.append(item['filename'])
-        filenames = to_delete
+            to_delete = (
+                session.query(GenerationHistory)
+                .filter(GenerationHistory.timestamp < cutoff)
+                .all()
+            )
+            filenames = [r.filename for r in to_delete]
 
-    # ===== ИСПРАВЛЕНИЕ: безопасное удаление только внутри TECH_CARDS_FOLDER =====
-    for filename in filenames:
-        file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-            deleted += 1
+        # Удаляем физические файлы (безопасно, только внутри TECH_CARDS_FOLDER)
+        for filename in filenames:
+            file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted += 1
+                except OSError:
+                    # Файл занят / уже удалён — просто пропускаем
+                    continue
 
-    history = [h for h in history if h['filename'] not in filenames]
-    save_history(history)
+        # Удаляем записи из БД
+        if filenames:
+            session.query(GenerationHistory).filter(
+                GenerationHistory.filename.in_(filenames)
+            ).delete(synchronize_session=False)
+            session.commit()
+    finally:
+        session.close()
 
     return jsonify({'success': True, 'deleted': deleted})
 
@@ -1886,5 +1957,6 @@ def api_copy_instructions():
 if __name__ == '__main__':
     print("🚀 Запуск сервера на http://localhost:5000")
     print(f"📂 Папка техкарт: {app.config['TECH_CARDS_FOLDER']}")
+    print(f"📂 Папка загрузок: {app.config['UPLOAD_FOLDER']}")
     print(f"🧹 Автоочистка uploads: 24 часа")
     app.run(debug=False, host='0.0.0.0', port=5000)

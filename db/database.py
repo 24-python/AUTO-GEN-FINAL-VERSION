@@ -3,7 +3,7 @@
 """
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from pathlib import Path
 
@@ -19,9 +19,29 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # Создаем движок SQLAlchemy
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False  # True для отладки SQL
+    connect_args={"check_same_thread": False, "timeout": 30},
+    echo=False
 )
+
+
+# ===== ВКЛЮЧАЕМ WAL-РЕЖИМ И СОПУТСТВУЮЩИЕ PRAGMA =====
+# Событие 'connect' срабатывает при каждом новом соединении.
+# WAL и synchronous — это настройки, которые НЕ сохраняются между соединениями,
+# поэтому их нужно применять каждый раз.
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, connection_record):
+    """
+    Настройка SQLite-соединения:
+      - journal_mode=WAL       — параллельное чтение во время записи
+      - synchronous=NORMAL     — безопасно с WAL, быстрее чем FULL
+      - busy_timeout=30000     — ждать до 30 секунд при блокировке
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
+
 
 # Фабрика сессий
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
