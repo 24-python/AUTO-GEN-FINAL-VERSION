@@ -47,6 +47,7 @@ class TechCardGenerator:
     #   promax            — "дозирующая система ProMax"
     #   dema              — "пенная станция DEMA"
     #   vema              — "пенная станция VEMA"
+    #   foam              — "пенная станция FOAM&WASH" (и любые другие с "foam")
     #   protwin           — "спрей-система ProTwin"
     #   помповый          — "помповый дозатор"
     #
@@ -60,6 +61,7 @@ class TechCardGenerator:
         ('CLEANING_EQUIPMENT', 'promax'):                'ручной (протирание, замачивание)',
         ('CLEANING_EQUIPMENT', 'dema'):                  'ручной (протирание, замачивание)',
         ('CLEANING_EQUIPMENT', 'vema'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'foam'):                  'ручной (протирание, замачивание)',
         ('CLEANING_EQUIPMENT', 'protwin'):               'ручной (протирание, замачивание)',
         ('CLEANING_EQUIPMENT', 'помповый'):              'ручной (протирание, замачивание)',
 
@@ -69,6 +71,7 @@ class TechCardGenerator:
         ('INVENTORY', 'promax'):                         'ручной (протирание, замачивание)',
         ('INVENTORY', 'dema'):                           'ручной (протирание, замачивание)',
         ('INVENTORY', 'vema'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'foam'):                           'ручной (протирание, замачивание)',
         ('INVENTORY', 'protwin'):                        'ручной (протирание, замачивание)',
         ('INVENTORY', 'помповый'):                       'ручной (протирание, замачивание)',
 
@@ -78,6 +81,7 @@ class TechCardGenerator:
         ('PPE', 'promax'):                               'ручной (замачивание)',
         ('PPE', 'dema'):                                 'ручной (замачивание)',
         ('PPE', 'vema'):                                 'ручной (замачивание)',
+        ('PPE', 'foam'):                                 'ручной (замачивание)',
         ('PPE', 'protwin'):                              'ручной (замачивание)',
         ('PPE', 'помповый'):                             'ручной (замачивание)',
 
@@ -88,6 +92,7 @@ class TechCardGenerator:
         ('surface', 'promax'):                           'ручной (протирание)',
         ('surface', 'dema'):                             'ручной (протирание)',
         ('surface', 'vema'):                             'ручной (протирание)',
+        ('surface', 'foam'):                             'ручной (протирание)',
         ('surface', 'protwin'):                          'ручной (протирание)',
         ('surface', 'помповый'):                         'ручной (протирание)',
 
@@ -97,6 +102,7 @@ class TechCardGenerator:
         ('surface_priority', 'promax'):                  'ручной (протирание)',
         ('surface_priority', 'dema'):                    'ручной (орошение)',
         ('surface_priority', 'vema'):                    'ручной (орошение)',
+        ('surface_priority', 'foam'):                    'ручной (орошение)',
         ('surface_priority', 'protwin'):                 'ручной (орошение)',
         ('surface_priority', 'помповый'):                'ручной (орошение)',
 
@@ -106,6 +112,7 @@ class TechCardGenerator:
         ('equipment', 'promax'):                         'ручной (протирание)',
         ('equipment', 'dema'):                           'ручной (орошение)',
         ('equipment', 'vema'):                           'ручной (орошение)',
+        ('equipment', 'foam'):                           'ручной (орошение)',
         ('equipment', 'protwin'):                        'ручной (орошение)',
         ('equipment', 'помповый'):                       'ручной (орошение)',
 
@@ -115,6 +122,7 @@ class TechCardGenerator:
         ('measuring', 'promax'):                         'ручной (протирание)',
         ('measuring', 'dema'):                           'ручной (протирание)',
         ('measuring', 'vema'):                           'ручной (протирание)',
+        ('measuring', 'foam'):                           'ручной (протирание)',
         ('measuring', 'protwin'):                        'ручной (протирание)',
         ('measuring', 'помповый'):                       'ручной (протирание)',
 
@@ -124,6 +132,7 @@ class TechCardGenerator:
         ('working_surface', 'promax'):                   'ручной (протирание)',
         ('working_surface', 'dema'):                     'ручной (орошение)',
         ('working_surface', 'vema'):                     'ручной (орошение)',
+        ('working_surface', 'foam'):                     'ручной (орошение)',
         ('working_surface', 'protwin'):                  'ручной (орошение)',
         ('working_surface', 'помповый'):                 'ручной (орошение)',
     }
@@ -229,6 +238,8 @@ class TechCardGenerator:
             return 'dema'
         if 'vema' in t:
             return 'vema'
+        if 'foam' in t:
+            return 'foam'
         if 'protwin' in t or 'pro twin' in t:
             return 'protwin'
         if 'помповый' in t:
