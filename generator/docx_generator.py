@@ -16,6 +16,39 @@ import re
 import copy
 
 
+# ===== Нормализация кириллических гомоглифов =====
+# В русской раскладке можно случайно набрать кириллические «двойники» латинских
+# букв (О, А, М, Е, С, Р, Х, Н, К, В, Т) — визуально идентичные, но разные в байтах.
+# Это ломает сравнение строк в _apply_application_method_filter и распознавание
+# в _normalize_application_method.
+# Заменяем ТОЛЬКО ЗАГЛАВНЫЕ кириллические гомоглифы — строчные не трогаем,
+# чтобы не испортить обычные русские слова («протирание», «орошение» и т.д.).
+_HOMOGLYPHS_MAP = str.maketrans({
+    'О': 'O',   # U+041E → O (U+004F)
+    'А': 'A',   # U+0410 → A (U+0041)
+    'М': 'M',   # U+041C → M (U+004D)
+    'Е': 'E',   # U+0415 → E (U+0045)
+    'С': 'C',   # U+0421 → C (U+0043)
+    'Р': 'P',   # U+0420 → P (U+0050)
+    'Х': 'X',   # U+0425 → X (U+0058)
+    'Н': 'H',   # U+041D → H (U+0048)
+    'К': 'K',   # U+041A → K (U+004B)
+    'В': 'B',   # U+0412 → B (U+0042)
+    'Т': 'T',   # U+0422 → T (U+0054)
+})
+
+
+def _normalize_homoglyphs(text: str) -> str:
+    """
+    Заменяет заглавные кириллические гомоглифы на латинские аналоги.
+    Например: «FОАМ&WASH» (кириллица) → «FOAM&WASH» (латиница).
+    Строчные буквы не затрагиваются.
+    """
+    if not text:
+        return ""
+    return text.translate(_HOMOGLYPHS_MAP)
+
+
 class TechCardGenerator:
     TEMPLATES_DIR = Path("tech_card_templates")
     DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
@@ -157,7 +190,13 @@ class TechCardGenerator:
         session = SessionLocal()
         try:
             techniques = session.query(CleaningTechnique).all()
-            self._cleaning_techniques = {t.name.lower(): t.name for t in techniques}
+            # Ключ — нормализованный (гомоглифы + lower), значение — оригинальная строка для отображения.
+            # Это позволяет находить методы уборки, даже если в БД или матрице есть кириллические
+            # гомоглифы (например, FОАМ&WASH вместо FOAM&WASH).
+            self._cleaning_techniques = {
+                _normalize_homoglyphs(t.name).lower(): t.name
+                for t in techniques
+            }
         finally:
             session.close()
 
@@ -229,7 +268,8 @@ class TechCardGenerator:
         """
         if not text:
             return ""
-        t = text.lower()
+        # Сначала нормализуем гомоглифы (FОАМ → FOAM), затем lower
+        t = _normalize_homoglyphs(text).lower()
         if 'готовая форма' in t:
             return 'готовая_форма'
         if 'promax' in t or 'pro max' in t:
@@ -320,7 +360,8 @@ class TechCardGenerator:
         resolved = self.CLEANING_TECHNIQUE_MATRIX.get((object_type, key_method), "")
         if not resolved:
             return ""
-        found = self._cleaning_techniques.get(resolved.lower())
+        # Ключи в self._cleaning_techniques уже нормализованы — ищем по нормализованному виду
+        found = self._cleaning_techniques.get(_normalize_homoglyphs(resolved).lower())
         if not found:
             return ""
         return found
@@ -608,13 +649,19 @@ class TechCardGenerator:
         if not application_method:
             return list(instructions)
 
+        # Нормализуем целевой способ разведения один раз (гомоглифы + lower + strip).
+        # При сравнении с application_method из инструкции нормализуем обе стороны,
+        # чтобы «FОАМ&WASH» (кириллица) и «FOAM&WASH» (латиница) считались одинаковыми.
+        target_norm = _normalize_homoglyphs(application_method).lower().strip()
+
         specific = [i for i in instructions if (i.enterprise or "").strip()]
         general = [i for i in instructions if not (i.enterprise or "").strip()]
 
         def _filter_group(group):
             matched = [
                 i for i in group
-                if not i.application_method or i.application_method == application_method
+                if not i.application_method
+                or _normalize_homoglyphs(i.application_method).lower().strip() == target_norm
             ]
             return matched if matched else list(group)
 
