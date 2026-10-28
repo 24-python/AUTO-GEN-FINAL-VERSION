@@ -457,7 +457,8 @@ class TechCardGenerator:
 
     def _filter_instructions(self, instructions: list, target_enterprise: str = None,
                              target_room_name: str = None, target_room_category_id: int = None,
-                             disinfection_product_name: str = None) -> list:
+                             disinfection_product_name: str = None,
+                             debug_tag: str = "") -> list:  # [DBG] добавлен параметр debug_tag
         if not instructions:
             return []
 
@@ -466,6 +467,13 @@ class TechCardGenerator:
         normalized_product = None
         if disinfection_product_name:
             normalized_product = self._normalize_product_name(disinfection_product_name)
+
+        # [DBG] лог входа
+        print(f"[DBG FI{debug_tag}] Вход: {len(instructions)} instr, "
+              f"ids_in={[i.id for i in instructions]}, "
+              f"product_name={disinfection_product_name!r}, "
+              f"normalized={normalized_product!r}, "
+              f"cat_id={target_room_category_id}")
 
         # ===== Этап A — четыре ступени каскада =====
         both = [
@@ -494,26 +502,44 @@ class TechCardGenerator:
         for stage_name, stage in (("both", both), ("ent_only", ent_only),
                                   ("room_only", room_only), ("general", general)):
             if not stage:
+                # [DBG] пустая ступень
+                print(f"[DBG FI{debug_tag}]   stage={stage_name}: пусто")
                 continue
+
+            # [DBG] непустая ступень
+            print(f"[DBG FI{debug_tag}]   stage={stage_name}: {len(stage)} instr, "
+                  f"ids={[i.id for i in stage]}")
 
             # Фильтр по средству — ТОЛЬКО для ступени general
             if stage_name == "general" and normalized_product:
+                before = len(stage)  # [DBG]
                 stage = [
                     i for i in stage
                     if self._normalize_product_name(i.product_name or "") == normalized_product
                 ]
+                # [DBG] результат фильтра по средству
+                print(f"[DBG FI{debug_tag}]     after product filter: {len(stage)} (was {before}), "
+                      f"ids={[i.id for i in stage]}, "
+                      f"products={[self._normalize_product_name(i.product_name or '') for i in stage]}")
                 if not stage:
                     continue
 
             if target_room_category_id is not None:
                 specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
                 if specific_cat:
+                    # [DBG] возврат specific_cat
+                    print(f"[DBG FI{debug_tag}]     RETURN specific_cat: "
+                          f"{[i.id for i in specific_cat]}")
                     return specific_cat
 
             cat_null = [i for i in stage if i.room_category_id is None]
             if cat_null:
+                # [DBG] возврат cat_null
+                print(f"[DBG FI{debug_tag}]     RETURN cat_null: {[i.id for i in cat_null]}")
                 return cat_null
 
+        # [DBG] пустой возврат
+        print(f"[DBG FI{debug_tag}]   RETURN []")
         return []
 
     def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
@@ -533,14 +559,26 @@ class TechCardGenerator:
                 key = (i.cleaning_method or "",)
             groups[key].append(i)
 
+        # [DBG] лог группировки
+        print(f"[DBG FBM] grouping={grouping}, "
+              f"disinfection_product_name={disinfection_product_name!r}, "
+              f"groups={dict((k, [i.id for i in v]) for k, v in groups.items())}")
+
         result = []
         for key, group in groups.items():
             method = key[0]
             product_for_filter = disinfection_product_name if method == "дезинфекция" else None
+            # [DBG] лог по группе
+            print(f"[DBG FBM] group={key}, method={method!r}, "
+                  f"product_for_filter={product_for_filter!r}, "
+                  f"ids_in={[i.id for i in group]}")
             filtered_group = self._filter_instructions(
                 group, target_enterprise, target_room_name, target_room_category_id,
-                disinfection_product_name=product_for_filter
+                disinfection_product_name=product_for_filter,
+                debug_tag=f" /{method}"  # [DBG] прокидываем debug_tag
             )
+            # [DBG] лог результата группы
+            print(f"[DBG FBM]   ids_out={[i.id for i in filtered_group]}")
             result.extend(filtered_group)
         return result
 
@@ -721,7 +759,8 @@ class TechCardGenerator:
 
             filtered = self._filter_instructions(
                 method_instrs, enterprise, room_name, room_category_id,
-                disinfection_product_name=disinfection_product_name
+                disinfection_product_name=disinfection_product_name,
+                debug_tag=f" /select/{method}"  # [DBG] прокидываем debug_tag
             )
             if not filtered:
                 continue
@@ -1049,6 +1088,12 @@ class TechCardGenerator:
             if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
                 room_category_id = self._get_room_category_id(session, checklist_data.room_category)
 
+            # [DBG] лог входных данных из чек-листа
+            print(f"\n[DBG GEN] disinfection_product={checklist_data.disinfection_product!r}, "
+                  f"disinfection_method_text={checklist_data.disinfection_method_text!r}, "
+                  f"room_category_id={room_category_id}, "
+                  f"enterprise={target_enterprise!r}, room_name={target_room_name!r}")
+
             checked_items = checklist_data.get_checked_items()
             all_names = [item.name for item in checked_items]
 
@@ -1135,12 +1180,18 @@ class TechCardGenerator:
                         i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
                     ]
 
+                # [DBG] лог перед вызовом фильтра
+                print(f"   [DBG GEN] Вызов _filter_by_methods: grouping={grouping}, "
+                      f"disinfection_product={checklist_data.disinfection_product!r}")
+
                 filtered_instrs = self._filter_by_methods(
                     non_maintenance_instrs, target_enterprise, target_room_name,
                     room_category_id, grouping=grouping,
                     disinfection_product_name=checklist_data.disinfection_product
                 )
                 print(f"   После фильтрации ({grouping}): {len(filtered_instrs)}")
+                # [DBG] лог после фильтра
+                print(f"   [DBG GEN] filtered_instrs ids={[i.id for i in filtered_instrs]}")
 
                 result_instructions = None
                 result_type = 'normal'
@@ -1149,6 +1200,9 @@ class TechCardGenerator:
                     print(f"   -> объект в multi_method_objects")
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
+                    # [DBG] лог разделения multi
+                    print(f"   [DBG MULTI] disinfection_ids={[i.id for i in disinfection_instrs]}, "
+                          f"other_ids={[i.id for i in other_instrs]}")
 
                     other_selected = []
                     if other_instrs:
@@ -1208,6 +1262,9 @@ class TechCardGenerator:
                     print(f"   -> обычный объект")
                     disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
                     other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
+                    # [DBG] лог разделения ordinary
+                    print(f"   [DBG NORMAL] disinfection_ids={[i.id for i in disinfection_instrs]}, "
+                          f"other_ids={[i.id for i in other_instrs]}")
 
                     selected_disinfection = None
                     if disinfection_instrs:
