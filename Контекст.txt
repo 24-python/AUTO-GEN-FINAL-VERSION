@@ -1,6 +1,6 @@
 ================================================================================
 ЭКСПОРТ ПРОЕКТА: AUTO-GEN-FINAL-VERSION
-Дата экспорта: 2026-09-16 11:27:51
+Дата экспорта: 2026-10-28 14:58:20
 ================================================================================
 
 📋 СПИСОК ЭКСПОРТИРУЕМЫХ ФАЙЛОВ
@@ -14,8 +14,8 @@
    db\init_db.py
    db\models.py
    export_db_to_single_csv.py
-   fix_db.py
    generator\__init__.py
+   generator\docx_generator — копия.py
    generator\docx_generator.py
    generator\mapper.py
    import_csv_to_db.py
@@ -32,7 +32,6 @@
    static\js\admin.js
    static\js\app.js
    static\js\history.js
-   tech_cards\generation_history.json
    templates\admin.html
    templates\history.html
    templates\index.html
@@ -44,28 +43,31 @@
 AUTO-GEN-FINAL-VERSION/
 ├──    __pycache__/
 
-├── ✅ app.py (72.5 KB)
+├── ✅ app.py (76.4 KB)
 ├──    checklists/
 
 ├──    Context.py (17.3 KB)
+├──    converted/
+
 ├── ✅ db/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
 │   ├── ✅ crud.py (4.3 KB)
-│   ├── ✅ database.py (1.2 KB)
+│   ├── ✅ database.py (2.3 KB)
 │   ├── ✅ export_json.py (3.1 KB)
 │   ├── ✅ import_json.py (6.1 KB)
 │   ├── ✅ init_db.py (8.8 KB)
-│   └── ✅ models.py (9.1 KB)
+│   └── ✅ models.py (10.9 KB)
 ├──    db_export.csv (273.8 KB)
 ├── ✅ export_db_to_single_csv.py (5.5 KB)
-├── ✅ fix_db.py (6.3 KB)
+├──    fix_db.py (6.3 KB)
 ├── ✅ generator/
 │   ├── ✅ __init__.py (0.2 KB)
 │   ├──    __pycache__/
 
-│   ├── ✅ docx_generator.py (83.9 KB)
+│   ├── ✅ docx_generator — копия.py (84.7 KB)
+│   ├── ✅ docx_generator.py (101.6 KB)
 │   └── ✅ mapper.py (3.0 KB)
 ├── ✅ import_csv_to_db.py (33.0 KB)
 ├── ✅ migrate_config.py (13.5 KB)
@@ -90,8 +92,8 @@ AUTO-GEN-FINAL-VERSION/
 │       └── ✅ history.js (3.3 KB)
 ├──    tech_card_templates/
 
-├── ✅ tech_cards/
-│   ├── ✅ generation_history.json (76.0 KB)
+├──    tech_cards/
+
 ├── ✅ templates/
 │   ├── ✅ admin.html (80.1 KB)
 │   ├── ✅ history.html (9.0 KB)
@@ -201,6 +203,14 @@ AUTO-GEN-FINAL-VERSION/
 - Path Traversal в /api/history/delete
 - Zip Slip при распаковке ZIP-архивов
 - Ограничения на количество файлов и суммарный размер распакованных данных (защита от DoS)
+
+ИЗМЕНЕНИЯ:
+- История генераций перенесена из JSON-файла в БД (таблица generation_history).
+  Таблица создаётся автоматически при старте. JSON-файл больше не используется.
+- Имена техкарт теперь содержат timestamp и UUID — защита от коллизий
+  при параллельной генерации (два и более воркеров/копий).
+- Пути к папкам uploads и tech_cards можно задать через переменные окружения
+  UPLOAD_DIR и TECH_CARDS_DIR (для монтирования на volume в Docker/Dokploy).
 """
 
 import csv
@@ -221,16 +231,21 @@ from generator.docx_generator import TechCardGenerator
 from db.database import SessionLocal
 from db.models import (Object, Instruction, Category as DBCategory, RoomCategory, Product,
                        ObjectProperty, ObjectGroup, CleaningMethodOrder, InventoryColor,
-                       CleaningTechnique)
+                       CleaningTechnique, GenerationHistory)
 
 app = Flask(__name__)
 # Настройка MIME-типов для Markdown
 import mimetypes
 mimetypes.add_type('text/markdown', '.md')
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['TECH_CARDS_FOLDER'] = 'tech_cards'
+
+# ===== ПУТИ К ПАПКАМ (задаются через env-переменные для гибкости) =====
+# UPLOAD_DIR      — куда сохраняются загруженные чек-листы (временные файлы)
+# TECH_CARDS_DIR  — куда сохраняются сгенерированные техкарты и история
+# По умолчанию — относительные пути 'uploads' и 'tech_cards' (как было раньше).
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_DIR', 'uploads')
+app.config['TECH_CARDS_FOLDER'] = os.environ.get('TECH_CARDS_DIR', 'tech_cards')
+
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
-app.config['HISTORY_FILE'] = 'tech_cards/generation_history.json'
 
 # ===== ОГРАНИЧЕНИЯ ДЛЯ РАСПАКОВКИ ZIP (защита от DoS) =====
 app.config['ZIP_MAX_FILES'] = 1000                          # макс. число файлов в архиве
@@ -331,55 +346,81 @@ def safe_extract_zip(zip_path: str, target_dir: str,
 # ============================================================
 
 def cleanup_old_files(folder: str, hours: int = 24):
-    """Удаляет файлы старше N часов"""
+    """
+    Удаляет файлы старше N часов.
+
+    Безопасна при одновременном запуске нескольких workers (gunicorn и т.п.):
+    - FileNotFoundError от stat()/unlink() — файл уже удалён другим worker'ом,
+      игнорируем и продолжаем.
+    - OSError (файл занят, нет прав) — не валим старт приложения.
+
+    Итог: два и более worker'а могут параллельно чистить одну папку без падений.
+    """
     now = time.time()
     folder_path = Path(folder)
     if not folder_path.exists():
         return
     count = 0
     for f in folder_path.glob("*"):
-        if f.is_file() and (now - f.stat().st_mtime) > hours * 3600:
+        if not f.is_file():
+            continue
+        try:
+            if (now - f.stat().st_mtime) <= hours * 3600:
+                continue
             f.unlink()
             count += 1
+        except FileNotFoundError:
+            # Файл уже удалён другим worker'ом — это нормально, идём дальше
+            continue
+        except OSError:
+            # Прочие проблемы ФС (занят, нет прав) — не валим старт
+            continue
     if count > 0:
         print(f"🧹 Очищено {count} файлов из {folder} (старше {hours} ч)")
 
 
-def load_history() -> list:
-    """Загружает историю генераций"""
-    import json
-    history_path = Path(app.config['HISTORY_FILE'])
-    if history_path.exists():
-        with open(history_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-
-def save_history(history: list):
-    """Сохраняет историю генераций (не более 1000 записей)"""
-    import json
-    history_path = Path(app.config['HISTORY_FILE'])
-    history = history[:1000]
-    with open(history_path, 'w', encoding='utf-8') as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-
-
 def add_to_history(filename: str, objects_count: int, room_name: str = ""):
-    """Добавляет запись в историю"""
-    history = load_history()
-    file_path = Path(f"tech_cards/{filename}")
-    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0
+    """
+    Добавляет запись в историю генераций (таблица generation_history).
+    """
+    file_path = Path(app.config['TECH_CARDS_FOLDER']) / filename
+    size_kb = round(file_path.stat().st_size / 1024, 1) if file_path.exists() else 0.0
 
-    history.insert(0, {
-        'filename': filename,
-        'display_name': room_name or Path(filename).stem,
-        'objects': objects_count,
-        'datetime': datetime.now().strftime('%d.%m.%Y %H:%M'),
-        'timestamp': datetime.now().isoformat(),
-        'download_url': f'/download/{filename}',
-        'size_kb': size_kb
-    })
-    save_history(history)
+    now = datetime.now()
+    session = SessionLocal()
+    try:
+        record = GenerationHistory(
+            filename=filename,
+            display_name=room_name or Path(filename).stem,
+            objects=objects_count,
+            datetime_str=now.strftime('%d.%m.%Y %H:%M'),
+            timestamp=now,
+            download_url=f'/download/{filename}',
+            size_kb=size_kb,
+        )
+        session.add(record)
+        session.commit()
+    finally:
+        session.close()
+
+
+def _make_output_filename(room_name: str) -> str:
+    """
+    Формирует уникальное имя файла техкарты.
+
+    Состав: <помещение>_<YYYYMMDD_HHMMSS>_<uuid8>_tech_card.docx
+
+    - timestamp + uuid8 гарантируют уникальность при параллельной генерации
+      из двух и более воркеров/копий — файлы не перезаписывают друг друга.
+    - safe_name — «человекочитаемая» часть (имя помещения), очищенная
+      от небезопасных символов.
+    """
+    safe_name = "".join(
+        c for c in (room_name or "") if c.isalnum() or c in (' ', '-', '_')
+    ).strip() or "tech_card"
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    unique_id = str(uuid.uuid4())[:8]
+    return f"{safe_name}_{timestamp}_{unique_id}_tech_card.docx"
 
 
 def process_single_file(file, mode, generator):
@@ -395,8 +436,8 @@ def process_single_file(file, mode, generator):
         room_name = checklist_data.room_name or Path(filepath).stem
         # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
         room_name = re.sub(r'\s+', ' ', room_name).strip()
-        safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        output_filename = f"{safe_name}_tech_card.docx"
+
+        output_filename = _make_output_filename(room_name)
         output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
         generator.generate(checklist_data, output_path, mode)
 
@@ -436,8 +477,8 @@ def process_zip_file(file, mode, generator):
                 room_name = checklist_data.room_name or docx_path.stem
                 # ===== ИСПРАВЛЕНИЕ ОШИБКИ 1: нормализация пробелов =====
                 room_name = re.sub(r'\s+', ' ', room_name).strip()
-                safe_name = "".join(c for c in room_name if c.isalnum() or c in (' ', '-', '_')).strip()
-                output_filename = f"{safe_name}_tech_card.docx"
+
+                output_filename = _make_output_filename(room_name)
                 output_path = os.path.join(app.config['TECH_CARDS_FOLDER'], output_filename)
                 generator.generate(checklist_data, output_path, mode)
 
@@ -462,7 +503,10 @@ def create_zip_archive(files_info):
 
     with zipfile.ZipFile(zip_path, 'w') as zf:
         for f in files_info:
-            docx_path = f['download_url'].replace('/download/', 'tech_cards/')
+            # download_url формируется как /download/<filename>.
+            # Здесь берём только имя файла и присоединяем к TECH_CARDS_FOLDER.
+            docx_name = os.path.basename(f['download_url'])
+            docx_path = os.path.join(app.config['TECH_CARDS_FOLDER'], docx_name)
             if os.path.exists(docx_path):
                 zf.write(docx_path, Path(docx_path).name)
 
@@ -479,7 +523,7 @@ def initialize_database():
     from db.database import engine
     from db.models import Base, Category as DBCategory, RoomCategory, CleaningMethodOrder
 
-    # Создаём таблицы, если их нет
+    # Создаём таблицы, если их нет (включая generation_history)
     Base.metadata.create_all(bind=engine)
 
     # Проверяем и заполняем категории объектов
@@ -655,18 +699,32 @@ def download(filename):
 
 @app.route('/api/history')
 def api_history():
+    """
+    История генераций с пагинацией (из БД, таблица generation_history).
+    Сортировка: от новых к старым (по timestamp desc).
+    """
     page = int(request.args.get('page', 1))
     per_page = 100
 
-    history = load_history()
-    total = len(history)
-    total_pages = max(1, (total + per_page - 1) // per_page)
+    session = SessionLocal()
+    try:
+        total = session.query(GenerationHistory).count()
+        total_pages = max(1, (total + per_page - 1) // per_page)
 
-    start = (page - 1) * per_page
-    end = start + per_page
+        start = (page - 1) * per_page
+        records = (
+            session.query(GenerationHistory)
+            .order_by(GenerationHistory.timestamp.desc())
+            .offset(start)
+            .limit(per_page)
+            .all()
+        )
+        history = [r.to_dict() for r in records]
+    finally:
+        session.close()
 
     return jsonify({
-        'history': history[start:end],
+        'history': history,
         'page': page,
         'total_pages': total_pages,
         'total': total
@@ -678,32 +736,47 @@ def api_delete_history():
     """
     Удаление файлов истории.
     ИСПРАВЛЕНО: защита от Path Traversal при удалении.
+    ПЕРЕВЕДЕНО на БД: записи удаляются из generation_history.
     """
     data = request.get_json()
     filenames = data.get('filenames', [])
     before_date = data.get('before_date', None)
 
     deleted = 0
-    history = load_history()
+    session = SessionLocal()
+    try:
+        if before_date:
+            try:
+                cutoff = datetime.strptime(before_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Неверный формат даты'}), 400
 
-    if before_date:
-        cutoff = datetime.strptime(before_date, '%Y-%m-%d')
-        to_delete = []
-        for item in history:
-            item_date = datetime.fromisoformat(item['timestamp'])
-            if item_date < cutoff:
-                to_delete.append(item['filename'])
-        filenames = to_delete
+            to_delete = (
+                session.query(GenerationHistory)
+                .filter(GenerationHistory.timestamp < cutoff)
+                .all()
+            )
+            filenames = [r.filename for r in to_delete]
 
-    # ===== ИСПРАВЛЕНИЕ: безопасное удаление только внутри TECH_CARDS_FOLDER =====
-    for filename in filenames:
-        file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-            deleted += 1
+        # Удаляем физические файлы (безопасно, только внутри TECH_CARDS_FOLDER)
+        for filename in filenames:
+            file_path = get_safe_path(app.config['TECH_CARDS_FOLDER'], filename)
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted += 1
+                except OSError:
+                    # Файл занят / уже удалён — просто пропускаем
+                    continue
 
-    history = [h for h in history if h['filename'] not in filenames]
-    save_history(history)
+        # Удаляем записи из БД
+        if filenames:
+            session.query(GenerationHistory).filter(
+                GenerationHistory.filename.in_(filenames)
+            ).delete(synchronize_session=False)
+            session.commit()
+    finally:
+        session.close()
 
     return jsonify({'success': True, 'deleted': deleted})
 
@@ -2072,6 +2145,7 @@ def api_copy_instructions():
 if __name__ == '__main__':
     print("🚀 Запуск сервера на http://localhost:5000")
     print(f"📂 Папка техкарт: {app.config['TECH_CARDS_FOLDER']}")
+    print(f"📂 Папка загрузок: {app.config['UPLOAD_FOLDER']}")
     print(f"🧹 Автоочистка uploads: 24 часа")
     app.run(debug=False, host='0.0.0.0', port=5000)
 
@@ -2240,7 +2314,7 @@ def delete_instruction(db: Session, instruction_id: int) -> bool:
 """
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from pathlib import Path
 
@@ -2256,9 +2330,29 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # Создаем движок SQLAlchemy
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False  # True для отладки SQL
+    connect_args={"check_same_thread": False, "timeout": 30},
+    echo=False
 )
+
+
+# ===== ВКЛЮЧАЕМ WAL-РЕЖИМ И СОПУТСТВУЮЩИЕ PRAGMA =====
+# Событие 'connect' срабатывает при каждом новом соединении.
+# WAL и synchronous — это настройки, которые НЕ сохраняются между соединениями,
+# поэтому их нужно применять каждый раз.
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, connection_record):
+    """
+    Настройка SQLite-соединения:
+      - journal_mode=WAL       — параллельное чтение во время записи
+      - synchronous=NORMAL     — безопасно с WAL, быстрее чем FULL
+      - busy_timeout=30000     — ждать до 30 секунд при блокировке
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.close()
+
 
 # Фабрика сессий
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -2784,7 +2878,7 @@ if __name__ == "__main__":
 Модели данных для базы данных технологических карт
 """
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Index, Boolean, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -2973,11 +3067,49 @@ class CleaningTechnique(Base):
         return f"<CleaningTechnique(id={self.id}, name='{self.name}')>"
 
 
+# ===================== ДОБАВЛЕНО: ИСТОРИЯ ГЕНЕРАЦИЙ =====================
+
+class GenerationHistory(Base):
+    """
+    История сгенерированных техкарт.
+
+    Ранее хранилась в JSON-файле (tech_cards/generation_history.json).
+    Теперь — в БД, чтобы избежать потерь при параллельной работе воркеров.
+    """
+    __tablename__ = 'generation_history'
+
+    id = Column(Integer, primary_key=True)
+    filename = Column(String(500), nullable=False)
+    display_name = Column(String(500), nullable=False)
+    objects = Column(Integer, nullable=False, default=0)
+    datetime_str = Column(String(50), nullable=False)          # '15.09.2026 17:06' — для UI
+    timestamp = Column(DateTime, nullable=False, index=True)   # для сортировки и фильтра по дате
+    download_url = Column(String(500), nullable=False)
+    size_kb = Column(Float, nullable=True, default=0.0)
+
+    def __repr__(self):
+        return f"<GenerationHistory(id={self.id}, filename='{self.filename}', datetime='{self.datetime_str}')>"
+
+    def to_dict(self) -> dict:
+        """Формат для API — совместим с прежним JSON."""
+        return {
+            'filename': self.filename,
+            'display_name': self.display_name,
+            'objects': self.objects,
+            'datetime': self.datetime_str,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else '',
+            'download_url': self.download_url,
+            'size_kb': self.size_kb or 0.0,
+        }
+
+
 # Индексы для ускорения поиска
 Index('idx_object_normalized_name', Object.normalized_name)
 Index('idx_object_category', Object.category_id)
 Index('idx_instruction_object', Instruction.object_id)
 Index('idx_instruction_room_category', Instruction.room_category_id)
+Index('idx_generation_history_timestamp', GenerationHistory.timestamp)
+Index('idx_generation_history_filename', GenerationHistory.filename)
 
 ================================================================================
 ФАЙЛ: export_db_to_single_csv.py
@@ -3139,147 +3271,6 @@ if __name__ == "__main__":
     main()
 
 ================================================================================
-ФАЙЛ: fix_db.py
-================================================================================
-
-#!/usr/bin/env python3
-"""
-fix_db.py – скрипт для добавления недостающих колонок в таблицу instructions
-и создания таблицы inventory_colors, если она отсутствует.
-Запускать один раз при возникновении ошибок типа "no such column".
-"""
-
-import sqlite3
-import sys
-from pathlib import Path
-
-# Путь к БД (берём из database.py или указываем явно)
-DB_PATH = Path("tech_cards.db")  # по умолчанию в корне проекта
-
-# Если БД лежит в другой папке, можно указать через переменную окружения DB_DIR
-# или раскомментировать строку ниже и указать путь вручную:
-# DB_PATH = Path("db_storage") / "tech_cards.db"
-
-def column_exists(cursor, table_name, column_name):
-    """Проверяет, существует ли колонка в таблице."""
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    columns = [row[1] for row in cursor.fetchall()]
-    return column_name in columns
-
-def table_exists(cursor, table_name):
-    """Проверяет, существует ли таблица."""
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-    return cursor.fetchone() is not None
-
-def main():
-    if not DB_PATH.exists():
-        print(f"❌ Файл БД не найден: {DB_PATH}")
-        print("   Убедитесь, что путь к БД указан правильно.")
-        print("   Если БД находится в другом месте, измените переменную DB_PATH в скрипте.")
-        sys.exit(1)
-
-    conn = sqlite3.connect(str(DB_PATH))
-    cursor = conn.cursor()
-
-    print("🔍 Проверка структуры базы данных...")
-
-    # ----- Таблица instructions -----
-    print("\n📋 Таблица instructions:")
-    # Колонка enterprise
-    if not column_exists(cursor, "instructions", "enterprise"):
-        print("   ➕ Добавляем колонку enterprise...")
-        cursor.execute("ALTER TABLE instructions ADD COLUMN enterprise VARCHAR(200) NULL")
-        print("   ✅ enterprise добавлена")
-    else:
-        print("   ✅ enterprise уже существует")
-
-    # Колонка subgroup
-    if not column_exists(cursor, "instructions", "subgroup"):
-        print("   ➕ Добавляем колонку subgroup...")
-        cursor.execute("ALTER TABLE instructions ADD COLUMN subgroup VARCHAR(50) NULL")
-        print("   ✅ subgroup добавлена")
-    else:
-        print("   ✅ subgroup уже существует")
-
-    # Колонка room_name (самая важная – её не хватало)
-    if not column_exists(cursor, "instructions", "room_name"):
-        print("   ➕ Добавляем колонку room_name...")
-        cursor.execute("ALTER TABLE instructions ADD COLUMN room_name VARCHAR(200) NULL")
-        print("   ✅ room_name добавлена")
-    else:
-        print("   ✅ room_name уже существует")
-
-    # ----- Таблица inventory_colors -----
-    print("\n🎨 Таблица inventory_colors:")
-    if not table_exists(cursor, "inventory_colors"):
-        print("   ➕ Создаём таблицу inventory_colors...")
-        cursor.execute("""
-            CREATE TABLE inventory_colors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name VARCHAR(50) NOT NULL UNIQUE,
-                hex_color VARCHAR(7) NOT NULL
-            )
-        """)
-        print("   ✅ Таблица создана")
-
-        # Добавляем стандартные цвета
-        print("   ➕ Добавляем стандартные цвета...")
-        colors = [
-            ('чёрный', '#000000'),
-            ('красный', '#FF0000'),
-            ('жёлтый', '#FFFF00'),
-            ('зелёный', '#008000'),
-            ('синий', '#0000FF'),
-            ('голубой', '#00FFFF'),
-            ('белый', '#FFFFFF'),
-            ('коричневый', '#8B4513'),
-            ('лаймовый', '#32CD32'),
-            ('оранжевый', '#FFA500'),
-            ('розовый', '#FFC0CB'),
-            ('серый', '#808080'),
-            ('сиреневый', '#C8A2C8'),
-            ('фиолетовый', '#800080'),
-        ]
-        cursor.executemany("INSERT INTO inventory_colors (name, hex_color) VALUES (?, ?)", colors)
-        print(f"   ✅ Добавлено {len(colors)} цветов")
-    else:
-        # Проверяем, есть ли цвета
-        cursor.execute("SELECT COUNT(*) FROM inventory_colors")
-        count = cursor.fetchone()[0]
-        if count == 0:
-            print("   ⚠️ Таблица существует, но пуста. Добавляем стандартные цвета...")
-            colors = [
-                ('чёрный', '#000000'),
-                ('красный', '#FF0000'),
-                ('жёлтый', '#FFFF00'),
-                ('зелёный', '#008000'),
-                ('синий', '#0000FF'),
-                ('голубой', '#00FFFF'),
-                ('белый', '#FFFFFF'),
-                ('коричневый', '#8B4513'),
-                ('лаймовый', '#32CD32'),
-                ('оранжевый', '#FFA500'),
-                ('розовый', '#FFC0CB'),
-                ('серый', '#808080'),
-                ('сиреневый', '#C8A2C8'),
-                ('фиолетовый', '#800080'),
-            ]
-            cursor.executemany("INSERT OR IGNORE INTO inventory_colors (name, hex_color) VALUES (?, ?)", colors)
-            print(f"   ✅ Добавлено {len(colors)} цветов")
-        else:
-            print(f"   ✅ Таблица содержит {count} цветов")
-
-    conn.commit()
-    conn.close()
-
-    print("\n✅ Все изменения применены. Теперь перезапустите приложение.")
-    print("   Ошибка 'no such column: instructions.room_name' должна исчезнуть.")
-
-
-if __name__ == "__main__":
-    main()
-
-================================================================================
 ФАЙЛ: generator\__init__.py
 ================================================================================
 
@@ -3295,7 +3286,7 @@ from generator.mapper import (
 )
 
 ================================================================================
-ФАЙЛ: generator\docx_generator.py
+ФАЙЛ: generator\docx_generator — копия.py
 ================================================================================
 
 # generator/docx_generator.py
@@ -3644,22 +3635,27 @@ class TechCardGenerator:
                                                      application_method: str = None) -> list:
         """
         Для multi-объектов: применяет фильтр по способу разведения ОТДЕЛЬНО
-        по каждой подгруппе (subgroup).
-        Внутри каждой подгруппы работает логика _apply_application_method_filter:
-        специфичные инструкции предприятия приоритетнее общих, а общие из другой
-        подгруппы не вытесняются специфичными из этой.
+        по каждой паре (subgroup, cleaning_method).
+
+        Это гарантирует, что:
+        - каждая подгруппа обрабатывается независимо;
+        - внутри подгруппы каждый метод фильтруется независимо, поэтому
+          специфичная инструкция одного метода (например, "мойка жаропрочного
+          стекла" с указанным предприятием) не вытесняет общую инструкцию
+          другого метода (например, общую "мойку") в той же подгруппе.
         """
         if not instructions:
             return []
         if not application_method:
             return list(instructions)
 
-        subgroups = defaultdict(list)
+        sub_method_groups = defaultdict(list)
         for instr in instructions:
-            subgroups[(instr.subgroup or "").strip()].append(instr)
+            key = ((instr.subgroup or "").strip(), instr.cleaning_method or "")
+            sub_method_groups[key].append(instr)
 
         result = []
-        for sg, group in subgroups.items():
+        for key, group in sub_method_groups.items():
             result.extend(self._apply_application_method_filter(group, application_method))
         return result
 
@@ -3781,30 +3777,37 @@ class TechCardGenerator:
         if not all_instructions:
             return []
 
-        filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
-        if not filtered:
-            return []
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            by_method[instr.cleaning_method or ""].append(instr)
 
+        normalized_product = None
         if product_name:
             normalized_product = self._normalize_product_name(product_name)
+
+        selected = []
+        for method, method_instrs in by_method.items():
+            filtered = self._filter_instructions(
+                method_instrs, enterprise, room_name, room_category_id
+            )
+            if not filtered:
+                continue
+
             if normalized_product:
                 filtered = [
                     instr for instr in filtered
                     if instr.cleaning_method != "дезинфекция"
                     or self._normalize_product_name(instr.product_name or "") == normalized_product
                 ]
+                if not filtered:
+                    continue
 
-        filtered = self._apply_application_method_filter(filtered, application_method)
+            filtered = self._apply_application_method_filter(filtered, application_method)
+            if not filtered:
+                continue
 
-        by_method = defaultdict(list)
-        for instr in filtered:
-            method = instr.cleaning_method or ""
-            by_method[method].append(instr)
-
-        selected = []
-        for method, instrs in by_method.items():
             sorted_instrs = sorted(
-                instrs,
+                filtered,
                 key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
             )
             best = None
@@ -3817,6 +3820,7 @@ class TechCardGenerator:
                     break
             if best:
                 selected.append(best)
+
         selected.sort(
             key=lambda x: self.cleaning_method_order.get(
                 (x.cleaning_method or "").lower().strip(), 99
@@ -4234,9 +4238,6 @@ class TechCardGenerator:
 
                     other_selected = []
                     if other_instrs:
-                        # ===== Применяем фильтр по способу разведения ОТДЕЛЬНО
-                        # по каждой подгруппе (subgroup), чтобы специфичные инструкции
-                        # в одной подгруппе не вытесняли общие в другой.
                         other_selected = self._apply_application_method_filter_by_subgroup(
                             other_instrs, cleaning_application_method
                         )
@@ -4920,6 +4921,9 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_product
             else:
                 return checklist_data.cleaning_product
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_product
         return None
 
     def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
@@ -4934,6 +4938,9 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_concentration
             else:
                 return checklist_data.cleaning_concentration
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_concentration
         return None
 
     def _get_checklist_method(self, cleaning_method, normalized_name, checklist_data):
@@ -4948,6 +4955,1973 @@ class TechCardGenerator:
                 return checklist_data.glass_cleaning_method_text
             else:
                 return checklist_data.cleaning_method_text
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_method_text
+        return None
+
+================================================================================
+ФАЙЛ: generator\docx_generator.py
+================================================================================
+
+# generator/docx_generator.py
+
+import traceback
+from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Pt
+from pathlib import Path
+from parser.models import ChecklistData, ChecklistItem, Category
+from db.models import (Instruction, Category as DBCategory, Object as DBObject,
+                       RoomCategory, Product, ObjectProperty, ObjectGroup,
+                       CleaningMethodOrder, InventoryColor, CleaningTechnique)
+from db.database import SessionLocal
+from collections import defaultdict
+import re
+import copy
+
+
+class TechCardGenerator:
+    TEMPLATES_DIR = Path("tech_card_templates")
+    DEFAULT_TEMPLATE = TEMPLATES_DIR / "шаблон.docx"
+
+    LEVEL_ORDER = {"основная": 1, "поддерживающая": 2, "генеральная": 3}
+
+    SKIP_PLACEHOLDERS = {
+        "Выберите элемент.", "Не выбрано", "Выберите элемент",
+        "", None
+    }
+
+    # ===== Матрица методов уборки для дезинфекции =====
+    # Ключ: (тип_объекта, нормализованный_способ_разведения)
+    # Значение: строка для колонки "Метод уборки" (как в справочнике)
+    #
+    # Типы объектов:
+    #   CLEANING_EQUIPMENT — Моечный, уборочный инвентарь и оборудование (по категории)
+    #   INVENTORY          — Инвентарь, посуда и т.д. (по категории)
+    #   PPE                — Многоразовые резиновые СИЗ (по категории)
+    #   surface            — приоритет -1, 1–47
+    #   surface_priority   — приоритет 48, 49, 50
+    #   working_surface    — приоритет 65
+    #   equipment          — приоритет 90–199 (кроме 154, 155)
+    #   measuring          — приоритет 154, 155
+    #
+    # Способы разведения:
+    #   готовая_форма     — "готовая форма"
+    #   ручное_разведение — "ручное разведение" (в т.ч. "ручной")
+    #   promax            — "дозирующая система ProMax"
+    #   dema              — "пенная станция DEMA"
+    #   vema              — "пенная станция VEMA"
+    #   protwin           — "спрей-система ProTwin"
+    #   помповый          — "помповый дозатор"
+    #
+    # ВАЖНО: значения должны присутствовать в справочнике БД `cleaning_techniques`,
+    # иначе подстановка не произойдёт (поведение как сейчас — ничего не ставим).
+    CLEANING_TECHNIQUE_MATRIX = {
+        # ===== По категории =====
+        # CLEANING_EQUIPMENT (Моечный, уборочный инвентарь и оборудование)
+        ('CLEANING_EQUIPMENT', 'готовая_форма'):         'ручной (протирание)',
+        ('CLEANING_EQUIPMENT', 'ручное_разведение'):     'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'promax'):                'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'dema'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'vema'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'foam'):                  'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'protwin'):               'ручной (протирание, замачивание)',
+        ('CLEANING_EQUIPMENT', 'помповый'):              'ручной (протирание, замачивание)',
+
+        # INVENTORY (Инвентарь, посуда и т.д.)
+        ('INVENTORY', 'готовая_форма'):                  'ручной (протирание)',
+        ('INVENTORY', 'ручное_разведение'):              'ручной (протирание, замачивание)',
+        ('INVENTORY', 'promax'):                         'ручной (протирание, замачивание)',
+        ('INVENTORY', 'dema'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'vema'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'foam'):                           'ручной (протирание, замачивание)',
+        ('INVENTORY', 'protwin'):                        'ручной (протирание, замачивание)',
+        ('INVENTORY', 'помповый'):                       'ручной (протирание, замачивание)',
+
+        # PPE (Многоразовые резиновые СИЗ)
+        ('PPE', 'готовая_форма'):                        'ручной (протирание)',
+        ('PPE', 'ручное_разведение'):                    'ручной (замачивание)',
+        ('PPE', 'promax'):                               'ручной (замачивание)',
+        ('PPE', 'dema'):                                 'ручной (замачивание)',
+        ('PPE', 'vema'):                                 'ручной (замачивание)',
+        ('PPE', 'foam'):                                 'ручной (замачивание)',
+        ('PPE', 'protwin'):                              'ручной (замачивание)',
+        ('PPE', 'помповый'):                             'ручной (замачивание)',
+
+        # ===== По приоритету =====
+        # surface (приоритет -1, 1–47)
+        ('surface', 'готовая_форма'):                    'ручной (протирание)',
+        ('surface', 'ручное_разведение'):                'ручной (протирание)',
+        ('surface', 'promax'):                           'ручной (протирание)',
+        ('surface', 'dema'):                             'ручной (протирание)',
+        ('surface', 'vema'):                             'ручной (протирание)',
+        ('surface', 'foam'):                             'ручной (протирание)',
+        ('surface', 'protwin'):                          'ручной (протирание)',
+        ('surface', 'помповый'):                         'ручной (протирание)',
+
+        # surface_priority (приоритет 48, 49, 50)
+        ('surface_priority', 'готовая_форма'):           'ручной (протирание)',
+        ('surface_priority', 'ручное_разведение'):       'ручной (протирание)',
+        ('surface_priority', 'promax'):                  'ручной (протирание)',
+        ('surface_priority', 'dema'):                    'ручной (орошение)',
+        ('surface_priority', 'vema'):                    'ручной (орошение)',
+        ('surface_priority', 'foam'):                    'ручной (орошение)',
+        ('surface_priority', 'protwin'):                 'ручной (орошение)',
+        ('surface_priority', 'помповый'):                'ручной (орошение)',
+
+        # equipment (приоритет 90–199 кроме 154/155)
+        ('equipment', 'готовая_форма'):                  'ручной (протирание)',
+        ('equipment', 'ручное_разведение'):              'ручной (протирание)',
+        ('equipment', 'promax'):                         'ручной (протирание)',
+        ('equipment', 'dema'):                           'ручной (орошение)',
+        ('equipment', 'vema'):                           'ручной (орошение)',
+        ('equipment', 'foam'):                           'ручной (орошение)',
+        ('equipment', 'protwin'):                        'ручной (орошение)',
+        ('equipment', 'помповый'):                       'ручной (орошение)',
+
+        # measuring (приоритет 154, 155)
+        ('measuring', 'готовая_форма'):                  'ручной (протирание)',
+        ('measuring', 'ручное_разведение'):              'ручной (протирание)',
+        ('measuring', 'promax'):                         'ручной (протирание)',
+        ('measuring', 'dema'):                           'ручной (протирание)',
+        ('measuring', 'vema'):                           'ручной (протирание)',
+        ('measuring', 'foam'):                           'ручной (протирание)',
+        ('measuring', 'protwin'):                        'ручной (протирание)',
+        ('measuring', 'помповый'):                       'ручной (протирание)',
+
+        # working_surface (приоритет 65)
+        ('working_surface', 'готовая_форма'):            'ручной (протирание)',
+        ('working_surface', 'ручное_разведение'):        'ручной (протирание)',
+        ('working_surface', 'promax'):                   'ручной (протирание)',
+        ('working_surface', 'dema'):                     'ручной (орошение)',
+        ('working_surface', 'vema'):                     'ручной (орошение)',
+        ('working_surface', 'foam'):                     'ручной (орошение)',
+        ('working_surface', 'protwin'):                  'ручной (орошение)',
+        ('working_surface', 'помповый'):                 'ручной (орошение)',
+    }
+
+    def __init__(self, template_path: str = None):
+        self.template_path = Path(template_path) if template_path else self.DEFAULT_TEMPLATE
+        self._config_loaded = False
+        self._inventory_colors = {}
+        self._cleaning_techniques = {}
+        self._load_inventory_colors()
+        self._load_cleaning_techniques()
+
+    def _load_inventory_colors(self):
+        session = SessionLocal()
+        try:
+            colors = session.query(InventoryColor).all()
+            self._inventory_colors = {c.name: c.hex_color for c in colors}
+        finally:
+            session.close()
+
+    def _load_cleaning_techniques(self):
+        session = SessionLocal()
+        try:
+            techniques = session.query(CleaningTechnique).all()
+            self._cleaning_techniques = {t.name.lower(): t.name for t in techniques}
+        finally:
+            session.close()
+
+    def _load_config(self, session):
+        if self._config_loaded:
+            return
+        methods = session.query(CleaningMethodOrder).order_by(CleaningMethodOrder.sort_order).all()
+        self.cleaning_method_order = {m.method_name: m.sort_order for m in methods}
+
+        props = session.query(ObjectProperty).join(DBObject).all()
+        self.split_objects = set()
+        self.multi_method_objects = set()
+        self.support_objects = set()
+        self.floor_objects = set()
+        self.tech_objects = set()
+        self.glass_objects = set()
+        self.thermal_objects = set()
+
+        for prop in props:
+            name = prop.object.normalized_name
+            if prop.is_split:
+                self.split_objects.add(name)
+            if prop.is_multi_method:
+                self.multi_method_objects.add(name)
+            if prop.has_support_maintenance:
+                self.support_objects.add(name)
+            if prop.special_product_type == 'floor':
+                self.floor_objects.add(name)
+            elif prop.special_product_type == 'tech':
+                self.tech_objects.add(name)
+            elif prop.special_product_type == 'glass':
+                self.glass_objects.add(name)
+            elif prop.special_product_type == 'thermal':
+                self.thermal_objects.add(name)
+
+        groups = session.query(ObjectGroup).all()
+        self.group_headers = {}
+        temp_groups = defaultdict(set)
+        for g in groups:
+            if g.object:
+                temp_groups[g.group_name].add(g.object.normalized_name)
+        for header, obj_set in temp_groups.items():
+            self.group_headers[frozenset(obj_set)] = header
+
+        self._config_loaded = True
+
+    def _load_product_colors(self, session) -> dict:
+        products = session.query(Product).all()
+        return {p.name: p.color for p in products if p.color}
+
+    def _clean_text(self, val: str) -> str:
+        if not val:
+            return ""
+        return val.strip().replace('\n', ' ').replace('\r', ' ')
+
+    def _normalize_product_name(self, name: str) -> str:
+        if not name:
+            return ""
+        normalized = re.sub(r'[^\w\s\-]', '', name)
+        normalized = normalized.lower()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized.strip()
+
+    # ===== Нормализация способа разведения =====
+    def _normalize_application_method(self, text: str) -> str:
+        """
+        Приводит строку способа разведения к каноническому ключу матрицы.
+        Возвращает "" если способ не распознан.
+        """
+        if not text:
+            return ""
+        t = text.lower()
+        if 'готовая форма' in t:
+            return 'готовая_форма'
+        if 'promax' in t or 'pro max' in t:
+            return 'promax'
+        if 'dema' in t:
+            return 'dema'
+        if 'vema' in t:
+            return 'vema'
+        if 'foam' in t:
+            return 'foam'
+        if 'protwin' in t or 'pro twin' in t:
+            return 'protwin'
+        if 'помповый' in t:
+            return 'помповый'
+        if 'ручн' in t:
+            return 'ручное_разведение'
+        return ""
+
+    # ===== Определение типа объекта =====
+    def _detect_object_type(self, item, sort_priority, normalized_name) -> str:
+        """
+        Определяет тип объекта для матрицы методов уборки.
+
+        Шаг 1 — категория (жёстко):
+            CLEANING_EQUIPMENT → CLEANING_EQUIPMENT
+            INVENTORY          → INVENTORY
+            PPE                → PPE
+
+        Шаг 2 — по sort_priority:
+            -1, 1–47                  → surface
+            48, 49, 50                → surface_priority
+            65                        → working_surface
+            90–199 (кроме 154, 155)   → equipment
+            154, 155                  → measuring
+
+        Шаг 3 — фолбэк для «дырок» (0, 51–64, 66–89, 200+):
+            TECH / THERMAL / REFRIGERATION / PACKAGING / DISHWASHING / DOSING → equipment
+            всё остальное → surface
+        """
+        cat = getattr(item, 'category', None) if item is not None else None
+
+        # Шаг 1 — категория (ключ = имя enum)
+        if cat == Category.CLEANING_EQUIPMENT:
+            return 'CLEANING_EQUIPMENT'
+        if cat == Category.INVENTORY:
+            return 'INVENTORY'
+        if cat == Category.PPE:
+            return 'PPE'
+
+        # Шаг 2 — по приоритету
+        if sort_priority is not None:
+            sp = sort_priority
+            if sp == -1 or 1 <= sp <= 47:
+                return 'surface'
+            if sp in (48, 49, 50):
+                return 'surface_priority'
+            if sp == 65:
+                return 'working_surface'
+            if sp in (154, 155):
+                return 'measuring'
+            if 90 <= sp <= 199:
+                return 'equipment'
+
+        # Шаг 3 — фолбэк по категории
+        equipment_cats = {
+            Category.TECH_EQUIPMENT, Category.THERMAL_EQUIPMENT,
+            Category.REFRIGERATION_EQUIPMENT, Category.PACKAGING_EQUIPMENT,
+            Category.DISHWASHING_EQUIPMENT, Category.DOSING_EQUIPMENT,
+        }
+        if cat in equipment_cats:
+            return 'equipment'
+        return 'surface'
+
+    # ===== Резолв метода уборки по матрице =====
+    def _resolve_cleaning_technique_by_matrix(self, object_type: str,
+                                              application_method: str) -> str:
+        """
+        Возвращает метод уборки из зашитой матрицы.
+        ПРАВИЛА:
+          - если способ разведения не распознан → ""
+          - если в матрице нет записи для пары (объект, способ) → ""
+          - если значение есть в матрице, но отсутствует в справочнике БД
+            `cleaning_techniques` → "" (поведение "как сейчас" — не подставляем)
+        """
+        key_method = self._normalize_application_method(application_method)
+        if not key_method:
+            return ""
+        resolved = self.CLEANING_TECHNIQUE_MATRIX.get((object_type, key_method), "")
+        if not resolved:
+            return ""
+        found = self._cleaning_techniques.get(resolved.lower())
+        if not found:
+            return ""
+        return found
+
+    def _set_cell_background(self, cell, hex_color: str):
+        shading = OxmlElement('w:shd')
+        shading.set(qn('w:val'), 'clear')
+        shading.set(qn('w:color'), 'auto')
+        shading.set(qn('w:fill'), hex_color)
+        cell._tc.get_or_add_tcPr().append(shading)
+
+    def _merge_cells_horizontal(self, row, start_col: int, end_col: int):
+        if start_col >= end_col:
+            return
+        start_cell = row.cells[start_col]
+        for col in range(start_col + 1, end_col + 1):
+            start_cell.merge(row.cells[col])
+
+    def _remove_extra_paragraphs_in_cell(self, cell):
+        tc = cell._tc
+        paragraphs = tc.findall(qn('w:p'))
+        if not paragraphs:
+            return
+        first_p = paragraphs[0]
+        for p in paragraphs[1:]:
+            tc.remove(p)
+        if not first_p.findall(qn('w:r')):
+            run = OxmlElement('w:r')
+            run_pr = OxmlElement('w:rPr')
+            sz = OxmlElement('w:sz')
+            sz.set(qn('w:val'), '14')
+            run_pr.append(sz)
+            rFonts = OxmlElement('w:rFonts')
+            rFonts.set(qn('w:ascii'), 'Arial')
+            rFonts.set(qn('w:hAnsi'), 'Arial')
+            run_pr.append(rFonts)
+            run.append(run_pr)
+            t = OxmlElement('w:t')
+            t.set(qn('xml:space'), 'preserve')
+            t.text = ''
+            run.append(t)
+            first_p.append(run)
+
+    def _merge_cells_vertical(self, table, col: int, start_row: int, end_row: int):
+        if start_row >= end_row:
+            return
+        start_cell = table.cell(start_row, col)
+        for row in range(start_row + 1, end_row + 1):
+            start_cell.merge(table.cell(row, col))
+        self._remove_extra_paragraphs_in_cell(start_cell)
+
+    def _cells_are_equal(self, table, col: int, start_row: int, end_row: int) -> bool:
+        first_text = table.cell(start_row, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            if table.cell(row, col).text.strip() != first_text:
+                return False
+        return True
+
+    def _merge_adjacent_equal_cells(self, table, col: int, start_row: int, end_row: int):
+        if start_row >= end_row:
+            return
+        range_start = start_row
+        range_value = table.cell(range_start, col).text.strip()
+        for row in range(start_row + 1, end_row + 1):
+            current_value = table.cell(row, col).text.strip()
+            if current_value == range_value:
+                continue
+            else:
+                if row - 1 > range_start:
+                    for r in range(range_start + 1, row):
+                        table.cell(r, col).text = ""
+                    self._merge_cells_vertical(table, col, range_start, row - 1)
+                range_start = row
+                range_value = current_value
+        if end_row > range_start:
+            for r in range(range_start + 1, end_row + 1):
+                table.cell(r, col).text = ""
+            self._merge_cells_vertical(table, col, range_start, end_row)
+
+    def _merge_column_2_by_level(self, table, start_row, actual_start, actual_end, rows_data):
+        if actual_end <= actual_start:
+            return
+
+        keys = []
+        for row_idx in range(actual_start, actual_end + 1):
+            row_data_index = row_idx - start_row
+            if row_data_index < len(rows_data):
+                row_data = rows_data[row_data_index]
+                instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                if instr:
+                    maint = (instr.maintenance_type or "").lower()
+                    subgroup = (instr.subgroup or "").strip() or "_default_"
+                    keys.append((maint, subgroup))
+                else:
+                    keys.append(None)
+            else:
+                keys.append(None)
+
+        unique_keys = set([k for k in keys if k is not None])
+        if len(unique_keys) <= 1:
+            self._merge_adjacent_equal_cells(table, 2, actual_start, actual_end)
+        else:
+            current_key = None
+            sub_start = actual_start
+            for row_idx in range(actual_start, actual_end + 1):
+                row_data_index = row_idx - start_row
+                key = None
+                if row_data_index < len(rows_data):
+                    row_data = rows_data[row_data_index]
+                    instr = row_data[2] if len(row_data) > 2 and row_data[0] == 'object' else None
+                    if instr:
+                        maint = (instr.maintenance_type or "").lower()
+                        subgroup = (instr.subgroup or "").strip() or "_default_"
+                        key = (maint, subgroup)
+
+                if key != current_key:
+                    if current_key is not None:
+                        if sub_start <= row_idx - 1:
+                            self._merge_adjacent_equal_cells(table, 2, sub_start, row_idx - 1)
+                    current_key = key
+                    sub_start = row_idx
+            if current_key is not None:
+                if sub_start <= actual_end:
+                    self._merge_adjacent_equal_cells(table, 2, sub_start, actual_end)
+
+    def _get_category_priority(self, session) -> dict:
+        categories = session.query(DBCategory).order_by(DBCategory.sort_order).all()
+        return {cat.name: cat.sort_order for cat in categories}
+
+    def _get_room_category_id(self, session, room_category_name: str) -> int:
+        if not room_category_name:
+            return None
+        rc = session.query(RoomCategory).filter(RoomCategory.name == room_category_name).first()
+        return rc.id if rc else None
+
+    def _get_instruction_priority(self, instr, target_enterprise: str = None,
+                                  target_room_name: str = None, target_room_category_id: int = None) -> int:
+        ent_match = (instr.enterprise or "").lower().strip() == (target_enterprise or "").lower().strip()
+        room_match = (instr.room_name or "").lower().strip() == (target_room_name or "").lower().strip()
+        cat_match = (instr.room_category_id == target_room_category_id)
+
+        if ent_match and room_match and cat_match:
+            return 1
+        elif ent_match and room_match:
+            return 2
+        elif ent_match and cat_match and (instr.room_name or "").strip() == "":
+            return 3
+        elif ent_match and (instr.room_name or "").strip() == "" and instr.room_category_id is None:
+            return 4
+        elif not ent_match and room_match and cat_match:
+            return 5
+        elif not ent_match and room_match:
+            return 6
+        elif not ent_match and cat_match and (instr.room_name or "").strip() == "":
+            return 7
+        elif not ent_match and (instr.room_name or "").strip() == "" and instr.room_category_id is None:
+            return 8
+        else:
+            return 99
+
+    def _filter_instructions(self, instructions: list, target_enterprise: str = None,
+                             target_room_name: str = None, target_room_category_id: int = None,
+                             disinfection_product_name: str = None) -> list:
+        """
+        Двухэтапный отбор инструкций с перебором ступеней.
+
+        Этап A — каскад по (enterprise, room_name):
+          1) both:      enterprise == target_ent И room_name == target_room
+          2) ent_only:  enterprise == target_ent И room_name == ""
+          3) room_only: enterprise == ""          И room_name == target_room
+          4) general:   enterprise == ""          И room_name == ""
+
+        Этап B — внутри ступени по категории помещения:
+          - специфичная (room_category_id == target) — приоритетно,
+          - общая (room_category_id IS NULL) — fallback.
+
+        Перебор ступеней: останавливаемся на первой, где после этапа B получен
+        непустой результат. Если ступень проходит этап A, но на этапе B внутри
+        неё ничего не найдено — переходим к следующей ступени.
+
+        ВАЖНО: фильтр по средству из чек-листа (disinfection_product_name)
+        применяется ИСКЛЮЧИТЕЛЬНО к ступени general. Индивидуальные ступени
+        (both / ent_only / room_only) берутся как есть, без фильтра по средству —
+        приоритет предприятия/помещения выше приоритета средства.
+        """
+        if not instructions:
+            return []
+
+        target_ent = (target_enterprise or "").strip()
+        target_room = (target_room_name or "").strip()
+        normalized_product = None
+        if disinfection_product_name:
+            normalized_product = self._normalize_product_name(disinfection_product_name)
+
+        # ===== Этап A — четыре ступени каскада =====
+        both = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == target_ent
+            and (i.room_name or "").strip() == target_room
+        ]
+        ent_only = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == target_ent
+            and (i.room_name or "").strip() == ""
+        ]
+        room_only = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == ""
+            and (i.room_name or "").strip() == target_room
+            and target_room != ""
+        ]
+        general = [
+            i for i in instructions
+            if (i.enterprise or "").strip() == ""
+            and (i.room_name or "").strip() == ""
+        ]
+
+        # ===== Этап B + перебор ступеней =====
+        for stage_name, stage in (("both", both), ("ent_only", ent_only),
+                                  ("room_only", room_only), ("general", general)):
+            if not stage:
+                continue
+
+            # Фильтр по средству — ТОЛЬКО для ступени general
+            if stage_name == "general" and normalized_product:
+                stage = [
+                    i for i in stage
+                    if self._normalize_product_name(i.product_name or "") == normalized_product
+                ]
+                if not stage:
+                    continue
+
+            if target_room_category_id is not None:
+                specific_cat = [i for i in stage if i.room_category_id == target_room_category_id]
+                if specific_cat:
+                    return specific_cat
+
+            cat_null = [i for i in stage if i.room_category_id is None]
+            if cat_null:
+                return cat_null
+
+        return []
+
+    def _filter_by_methods(self, instructions: list, target_enterprise: str = None,
+                           target_room_name: str = None, target_room_category_id: int = None,
+                           grouping: str = 'method',
+                           disinfection_product_name: str = None) -> list:
+        """
+        Группирует инструкции по ключу (method, subgroup/surface/…) и внутри
+        КАЖДОЙ группы применяет _filter_instructions.
+
+        Параметр disinfection_product_name передаётся дальше ТОЛЬКО для метода
+        «дезинфекция». Для остальных методов (мойка, очистка, ополаскивание,
+        обеспыливание и т.п.) фильтр по средству не применяется — иначе общие
+        инструкции этих методов были бы ошибочно отфильтрованы по средству
+        из чек-листа, предназначенному для дезинфекции, и выпали бы из выборки.
+        """
+        if not instructions:
+            return []
+
+        groups = defaultdict(list)
+        for i in instructions:
+            if grouping == 'method_subgroup':
+                key = (i.cleaning_method or "", (i.subgroup or "").strip())
+            elif grouping == 'method_surface':
+                key = (i.cleaning_method or "", (i.surface_type or "").lower())
+            else:
+                key = (i.cleaning_method or "",)
+            groups[key].append(i)
+
+        result = []
+        for key, group in groups.items():
+            method = key[0]
+            product_for_filter = disinfection_product_name if method == "дезинфекция" else None
+            filtered_group = self._filter_instructions(
+                group, target_enterprise, target_room_name, target_room_category_id,
+                disinfection_product_name=product_for_filter
+            )
+            result.extend(filtered_group)
+        return result
+
+    def _apply_application_method_filter(self, instructions: list, application_method: str = None) -> list:
+        if not instructions:
+            return []
+        if not application_method:
+            return list(instructions)
+
+        specific = [i for i in instructions if (i.enterprise or "").strip()]
+        general = [i for i in instructions if not (i.enterprise or "").strip()]
+
+        def _filter_group(group):
+            matched = [
+                i for i in group
+                if not i.application_method or i.application_method == application_method
+            ]
+            return matched if matched else list(group)
+
+        if specific:
+            return _filter_group(specific)
+        return _filter_group(general)
+
+    def _apply_application_method_filter_by_subgroup(self, instructions: list,
+                                                     application_method: str = None) -> list:
+        if not instructions:
+            return []
+        if not application_method:
+            return list(instructions)
+
+        sub_method_groups = defaultdict(list)
+        for instr in instructions:
+            key = ((instr.subgroup or "").strip(), instr.cleaning_method or "")
+            sub_method_groups[key].append(instr)
+
+        result = []
+        for key, group in sub_method_groups.items():
+            result.extend(self._apply_application_method_filter(group, application_method))
+        return result
+
+    def _get_support_additions(self, all_instrs, target_enterprise, room_category_id,
+                                filter_surface_type: bool = False):
+        target_ent = (target_enterprise or "").strip()
+        if not target_ent:
+            return []
+
+        candidates = [
+            instr for instr in all_instrs
+            if (instr.enterprise or "").strip().lower() == target_ent.lower()
+            and (instr.maintenance_type or "").lower() == "поддерживающая"
+        ]
+        if not candidates:
+            return []
+
+        if room_category_id is not None:
+            specific_cat = [i for i in candidates if i.room_category_id == room_category_id]
+            if specific_cat:
+                result = specific_cat
+            else:
+                result = [i for i in candidates if i.room_category_id is None]
+        else:
+            result = [i for i in candidates if i.room_category_id is None]
+
+        if filter_surface_type:
+            result = [i for i in result if not (i.surface_type or "").strip()]
+        return result
+
+    def _append_support_to_list(self, instructions, support_additions):
+        if not support_additions:
+            return instructions
+        if instructions is None:
+            instructions = []
+        existing_ids = {i.id for i in instructions}
+        appended = []
+        for instr in support_additions:
+            if instr.id not in existing_ids:
+                appended.append(instr)
+        if not appended:
+            return instructions
+        return list(instructions) + appended
+
+    def _append_support_to_multi(self, instructions, support_additions):
+        if not support_additions:
+            return instructions
+        if instructions is None:
+            instructions = []
+        existing_ids = {i.id for i in instructions}
+        appended = []
+        for instr in support_additions:
+            if instr.id not in existing_ids:
+                appended.append(instr)
+        if not appended:
+            return instructions
+        return list(instructions) + appended
+
+    def _append_support_to_split(self, split_instructions, support_additions):
+        if not support_additions:
+            return split_instructions
+        if split_instructions is None:
+            split_instructions = {}
+        for instr in support_additions:
+            sf = (instr.surface_type or "").lower()
+            if not sf:
+                continue
+            if sf not in split_instructions:
+                split_instructions[sf] = []
+            existing_ids = {i.id for i in split_instructions[sf]}
+            if instr.id not in existing_ids:
+                split_instructions[sf].append(instr)
+        for sf in split_instructions:
+            split_instructions[sf].sort(
+                key=lambda x: (
+                    self.LEVEL_ORDER.get((x.maintenance_type or "").lower(), 99),
+                    self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                )
+            )
+        return split_instructions
+
+    def _get_instruction_signature(self, instructions: list) -> tuple:
+        if not instructions:
+            return (("empty",),)
+        signatures = []
+        sorted_instructions = sorted(
+            instructions,
+            key=lambda x: self.cleaning_method_order.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        for instr in sorted_instructions:
+            sig = (
+                instr.maintenance_type or "",
+                instr.cleaning_method or "",
+                instr.instruction_number or "",
+                instr.product_name or "",
+                instr.cleaning_technique or "",
+                instr.concentration or "",
+                instr.temperature or "",
+                instr.exposure_time or "",
+                instr.inventory or "",
+                instr.frequency or "",
+                instr.executor or "",
+                instr.control_method or "",
+                instr.surface_type or "",
+                instr.enterprise or "",
+                instr.subgroup or "",
+                instr.room_name or "",
+                instr.room_category_id or 0,
+            )
+            signatures.append(sig)
+        return tuple(signatures)
+
+    def _group_by_full_instructions(self, object_instructions: list) -> list:
+        groups = {}
+        for obj_name, instructions in object_instructions:
+            signature = self._get_instruction_signature(instructions)
+            if signature not in groups:
+                groups[signature] = {"names": [], "instructions": instructions}
+            groups[signature]["names"].append(obj_name)
+        result = []
+        for signature, data in groups.items():
+            merged_name = ", ".join(sorted(data["names"]))
+            result.append((merged_name, data["instructions"]))
+        return result
+
+    def _select_instructions_for_room(self, all_instructions: list, room_category_id: int,
+                                      enterprise: str = None, room_name: str = None,
+                                      product_name: str = None, application_method: str = None) -> list:
+        if not all_instructions:
+            return []
+
+        by_method = defaultdict(list)
+        for instr in all_instructions:
+            by_method[instr.cleaning_method or ""].append(instr)
+
+        selected = []
+        for method, method_instrs in by_method.items():
+            # Для дезинфекции передаём средство в _filter_instructions —
+            # фильтр применится только к ступени general.
+            disinfection_product_name = product_name if method == "дезинфекция" else None
+
+            filtered = self._filter_instructions(
+                method_instrs, enterprise, room_name, room_category_id,
+                disinfection_product_name=disinfection_product_name
+            )
+            if not filtered:
+                continue
+
+            filtered = self._apply_application_method_filter(filtered, application_method)
+            if not filtered:
+                continue
+
+            sorted_instrs = sorted(
+                filtered,
+                key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
+            )
+            best = None
+            for maint_level in ["основная", "поддерживающая", "генеральная"]:
+                for instr in sorted_instrs:
+                    if (instr.maintenance_type or "").lower() == maint_level:
+                        best = instr
+                        break
+                if best:
+                    break
+            if best:
+                selected.append(best)
+
+        selected.sort(
+            key=lambda x: self.cleaning_method_order.get(
+                (x.cleaning_method or "").lower().strip(), 99
+            )
+        )
+        return selected
+
+    def _select_all_instructions_for_room(self, all_instructions: list, room_category_id: int,
+                                          enterprise: str = None, room_name: str = None,
+                                          application_method: str = None) -> list:
+        if not all_instructions:
+            return []
+
+        filtered = self._filter_instructions(all_instructions, enterprise, room_name, room_category_id)
+        if not filtered:
+            return []
+
+        filtered = self._apply_application_method_filter(filtered, application_method)
+
+        sorted_instrs = sorted(
+            filtered,
+            key=lambda i: (
+                self._get_instruction_priority(i, enterprise, room_name, room_category_id),
+                self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
+                self.cleaning_method_order.get((i.cleaning_method or "").lower().strip(), 99)
+            )
+        )
+
+        level_groups = defaultdict(list)
+        for instr in sorted_instrs:
+            level = (instr.maintenance_type or "").lower()
+            level_groups[level].append(instr)
+
+        result = []
+        for level in ["основная", "поддерживающая", "генеральная"]:
+            instrs = level_groups.get(level, [])
+            if not instrs:
+                continue
+            method_groups = defaultdict(list)
+            for instr in instrs:
+                method = instr.cleaning_method or ""
+                method_groups[method].append(instr)
+            ordered_methods = sorted(method_groups.keys(),
+                                     key=lambda m: self.cleaning_method_order.get(m.lower().strip(), 99))
+            while True:
+                added = False
+                for method in ordered_methods:
+                    if method_groups[method]:
+                        result.append(method_groups[method].pop(0))
+                        added = True
+                if not added:
+                    break
+        return result
+
+    def _select_split_instructions(self, all_instructions: list, room_category_id: int,
+                                   enterprise: str = None, room_name: str = None,
+                                   cleaning_application_method: str = None,
+                                   disinfection_product_name: str = None,
+                                   disinfection_application_method: str = None) -> dict:
+        result = {}
+        surface_types = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+
+        for sf in surface_types:
+            sf_instrs = [i for i in all_instructions if (i.surface_type or "").lower() == sf]
+            if not sf_instrs:
+                continue
+
+            disinfection_instrs = [i for i in sf_instrs if i.cleaning_method == "дезинфекция"]
+            other_instrs = [i for i in sf_instrs if i.cleaning_method != "дезинфекция"]
+
+            selected_other = []
+            if other_instrs:
+                selected_other = self._select_instructions_for_room(
+                    other_instrs, room_category_id, enterprise, room_name,
+                    product_name=None,
+                    application_method=cleaning_application_method
+                )
+
+            selected_disinfection = None
+            if disinfection_instrs:
+                # disinfection_instrs уже отфильтрованы по средству/каскаду
+                # (в _filter_by_methods). Дополнительная проверка по средству —
+                # для страховки, если split вызывается отдельно.
+                if disinfection_product_name:
+                    normalized_product = self._normalize_product_name(disinfection_product_name)
+                    candidates = [
+                        instr for instr in disinfection_instrs
+                        if not normalized_product
+                        or self._normalize_product_name(instr.product_name or "") == normalized_product
+                    ]
+                else:
+                    candidates = list(disinfection_instrs)
+
+                if candidates:
+                    candidates.sort(
+                        key=lambda i: self._get_instruction_priority(i, enterprise, room_name, room_category_id)
+                    )
+                    selected_disinfection = candidates[0]
+
+            selected = list(selected_other)
+            if selected_disinfection:
+                selected.append(selected_disinfection)
+
+            if selected:
+                selected.sort(
+                    key=lambda x: self.cleaning_method_order.get(
+                        (x.cleaning_method or "").lower().strip(), 99
+                    )
+                )
+                result[sf] = selected
+
+        return result
+
+    def _clone_row_formatting(self, table, source_row_idx: int, target_row_idx: int):
+        source_row = table.rows[source_row_idx]
+        target_row = table.rows[target_row_idx]
+        for col_idx, source_cell in enumerate(source_row.cells):
+            if col_idx >= len(target_row.cells):
+                break
+            target_cell = target_row.cells[col_idx]
+            source_tc_pr = source_cell._tc.find(qn('w:tcPr'))
+            if source_tc_pr is not None:
+                target_tc_pr = target_cell._tc.find(qn('w:tcPr'))
+                if target_tc_pr is not None:
+                    target_cell._tc.remove(target_tc_pr)
+                target_cell._tc.insert(0, copy.deepcopy(source_tc_pr))
+            for p_idx, source_para in enumerate(source_cell.paragraphs):
+                if p_idx >= len(target_cell.paragraphs):
+                    target_para = target_cell.add_paragraph()
+                else:
+                    target_para = target_cell.paragraphs[p_idx]
+                source_p_pr = source_para._p.find(qn('w:pPr'))
+                if source_p_pr is not None:
+                    target_p_pr = target_para._p.find(qn('w:pPr'))
+                    if target_p_pr is not None:
+                        target_para._p.remove(target_p_pr)
+                    target_para._p.insert(0, copy.deepcopy(source_p_pr))
+                for run in target_para.runs:
+                    target_para._p.remove(run._r)
+                for source_run in source_para.runs:
+                    new_run = copy.deepcopy(source_run._r)
+                    r_pr = new_run.find(qn('w:rPr'))
+                    if r_pr is None:
+                        r_pr = OxmlElement('w:rPr')
+                        new_run.insert(0, r_pr)
+                    source_r_pr = source_run._r.find(qn('w:rPr'))
+                    if source_r_pr is not None:
+                        source_b = source_r_pr.find(qn('w:b'))
+                        if source_b is not None:
+                            existing_b = r_pr.find(qn('w:b'))
+                            if existing_b is None:
+                                r_pr.append(copy.deepcopy(source_b))
+                    if col_idx == 3:
+                        existing_b = r_pr.find(qn('w:b'))
+                        if existing_b is None:
+                            b = OxmlElement('w:b')
+                            r_pr.append(b)
+                    if col_idx == 8:
+                        existing_b = r_pr.find(qn('w:b'))
+                        if existing_b is None:
+                            b = OxmlElement('w:b')
+                            r_pr.append(b)
+                    sz = r_pr.find(qn('w:sz'))
+                    if sz is None:
+                        sz = OxmlElement('w:sz')
+                        r_pr.append(sz)
+                    sz.set(qn('w:val'), '14')
+                    sz_cs = r_pr.find(qn('w:szCs'))
+                    if sz_cs is None:
+                        sz_cs = OxmlElement('w:szCs')
+                        r_pr.append(sz_cs)
+                    sz_cs.set(qn('w:val'), '14')
+                    r_fonts = r_pr.find(qn('w:rFonts'))
+                    if r_fonts is None:
+                        r_fonts = OxmlElement('w:rFonts')
+                        r_pr.append(r_fonts)
+                    r_fonts.set(qn('w:ascii'), 'Arial')
+                    r_fonts.set(qn('w:hAnsi'), 'Arial')
+                    r_fonts.set(qn('w:cs'), 'Arial')
+                    for t in new_run.findall(qn('w:t')):
+                        t.text = ''
+                    target_para._p.append(new_run)
+
+    def _set_cell_text(self, cell, text: str, bold: bool = False):
+        text = self._clean_text(text)
+        if not cell.paragraphs:
+            cell.add_paragraph()
+        para = cell.paragraphs[0]
+        if not para.runs:
+            run_elem = OxmlElement('w:r')
+            r_pr = OxmlElement('w:rPr')
+            sz = OxmlElement('w:sz')
+            sz.set(qn('w:val'), '14')
+            r_pr.append(sz)
+            r_fonts = OxmlElement('w:rFonts')
+            r_fonts.set(qn('w:ascii'), 'Arial')
+            r_fonts.set(qn('w:hAnsi'), 'Arial')
+            r_pr.append(r_fonts)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
+            run_elem.append(r_pr)
+            t_elem = OxmlElement('w:t')
+            t_elem.set(qn('xml:space'), 'preserve')
+            run_elem.append(t_elem)
+            para._p.append(run_elem)
+        else:
+            run = para.runs[0]
+            r_pr = run._r.find(qn('w:rPr'))
+            if r_pr is None:
+                r_pr = OxmlElement('w:rPr')
+                run._r.insert(0, r_pr)
+            existing_b = r_pr.find(qn('w:b'))
+            if existing_b is not None:
+                r_pr.remove(existing_b)
+            if bold:
+                b = OxmlElement('w:b')
+                r_pr.append(b)
+        run = para.runs[0]
+        for t in run._r.findall(qn('w:t')):
+            t.text = text
+            break
+
+    def _set_product_cell(self, cell, text: str, bold: bool = False):
+        text = self._clean_text(text)
+        if not cell.paragraphs:
+            cell.add_paragraph()
+        para = cell.paragraphs[0]
+        for r in para.runs:
+            para._p.remove(r._r)
+        parts = text.split('®')
+        for i, part in enumerate(parts):
+            if part:
+                run = para.add_run(part)
+                run.font.name = 'Arial'
+                run.font.size = Pt(7)
+                if bold:
+                    run.bold = True
+            if i < len(parts) - 1:
+                run_reg = para.add_run('®')
+                run_reg.font.name = 'Arial'
+                run_reg.font.size = Pt(7)
+                if bold:
+                    run_reg.bold = True
+                run_reg.font.superscript = True
+
+    def _clear_cell_text(self, cell):
+        for para in cell.paragraphs:
+            for run in para.runs:
+                for t in run._r.findall(qn('w:t')):
+                    t.text = ''
+
+    def _is_valid_product_name(self, name: str) -> bool:
+        if not name:
+            return False
+        name_lower = name.lower().strip()
+        if name_lower in ('выберите элемент.', 'не выбрано', 'выберите элемент', ''):
+            return False
+        patterns = [
+            r'%', r'дозирующая система', r'ручной', r'система', r'протирание',
+            r'щётка', r'ветошь', r'губка', r'погружение', r'замачивание',
+            r'орошение', r'распыление', r'протирка', r'обработка', r'раствор'
+        ]
+        for pattern in patterns:
+            if re.search(pattern, name_lower):
+                return False
+        if re.match(r'^[0-9.,%\-–\s]+$', name_lower):
+            return False
+        return True
+
+    def generate(self, checklist_data: ChecklistData, output_path: str, mode: int = 1,
+                 enterprise_products_path: str = None, progress_callback=None) -> str:
+        try:
+            if not self.template_path.exists():
+                raise FileNotFoundError(f"Шаблон не найден: {self.template_path}")
+
+            doc = Document(self.template_path)
+            if len(doc.tables) < 2:
+                raise ValueError("В шаблоне должно быть как минимум 2 таблицы")
+            main_table = doc.tables[1]
+
+            room_cell = main_table.cell(1, 0)
+            if "Помещение:" in room_cell.text:
+                room_cell.text = f"Помещение: {checklist_data.room_name or '___________'}"
+                for para in room_cell.paragraphs:
+                    for run in para.runs:
+                        run.font.name = 'Arial'
+                        run.font.size = Pt(9)
+                        run.font.bold = True
+
+            warning_row = main_table.rows[3]
+            if checklist_data.room_category not in ["производственное", "складское"]:
+                self._clear_cell_text(warning_row.cells[0])
+
+            session = SessionLocal()
+            self._load_config(session)
+
+            category_priority = self._get_category_priority(session)
+            product_colors = self._load_product_colors(session)
+
+            target_enterprise = checklist_data.enterprise
+            target_room_name = checklist_data.room_name
+
+            room_category_id = None
+            if hasattr(checklist_data, 'room_category') and checklist_data.room_category:
+                room_category_id = self._get_room_category_id(session, checklist_data.room_category)
+
+            checked_items = checklist_data.get_checked_items()
+            all_names = [item.name for item in checked_items]
+
+            db_objects = session.query(DBObject).filter(DBObject.normalized_name.in_(all_names)).all()
+            objects_dict = {obj.normalized_name: obj for obj in db_objects}
+
+            object_ids = [obj.id for obj in db_objects]
+            db_instructions = session.query(Instruction).filter(Instruction.object_id.in_(object_ids)).all()
+
+            instructions_dict = defaultdict(list)
+            for instr in db_instructions:
+                instructions_dict[instr.object_id].append(instr)
+
+            category_object_instructions = defaultdict(list)
+            all_object_instructions = []
+            category_order = {}
+            unmatched_objects = []
+            unmatched_reasons = {}
+
+            for item in checked_items:
+                obj = objects_dict.get(item.name)
+                cat_name = item.category.value
+                priority = category_priority.get(cat_name, 999)
+                category_order[cat_name] = priority
+
+                display_name = obj.display_name if obj else item.name
+                sort_priority = obj.sort_priority if obj else 999
+                normalized_name = item.name
+
+                print(f"\n🔍 Обработка объекта: {normalized_name}")
+                print(f"   sort_priority = {sort_priority}")
+
+                if obj:
+                    print(f"   ID объекта в БД: {obj.id}")
+                    all_instrs = instructions_dict.get(obj.id, [])
+                    print(f"   Всего инструкций в БД: {len(all_instrs)}")
+                else:
+                    print(f"   ⚠️ Объект не найден в БД")
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "Объект не найден в БД"
+                    continue
+
+                if not (obj and obj.id in instructions_dict):
+                    unmatched_objects.append(display_name)
+                    unmatched_reasons[display_name] = "объект не найден в instructions_dict"
+                    continue
+
+                all_instrs = instructions_dict[obj.id]
+
+                is_multi = normalized_name in self.multi_method_objects
+                is_split = normalized_name in self.split_objects
+                is_support = normalized_name in self.support_objects
+
+                if is_support:
+                    print(f"   -> объект в support_objects (поддерживающая — надстройка)")
+
+                cleaning_application_method = self._get_checklist_method(
+                    'мойка', normalized_name, checklist_data
+                )
+                if cleaning_application_method:
+                    print(f"   💧 Способ разведения для мойки: '{cleaning_application_method}'")
+
+                maintenance_instrs = [
+                    i for i in all_instrs
+                    if (i.maintenance_type or "").lower() == "поддерживающая"
+                ]
+                non_maintenance_instrs = [
+                    i for i in all_instrs
+                    if (i.maintenance_type or "").lower() != "поддерживающая"
+                ]
+
+                print(f"   Разделение: не-поддерживающих {len(non_maintenance_instrs)}, поддерживающих {len(maintenance_instrs)}")
+
+                if is_multi:
+                    grouping = 'method_subgroup'
+                elif is_split:
+                    grouping = 'method_surface'
+                else:
+                    grouping = 'method'
+
+                if not is_split:
+                    non_maintenance_instrs = [
+                        i for i in non_maintenance_instrs if not (i.surface_type or "").strip()
+                    ]
+
+                # ===== Отбор. Фильтр по средству применяется ТОЛЬКО к ступени
+                # general внутри _filter_instructions и ТОЛЬКО для метода
+                # «дезинфекция» (см. _filter_by_methods). Индивидуальные
+                # инструкции (по предприятию / помещению) берутся как есть.
+                filtered_instrs = self._filter_by_methods(
+                    non_maintenance_instrs, target_enterprise, target_room_name,
+                    room_category_id, grouping=grouping,
+                    disinfection_product_name=checklist_data.disinfection_product
+                )
+                print(f"   После фильтрации ({grouping}): {len(filtered_instrs)}")
+
+                result_instructions = None
+                result_type = 'normal'
+
+                if is_multi:
+                    print(f"   -> объект в multi_method_objects")
+                    disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
+                    other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
+
+                    other_selected = []
+                    if other_instrs:
+                        other_selected = self._apply_application_method_filter_by_subgroup(
+                            other_instrs, cleaning_application_method
+                        )
+
+                    disinfection_selected = list(disinfection_instrs)
+                    if disinfection_selected:
+                        disinfection_selected.sort(
+                            key=lambda i: (
+                                self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id),
+                                self.LEVEL_ORDER.get((i.maintenance_type or "").lower(), 99),
+                                (i.subgroup or "")
+                            )
+                        )
+
+                    instructions = other_selected + disinfection_selected
+
+                    instructions.sort(
+                        key=lambda x: (
+                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
+                            (x.subgroup or ""),
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                        )
+                    )
+                    seen = set()
+                    unique_instrs = []
+                    for instr in instructions:
+                        key = (instr.cleaning_method, instr.product_name, instr.surface_type, instr.subgroup)
+                        if key not in seen:
+                            seen.add(key)
+                            unique_instrs.append(instr)
+
+                    unique_instrs.sort(
+                        key=lambda x: (
+                            (x.subgroup or ""),
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                        )
+                    )
+                    result_instructions = unique_instrs
+                    result_type = 'normal'
+
+                elif is_split:
+                    print(f"   -> объект в split_objects")
+                    result_instructions = self._select_split_instructions(
+                        filtered_instrs, room_category_id,
+                        target_enterprise, target_room_name,
+                        cleaning_application_method=cleaning_application_method,
+                        disinfection_product_name=checklist_data.disinfection_product,
+                        disinfection_application_method=checklist_data.disinfection_method_text
+                    )
+                    result_type = 'split'
+
+                else:
+                    print(f"   -> обычный объект")
+                    disinfection_instrs = [i for i in filtered_instrs if i.cleaning_method == "дезинфекция"]
+                    other_instrs = [i for i in filtered_instrs if i.cleaning_method != "дезинфекция"]
+
+                    selected_disinfection = None
+                    if disinfection_instrs:
+                        disinfection_sorted = sorted(
+                            disinfection_instrs,
+                            key=lambda i: self._get_instruction_priority(i, target_enterprise, target_room_name, room_category_id)
+                        )
+                        selected_disinfection = disinfection_sorted[0]
+
+                    other_selected = []
+                    if other_instrs:
+                        other_selected = self._select_instructions_for_room(
+                            other_instrs, room_category_id,
+                            target_enterprise, target_room_name,
+                            application_method=cleaning_application_method
+                        )
+
+                    instructions = other_selected
+                    if selected_disinfection:
+                        instructions.append(selected_disinfection)
+
+                    instructions.sort(
+                        key=lambda x: (
+                            self._get_instruction_priority(x, target_enterprise, target_room_name, room_category_id),
+                            self.cleaning_method_order.get((x.cleaning_method or "").lower().strip(), 99)
+                        )
+                    )
+                    seen = set()
+                    unique_instrs = []
+                    for instr in instructions:
+                        key = (instr.cleaning_method, instr.product_name, instr.surface_type)
+                        if key not in seen:
+                            seen.add(key)
+                            unique_instrs.append(instr)
+
+                    unique_instrs.sort(
+                        key=lambda x: self.cleaning_method_order.get(
+                            (x.cleaning_method or "").lower().strip(), 99
+                        )
+                    )
+                    result_instructions = unique_instrs
+                    result_type = 'normal'
+
+                if is_support:
+                    filter_surface = not is_split
+                    support_additions = self._get_support_additions(
+                        all_instrs, target_enterprise, room_category_id,
+                        filter_surface_type=filter_surface
+                    )
+                    if support_additions:
+                        print(f"   -> support: добавлено {len(support_additions)} поддерживающих инструкций")
+                        if result_type == 'split':
+                            result_instructions = self._append_support_to_split(
+                                result_instructions, support_additions
+                            )
+                        elif is_multi:
+                            result_instructions = self._append_support_to_multi(
+                                result_instructions, support_additions
+                            )
+                        else:
+                            result_instructions = self._append_support_to_list(
+                                result_instructions, support_additions
+                            )
+                    else:
+                        print(f"   -> support: поддерживающих инструкций не найдено (надстройка не применяется)")
+
+                if result_type == 'split':
+                    non_empty = {sf: instrs for sf, instrs in (result_instructions or {}).items() if instrs}
+                    if non_empty:
+                        category_object_instructions[cat_name].append(
+                            ('split', display_name, non_empty, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, non_empty, sort_priority, normalized_name, item))
+                    else:
+                        print(f"   ❌ split-инструкции не выбраны")
+                        unmatched_objects.append(display_name)
+                        unmatched_reasons[display_name] = "split-инструкции не выбраны"
+                else:
+                    if result_instructions:
+                        print(f"   итог: {[f'{i.cleaning_method}/{i.maintenance_type} (ID={i.id})' for i in result_instructions]}")
+                        category_object_instructions[cat_name].append(
+                            ('normal', display_name, result_instructions, normalized_name, item))
+                        all_object_instructions.append(
+                            (display_name, result_instructions, sort_priority, normalized_name, item))
+                    else:
+                        print(f"   ❌ инструкции не выбраны для {normalized_name}")
+                        unmatched_objects.append(display_name)
+                        unmatched_reasons[display_name] = "инструкции не выбраны (пустой набор)"
+
+            session.close()
+
+            if unmatched_objects:
+                print(f"\n⚠️ Объекты без инструкций: {unmatched_objects}")
+
+            rows_data = []
+            merge_info_object = []
+            merge_info_columns = []
+            surface_merge_info = []
+
+            if mode == 1:
+                sorted_categories = sorted(category_object_instructions.keys(), key=lambda x: category_order.get(x, 999))
+                for cat_name in sorted_categories:
+                    items = category_object_instructions[cat_name]
+                    if not items:
+                        continue
+                    items.sort(key=lambda x: x[1])
+                    rows_data.append(('category', cat_name, None))
+                    for typ, display_name, instructions, normalized_name, item in items:
+                        if typ == 'split':
+                            surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                            first_surface = True
+                            group_start_row = len(rows_data)
+                            for sf in surfaces:
+                                if sf not in instructions:
+                                    continue
+                                sf_instrs = instructions[sf]
+                                sf_label = {"внешняя": "Внешние поверхности",
+                                            "внутренняя": "Внутренние поверхности",
+                                            "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                                if first_surface:
+                                    rows_data.append(('section_header', sf_label, display_name))
+                                    first_surface = False
+                                else:
+                                    rows_data.append(('section_header', sf_label, None))
+                                surface_start = len(rows_data)
+                                for instr in sf_instrs:
+                                    rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item, sort_priority))
+                                surface_end = len(rows_data) - 1
+                                if surface_end >= surface_start:
+                                    surface_merge_info.append((surface_start, surface_end))
+                            group_end_row = len(rows_data) - 1
+                            merge_info_object.append((group_start_row, group_end_row))
+                        else:
+                            group_start_row = len(rows_data)
+                            if instructions:
+                                for i, instr in enumerate(instructions):
+                                    cell_text = display_name if i == 0 else ""
+                                    rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item, sort_priority))
+                            else:
+                                rows_data.append(('object', display_name, None, normalized_name, None, item, sort_priority))
+                            group_end_row = len(rows_data) - 1
+                            if group_end_row > group_start_row:
+                                merge_info_object.append((group_start_row, group_end_row))
+                                merge_info_columns.append((group_start_row, group_end_row))
+            elif mode == 2:
+                all_object_instructions.sort(key=lambda x: (x[2], x[0]))
+                for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
+                    if isinstance(instructions, dict):
+                        surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                        first_surface = True
+                        group_start_row = len(rows_data)
+                        for sf in surfaces:
+                            if sf not in instructions:
+                                continue
+                            sf_instrs = instructions[sf]
+                            sf_label = {"внешняя": "Внешние поверхности",
+                                        "внутренняя": "Внутренние поверхности",
+                                        "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                            if first_surface:
+                                rows_data.append(('section_header', sf_label, display_name))
+                                first_surface = False
+                            else:
+                                rows_data.append(('section_header', sf_label, None))
+                            surface_start = len(rows_data)
+                            for instr in sf_instrs:
+                                rows_data.append(('object', "", instr, normalized_name, instr.subgroup, item, sort_priority))
+                            surface_end = len(rows_data) - 1
+                            if surface_end >= surface_start:
+                                surface_merge_info.append((surface_start, surface_end))
+                        group_end_row = len(rows_data) - 1
+                        merge_info_object.append((group_start_row, group_end_row))
+                    else:
+                        group_start_row = len(rows_data)
+                        if instructions:
+                            for i, instr in enumerate(instructions):
+                                cell_text = display_name if i == 0 else ""
+                                rows_data.append(('object', cell_text, instr, normalized_name, instr.subgroup, item, sort_priority))
+                        else:
+                            rows_data.append(('object', display_name, None, normalized_name, None, item, sort_priority))
+                        group_end_row = len(rows_data) - 1
+                        if group_end_row > group_start_row:
+                            merge_info_object.append((group_start_row, group_end_row))
+                            merge_info_columns.append((group_start_row, group_end_row))
+            elif mode == 3:
+                inserted_headers = set()
+                priority_groups = defaultdict(list)
+                for display_name, instructions, sort_priority, normalized_name, item in all_object_instructions:
+                    priority_groups[sort_priority].append((display_name, instructions, normalized_name, item))
+
+                for priority in sorted(priority_groups.keys()):
+                    items = priority_groups[priority]
+                    normal_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if not isinstance(instr, dict)]
+                    split_items = [(dn, instr, nn, it) for dn, instr, nn, it in items if isinstance(instr, dict)]
+
+                    groups = {}
+                    for dn, instr, nn, it in normal_items:
+                        signature = self._get_instruction_signature(instr)
+                        if signature not in groups:
+                            groups[signature] = {"names": [], "instructions": instr, "normalized_name": nn, "item": it}
+                        groups[signature]["names"].append(dn)
+
+                    for sig, data in groups.items():
+                        current_nn = data["normalized_name"]
+                        item = data["item"]
+                        for group_set, header_text in self.group_headers.items():
+                            if current_nn in group_set and group_set not in inserted_headers:
+                                rows_data.append(('group_header', header_text, None))
+                                inserted_headers.add(group_set)
+                                break
+                        merged_name = ", ".join(sorted(data["names"]))
+                        group_start_row = len(rows_data)
+                        if data["instructions"]:
+                            for i, instr in enumerate(data["instructions"]):
+                                cell_text = merged_name if i == 0 else ""
+                                rows_data.append(
+                                    ('object', cell_text, instr, data["normalized_name"], instr.subgroup, item, priority))
+                        else:
+                            rows_data.append(('object', merged_name, None, data["normalized_name"], None, item, priority))
+                        group_end_row = len(rows_data) - 1
+                        if group_end_row > group_start_row:
+                            merge_info_object.append((group_start_row, group_end_row))
+                            merge_info_columns.append((group_start_row, group_end_row))
+
+                    for dn, split_instr, nn, it in split_items:
+                        for group_set, header_text in self.group_headers.items():
+                            if nn in group_set and group_set not in inserted_headers:
+                                rows_data.append(('group_header', header_text, None))
+                                inserted_headers.add(group_set)
+                                break
+                        surfaces = ["внешняя", "внутренняя", "очистка от мин. отложений"]
+                        first_surface = True
+                        group_start_row = len(rows_data)
+                        for sf in surfaces:
+                            if sf not in split_instr:
+                                continue
+                            sf_instrs = split_instr[sf]
+                            sf_label = {"внешняя": "Внешние поверхности",
+                                        "внутренняя": "Внутренние поверхности",
+                                        "очистка от мин. отложений": "Очистка от минеральных отложений"}[sf]
+                            if first_surface:
+                                rows_data.append(('section_header', sf_label, dn))
+                                first_surface = False
+                            else:
+                                rows_data.append(('section_header', sf_label, None))
+                            surface_start = len(rows_data)
+                            for instr in sf_instrs:
+                                rows_data.append(('object', "", instr, nn, instr.subgroup, it, priority))
+                            surface_end = len(rows_data) - 1
+                            if surface_end >= surface_start:
+                                surface_merge_info.append((surface_start, surface_end))
+                        group_end_row = len(rows_data) - 1
+                        merge_info_object.append((group_start_row, group_end_row))
+
+            if unmatched_objects:
+                rows_data.append(('category', 'Объекты без инструкций (требуют настройки)', None))
+                for name in sorted(unmatched_objects):
+                    rows_data.append(('object', name, None, None, None, None, None))
+
+            start_row = 8
+            tbl = main_table._tbl
+            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+            while len(tr_elements) > start_row + 1:
+                tbl.remove(tr_elements[-1])
+                tr_elements = tbl.findall('.//w:tr', namespaces=ns)
+
+            for _ in range(len(rows_data)):
+                main_table.add_row()
+                self._clone_row_formatting(main_table, start_row, len(main_table.rows) - 1)
+
+            row_to_remove = main_table.rows[start_row]
+            tbl.remove(row_to_remove._tr)
+
+            current_row = start_row
+            for row_info in rows_data:
+                row = main_table.rows[current_row]
+
+                if row_info[0] == 'category':
+                    self._merge_cells_horizontal(row, 0, 11)
+                    self._set_cell_text(row.cells[0], row_info[1])
+                    if row.cells[0].paragraphs and row.cells[0].paragraphs[0].runs:
+                        row.cells[0].paragraphs[0].runs[0].font.bold = True
+
+                elif row_info[0] == 'group_header':
+                    self._merge_cells_horizontal(row, 0, 11)
+                    self._set_cell_text(row.cells[0], row_info[1], bold=True)
+                    self._set_cell_background(row.cells[0], "D2D2D2")
+                    for para in row.cells[0].paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
+
+                elif row_info[0] == 'section_header':
+                    if len(row_info) > 2 and row_info[2] is not None:
+                        self._set_cell_text(row.cells[0], row_info[2])
+                    else:
+                        self._set_cell_text(row.cells[0], "")
+                    self._merge_cells_horizontal(row, 1, 11)
+                    self._set_cell_text(row.cells[1], row_info[1], bold=True)
+                    self._set_cell_background(row.cells[1], "D2D2D2")
+                    for para in row.cells[1].paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(7)
+
+                elif row_info[0] == 'object':
+                    obj_name, instr = row_info[1], row_info[2]
+                    normalized_name = row_info[3] if len(row_info) > 3 else None
+                    item = row_info[5] if len(row_info) > 5 else None
+                    sort_priority = row_info[6] if len(row_info) > 6 else 999
+
+                    self._set_cell_text(row.cells[0], obj_name)
+
+                    if instr:
+                        cleaning_method = self._clean_text(instr.cleaning_method or "")
+                        cleaning_technique = self._clean_text(instr.cleaning_technique or "")
+
+                        db_product = self._clean_text(instr.product_name or "")
+                        db_concentration = self._clean_text(instr.concentration or "")
+                        db_method = self._clean_text(instr.application_method or "")
+
+                        is_support_instr = (
+                            normalized_name in self.support_objects
+                            and (instr.maintenance_type or "").lower() == "поддерживающая"
+                        )
+
+                        if is_support_instr:
+                            final_product = db_product if db_product else ""
+                            final_concentration = db_concentration if db_concentration else "___________________"
+                            final_extra_method = db_method if db_method else "___________"
+                            final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
+                            final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+                            final_technique = cleaning_technique if cleaning_technique else "___________"
+                            final_control = self._clean_text(instr.control_method or "") if instr.control_method else "___________"
+                            final_instruction_number = self._clean_text(instr.instruction_number or "")
+                            final_frequency = self._clean_text(instr.frequency or "")
+
+                            self._set_cell_text(row.cells[1], cleaning_method)
+                            self._set_cell_text(row.cells[2], final_instruction_number)
+                            if final_product:
+                                self._set_product_cell(row.cells[3], final_product, bold=True)
+                            else:
+                                self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                            self._set_cell_text(row.cells[4], final_technique)
+
+                            para = row.cells[5].paragraphs[0]
+                            for r in para.runs:
+                                para._p.remove(r._r)
+                            run_conc = para.add_run(final_concentration)
+                            run_conc.font.name = 'Arial'
+                            run_conc.font.size = Pt(7)
+                            if final_extra_method:
+                                run_br = para.add_run()
+                                br = OxmlElement('w:br')
+                                run_br._r.append(br)
+                                run_method = para.add_run(final_extra_method)
+                                run_method.font.name = 'Arial'
+                                run_method.font.size = Pt(7)
+
+                            self._set_cell_text(row.cells[6], final_temperature)
+                            self._set_cell_text(row.cells[7], final_exposure)
+
+                            inv_text = self._clean_text(instr.inventory or "")
+                            is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
+                            if is_valid_color:
+                                inv_color = self._inventory_colors[inv_text.lower()]
+                                self._set_cell_text(row.cells[8], inv_text, bold=True)
+                                self._set_cell_background(row.cells[8], inv_color)
+                            elif inv_text:
+                                self._set_cell_text(row.cells[8], inv_text, bold=True)
+                            else:
+                                self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+
+                            self._set_cell_text(row.cells[9], final_frequency)
+
+                            executor_value = None
+                            if instr.executor:
+                                executor_value = instr.executor
+                            else:
+                                if item and isinstance(item, ChecklistItem):
+                                    equipment_categories = {
+                                        Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
+                                        Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
+                                        Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT
+                                    }
+                                    is_equipment = (item.category in equipment_categories)
+                                    if not is_equipment:
+                                        if sort_priority == -1:
+                                            executor_value = checklist_data.executor_high
+                                        elif 1 <= sort_priority <= 50:
+                                            executor_value = checklist_data.executor_low
+                                    else:
+                                        executor_value = checklist_data.executor_equipment
+                            if not executor_value:
+                                executor_value = ""
+                            self._set_cell_text(row.cells[10], self._clean_text(executor_value))
+
+                            self._set_cell_text(row.cells[11], final_control)
+
+                            if final_product:
+                                color = product_colors.get(final_product)
+                                if color:
+                                    self._set_cell_background(row.cells[3], color)
+
+                            current_row += 1
+                            continue
+
+                        has_db_product = db_product and self._is_valid_product_name(db_product)
+                        is_disinfection = (cleaning_method == "дезинфекция")
+
+                        if is_disinfection:
+                            final_product = db_product if db_product else ""
+
+                            checklist_disinfection_product = checklist_data.disinfection_product
+                            products_match = (
+                                bool(db_product)
+                                and bool(checklist_disinfection_product)
+                                and self._normalize_product_name(db_product)
+                                    == self._normalize_product_name(checklist_disinfection_product)
+                            )
+
+                            if db_concentration:
+                                final_concentration = db_concentration
+                            elif products_match:
+                                checklist_concentration = checklist_data.disinfection_concentration
+                                final_concentration = self._clean_text(checklist_concentration) if checklist_concentration else ""
+                            else:
+                                final_concentration = ""
+
+                            if db_method:
+                                final_extra_method = db_method
+                            elif products_match:
+                                checklist_method_text = checklist_data.disinfection_method_text
+                                final_extra_method = self._clean_text(checklist_method_text) if checklist_method_text else ""
+                            else:
+                                final_extra_method = ""
+
+                            final_temperature = self._clean_text(instr.temperature or "") if instr.temperature else "___________"
+                            final_exposure = self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________"
+
+                            # ===== Матрица методов уборки (fallback).
+                            # БД приоритетнее: если cleaning_technique уже задан,
+                            # матрица не применяется.
+                            if not cleaning_technique:
+                                source_application_method = db_method if db_method else checklist_data.disinfection_method_text
+                                obj_type = self._detect_object_type(item, sort_priority, normalized_name)
+                                resolved = self._resolve_cleaning_technique_by_matrix(obj_type, source_application_method)
+                                if resolved:
+                                    cleaning_technique = resolved
+
+                            self._set_cell_text(row.cells[1], cleaning_method)
+                            self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                            if final_product:
+                                self._set_product_cell(row.cells[3], final_product, bold=True)
+                            else:
+                                self._set_product_cell(row.cells[3], "_____________________", bold=False)
+                            self._set_cell_text(row.cells[4], cleaning_technique)
+
+                            para = row.cells[5].paragraphs[0]
+                            for r in para.runs:
+                                para._p.remove(r._r)
+                            conc_text = final_concentration if final_concentration else "___________________"
+                            run_conc = para.add_run(conc_text)
+                            run_conc.font.name = 'Arial'
+                            run_conc.font.size = Pt(7)
+                            if final_extra_method:
+                                run_br = para.add_run()
+                                br = OxmlElement('w:br')
+                                run_br._r.append(br)
+                                run_method = para.add_run(final_extra_method)
+                                run_method.font.name = 'Arial'
+                                run_method.font.size = Pt(7)
+
+                            self._set_cell_text(row.cells[6], final_temperature)
+                            self._set_cell_text(row.cells[7], final_exposure)
+
+                        else:
+                            checklist_product = self._get_checklist_product(
+                                cleaning_method, normalized_name, checklist_data
+                            )
+                            products_match = (
+                                has_db_product
+                                and bool(checklist_product)
+                                and self._normalize_product_name(db_product)
+                                    == self._normalize_product_name(checklist_product)
+                            )
+
+                            if has_db_product:
+                                final_product = db_product
+                                if db_concentration:
+                                    final_concentration = db_concentration
+                                elif products_match:
+                                    final_concentration = self._get_checklist_concentration(
+                                        cleaning_method, normalized_name, checklist_data
+                                    )
+                                else:
+                                    final_concentration = ""
+
+                                if db_method:
+                                    final_extra_method = db_method
+                                elif products_match:
+                                    final_extra_method = self._get_checklist_method(
+                                        cleaning_method, normalized_name, checklist_data
+                                    )
+                                else:
+                                    final_extra_method = ""
+                            else:
+                                final_product = checklist_product
+                                final_concentration = self._get_checklist_concentration(
+                                    cleaning_method, normalized_name, checklist_data
+                                )
+                                final_extra_method = self._get_checklist_method(
+                                    cleaning_method, normalized_name, checklist_data
+                                )
+
+                            if not final_product:
+                                final_product = None
+
+                            self._set_cell_text(row.cells[1], cleaning_method)
+                            self._set_cell_text(row.cells[2], self._clean_text(instr.instruction_number or ""))
+                            if final_product:
+                                self._set_product_cell(row.cells[3], final_product, bold=True)
+                            else:
+                                self._set_product_cell(row.cells[3], "_____________________", bold=False)
+
+                            self._set_cell_text(row.cells[4], cleaning_technique)
+
+                            para = row.cells[5].paragraphs[0]
+                            for r in para.runs:
+                                para._p.remove(r._r)
+                            conc_text = final_concentration if final_concentration else "___________________"
+                            run_conc = para.add_run(conc_text)
+                            run_conc.font.name = 'Arial'
+                            run_conc.font.size = Pt(7)
+                            if final_extra_method:
+                                run_br = para.add_run()
+                                br = OxmlElement('w:br')
+                                run_br._r.append(br)
+                                run_method = para.add_run(final_extra_method)
+                                run_method.font.name = 'Arial'
+                                run_method.font.size = Pt(7)
+
+                            self._set_cell_text(row.cells[6], self._clean_text(instr.temperature or "") if instr.temperature else "___________")
+                            self._set_cell_text(row.cells[7], self._clean_text(instr.exposure_time or "") if instr.exposure_time else "___________")
+
+                        inv_text = self._clean_text(instr.inventory or "")
+                        is_valid_color = inv_text and inv_text.lower() != "промаркированный" and inv_text.lower() in self._inventory_colors
+                        if is_valid_color:
+                            inv_color = self._inventory_colors[inv_text.lower()]
+                            self._set_cell_text(row.cells[8], inv_text, bold=True)
+                            self._set_cell_background(row.cells[8], inv_color)
+                        else:
+                            if checklist_data.inventory_color:
+                                inv_color = self._inventory_colors.get(checklist_data.inventory_color)
+                                if inv_color:
+                                    self._set_cell_text(row.cells[8], checklist_data.inventory_color, bold=True)
+                                    self._set_cell_background(row.cells[8], inv_color)
+                                else:
+                                    self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+                            else:
+                                self._set_cell_text(row.cells[8], "промаркированный", bold=True)
+
+                        self._set_cell_text(row.cells[9], self._clean_text(instr.frequency or ""))
+
+                        executor_value = None
+                        if instr.executor:
+                            executor_value = instr.executor
+                        else:
+                            if item and isinstance(item, ChecklistItem):
+                                equipment_categories = {
+                                    Category.THERMAL_EQUIPMENT, Category.TECH_EQUIPMENT,
+                                    Category.REFRIGERATION_EQUIPMENT, Category.DISHWASHING_EQUIPMENT,
+                                    Category.PACKAGING_EQUIPMENT, Category.DOSING_EQUIPMENT
+                                }
+                                is_equipment = (item.category in equipment_categories)
+                                if not is_equipment:
+                                    if sort_priority == -1:
+                                        executor_value = checklist_data.executor_high
+                                    elif 1 <= sort_priority <= 50:
+                                        executor_value = checklist_data.executor_low
+                                else:
+                                    executor_value = checklist_data.executor_equipment
+                        if not executor_value:
+                            executor_value = ""
+                        self._set_cell_text(row.cells[10], self._clean_text(executor_value))
+
+                        self._set_cell_text(row.cells[11], self._clean_text(instr.control_method or ""))
+
+                        if final_product:
+                            color = product_colors.get(final_product)
+                            if color:
+                                self._set_cell_background(row.cells[3], color)
+
+                current_row += 1
+
+            for group_start, group_end in merge_info_object:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    for row in range(actual_start + 1, actual_end + 1):
+                        main_table.cell(row, 0).text = ""
+                    self._merge_cells_vertical(main_table, 0, actual_start, actual_end)
+
+            for group_start, group_end in merge_info_columns:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    for col in [8, 9, 10, 11]:
+                        self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+
+            for group_start, group_end in merge_info_columns:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                self._merge_column_2_by_level(main_table, start_row, actual_start, actual_end, rows_data)
+
+            for group_start, group_end in surface_merge_info:
+                actual_start = start_row + group_start
+                actual_end = start_row + group_end
+                if actual_end > actual_start:
+                    self._merge_column_2_by_level(main_table, start_row, actual_start, actual_end, rows_data)
+                    for col in [8, 9, 10, 11]:
+                        self._merge_adjacent_equal_cells(main_table, col, actual_start, actual_end)
+
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            if output_file.exists():
+                output_file.unlink()
+            doc.save(str(output_file))
+            return str(output_file)
+
+        except Exception as e:
+            print("=" * 80)
+            print("❌ ОШИБКА В ГЕНЕРАТОРЕ:")
+            traceback.print_exc()
+            print("=" * 80)
+            raise
+
+    def _get_checklist_product(self, cleaning_method, normalized_name, checklist_data):
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_product
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_product
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_product
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_product
+            else:
+                return checklist_data.cleaning_product
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_product
+        return None
+
+    def _get_checklist_concentration(self, cleaning_method, normalized_name, checklist_data):
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_concentration
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_concentration
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_concentration
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_concentration
+            else:
+                return checklist_data.cleaning_concentration
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_concentration
+        return None
+
+    def _get_checklist_method(self, cleaning_method, normalized_name, checklist_data):
+        if cleaning_method == "мойка":
+            if normalized_name in self.floor_objects:
+                return checklist_data.floor_cleaning_method_text
+            elif normalized_name in self.tech_objects:
+                return checklist_data.tech_cleaning_method_text
+            elif normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_method_text
+            elif normalized_name in self.glass_objects:
+                return checklist_data.glass_cleaning_method_text
+            else:
+                return checklist_data.cleaning_method_text
+        elif cleaning_method == "мойка жаропрочного стекла":
+            if normalized_name in self.thermal_objects:
+                return checklist_data.thermal_cleaning_method_text
         return None
 
 ================================================================================
@@ -10004,2002 +11978,6 @@ createApp({
         }
     }
 }).mount('#historyApp');
-
-================================================================================
-ФАЙЛ: tech_cards\generation_history.json
-================================================================================
-
-[
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 17:06",
-    "timestamp": "2026-09-15T17:06:49.845841",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 17:02",
-    "timestamp": "2026-09-15T17:02:29.718480",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 17:01",
-    "timestamp": "2026-09-15T17:01:13.272222",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:59",
-    "timestamp": "2026-09-15T16:59:35.466754",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:56",
-    "timestamp": "2026-09-15T16:56:11.213494",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:41",
-    "timestamp": "2026-09-15T16:41:54.966309",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:28",
-    "timestamp": "2026-09-15T16:28:11.041647",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:27",
-    "timestamp": "2026-09-15T16:27:27.591300",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:26",
-    "timestamp": "2026-09-15T16:26:36.321252",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 16:25",
-    "timestamp": "2026-09-15T16:25:08.199120",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:58",
-    "timestamp": "2026-09-15T15:58:57.714381",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:57",
-    "timestamp": "2026-09-15T15:57:29.380410",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:55",
-    "timestamp": "2026-09-15T15:55:14.463586",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:54",
-    "timestamp": "2026-09-15T15:54:03.451676",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:53",
-    "timestamp": "2026-09-15T15:53:07.209355",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:51",
-    "timestamp": "2026-09-15T15:51:44.766970",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:49",
-    "timestamp": "2026-09-15T15:49:59.328215",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:40",
-    "timestamp": "2026-09-15T15:40:38.613469",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:39",
-    "timestamp": "2026-09-15T15:39:33.904066",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:34",
-    "timestamp": "2026-09-15T15:34:07.351261",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:33",
-    "timestamp": "2026-09-15T15:33:20.167437",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:31",
-    "timestamp": "2026-09-15T15:31:58.055350",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:30",
-    "timestamp": "2026-09-15T15:30:58.415079",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:27",
-    "timestamp": "2026-09-15T15:27:37.924553",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:23",
-    "timestamp": "2026-09-15T15:23:25.898840",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:22",
-    "timestamp": "2026-09-15T15:22:37.608868",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:19",
-    "timestamp": "2026-09-15T15:19:22.750799",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:16",
-    "timestamp": "2026-09-15T15:16:50.824665",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:14",
-    "timestamp": "2026-09-15T15:14:41.572557",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:13",
-    "timestamp": "2026-09-15T15:13:56.639879",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:04",
-    "timestamp": "2026-09-15T15:04:05.529105",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 15:03",
-    "timestamp": "2026-09-15T15:03:27.378535",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 14:55",
-    "timestamp": "2026-09-15T14:55:37.371759",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 18,
-    "datetime": "15.09.2026 14:52",
-    "timestamp": "2026-09-15T14:52:35.336787",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 17,
-    "datetime": "15.09.2026 14:33",
-    "timestamp": "2026-09-15T14:33:39.704788",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "бытовое помещение клининга_tech_card.docx",
-    "display_name": "бытовое помещение клининга",
-    "objects": 17,
-    "datetime": "15.09.2026 14:31",
-    "timestamp": "2026-09-15T14:31:01.336554",
-    "download_url": "/download/бытовое помещение клининга_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 14:07",
-    "timestamp": "2026-09-14T14:07:41.533577",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 14:06",
-    "timestamp": "2026-09-14T14:06:54.959952",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 14:00",
-    "timestamp": "2026-09-14T14:00:11.556141",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 13:58",
-    "timestamp": "2026-09-14T13:58:16.033035",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 13:24",
-    "timestamp": "2026-09-14T13:24:26.716817",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 13:22",
-    "timestamp": "2026-09-14T13:22:48.818747",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 13:21",
-    "timestamp": "2026-09-14T13:21:59.879438",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:26",
-    "timestamp": "2026-09-14T11:26:22.914583",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:24",
-    "timestamp": "2026-09-14T11:24:31.727630",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:22",
-    "timestamp": "2026-09-14T11:22:52.035531",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:21",
-    "timestamp": "2026-09-14T11:21:58.218600",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:14",
-    "timestamp": "2026-09-14T11:14:58.375267",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:05",
-    "timestamp": "2026-09-14T11:05:31.624025",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:03",
-    "timestamp": "2026-09-14T11:03:30.979248",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 11:02",
-    "timestamp": "2026-09-14T11:02:37.647465",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 10:44",
-    "timestamp": "2026-09-14T10:44:14.144253",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 10:42",
-    "timestamp": "2026-09-14T10:42:58.883094",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 19,
-    "datetime": "14.09.2026 10:32",
-    "timestamp": "2026-09-14T10:32:33.874291",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:27",
-    "timestamp": "2026-09-10T11:27:10.913165",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:18",
-    "timestamp": "2026-09-10T11:18:28.770036",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:17",
-    "timestamp": "2026-09-10T11:17:12.761039",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:16",
-    "timestamp": "2026-09-10T11:16:19.475994",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:14",
-    "timestamp": "2026-09-10T11:14:09.843180",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.5
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:12",
-    "timestamp": "2026-09-10T11:12:24.643981",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:09",
-    "timestamp": "2026-09-10T11:09:08.466190",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:08",
-    "timestamp": "2026-09-10T11:08:23.559944",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:07",
-    "timestamp": "2026-09-10T11:07:48.142423",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:03",
-    "timestamp": "2026-09-10T11:03:22.002887",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 11:02",
-    "timestamp": "2026-09-10T11:02:47.877181",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 24,
-    "datetime": "10.09.2026 10:46",
-    "timestamp": "2026-09-10T10:46:00.065432",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "10.09.2026 09:33",
-    "timestamp": "2026-09-10T09:33:43.025926",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 16:03",
-    "timestamp": "2026-09-08T16:03:51.022488",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 16:02",
-    "timestamp": "2026-09-08T16:02:28.595807",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 16:00",
-    "timestamp": "2026-09-08T16:00:17.507249",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 15:58",
-    "timestamp": "2026-09-08T15:58:38.132756",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.7
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 14:36",
-    "timestamp": "2026-09-08T14:36:34.177493",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 14:34",
-    "timestamp": "2026-09-08T14:34:39.738478",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "коридоры_tech_card.docx",
-    "display_name": "коридоры",
-    "objects": 23,
-    "datetime": "08.09.2026 14:26",
-    "timestamp": "2026-09-08T14:26:31.021970",
-    "download_url": "/download/коридоры_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 22,
-    "datetime": "04.09.2026 08:53",
-    "timestamp": "2026-09-04T08:53:33.139009",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 22,
-    "datetime": "04.09.2026 08:52",
-    "timestamp": "2026-09-04T08:52:48.610298",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "03.09.2026 07:57",
-    "timestamp": "2026-09-03T07:57:32.203280",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 18:39",
-    "timestamp": "2026-09-02T18:39:05.582567",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 18:28",
-    "timestamp": "2026-09-02T18:28:15.846248",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.8
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 18:20",
-    "timestamp": "2026-09-02T18:20:19.134405",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.8
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 18:11",
-    "timestamp": "2026-09-02T18:11:35.177687",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.8
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 18:04",
-    "timestamp": "2026-09-02T18:04:54.824427",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:58",
-    "timestamp": "2026-09-02T17:58:04.362842",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.8
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:53",
-    "timestamp": "2026-09-02T17:53:44.854439",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:42",
-    "timestamp": "2026-09-02T17:42:11.249601",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:40",
-    "timestamp": "2026-09-02T17:40:13.028623",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:09",
-    "timestamp": "2026-09-02T17:09:35.330544",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 17:07",
-    "timestamp": "2026-09-02T17:07:57.619966",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 16:59",
-    "timestamp": "2026-09-02T16:59:12.881651",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 16:56",
-    "timestamp": "2026-09-02T16:56:43.933784",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "санитарный узел_tech_card.docx",
-    "display_name": "санитарный узел",
-    "objects": 21,
-    "datetime": "02.09.2026 16:55",
-    "timestamp": "2026-09-02T16:55:07.236385",
-    "download_url": "/download/санитарный узел_tech_card.docx",
-    "size_kb": 27.7
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "31.08.2026 19:16",
-    "timestamp": "2026-08-31T19:16:14.165310",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "31.08.2026 19:11",
-    "timestamp": "2026-08-31T19:11:12.283611",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "31.08.2026 19:09",
-    "timestamp": "2026-08-31T19:09:29.572926",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "31.08.2026 19:07",
-    "timestamp": "2026-08-31T19:07:51.024716",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "31.08.2026 19:05",
-    "timestamp": "2026-08-31T19:05:20.570180",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 17:07",
-    "timestamp": "2026-08-31T17:07:39.784222",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.5
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 16:53",
-    "timestamp": "2026-08-31T16:53:27.271303",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 16:38",
-    "timestamp": "2026-08-31T16:38:49.623999",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 16:20",
-    "timestamp": "2026-08-31T16:20:38.660924",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 16:18",
-    "timestamp": "2026-08-31T16:18:39.457625",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.5
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 14:40",
-    "timestamp": "2026-08-31T14:40:47.677984",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.5
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 14:27",
-    "timestamp": "2026-08-31T14:27:50.440722",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.5
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 14:26",
-    "timestamp": "2026-08-31T14:26:00.402459",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 27,
-    "datetime": "31.08.2026 14:24",
-    "timestamp": "2026-08-31T14:24:04.243060",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 13:02",
-    "timestamp": "2026-08-31T13:02:15.649499",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.3
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 12:52",
-    "timestamp": "2026-08-31T12:52:01.691171",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.2
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:56",
-    "timestamp": "2026-08-31T10:56:13.516655",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.1
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:45",
-    "timestamp": "2026-08-31T10:45:46.473115",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.2
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:40",
-    "timestamp": "2026-08-31T10:40:49.749386",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:23",
-    "timestamp": "2026-08-31T10:23:33.596160",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:22",
-    "timestamp": "2026-08-31T10:22:27.282565",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:13",
-    "timestamp": "2026-08-31T10:13:31.721051",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:10",
-    "timestamp": "2026-08-31T10:10:39.955566",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 10:09",
-    "timestamp": "2026-08-31T10:09:19.866679",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 09:41",
-    "timestamp": "2026-08-31T09:41:12.377444",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 08:24",
-    "timestamp": "2026-08-31T08:24:51.965342",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "31.08.2026 08:08",
-    "timestamp": "2026-08-31T08:08:11.467421",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 18,
-    "datetime": "28.08.2026 13:36",
-    "timestamp": "2026-08-28T13:36:13.777862",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "28.08.2026 13:51",
-    "timestamp": "2026-08-28T13:51:04.118858",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "28.08.2026 13:38",
-    "timestamp": "2026-08-28T13:38:37.585538",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "душевая мужская женская_tech_card.docx",
-    "display_name": "душевая (мужская, женская)",
-    "objects": 18,
-    "datetime": "28.08.2026 13:38",
-    "timestamp": "2026-08-28T13:38:06.713984",
-    "download_url": "/download/душевая мужская женская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 15:42",
-    "timestamp": "2026-08-27T15:42:52.927511",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 15:23",
-    "timestamp": "2026-08-27T15:23:28.718816",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 14:07",
-    "timestamp": "2026-08-27T14:07:13.352311",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 14:05",
-    "timestamp": "2026-08-27T14:05:15.762804",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 14:02",
-    "timestamp": "2026-08-27T14:02:21.123144",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 14:00",
-    "timestamp": "2026-08-27T14:00:25.873709",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:57",
-    "timestamp": "2026-08-27T13:57:59.039063",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:54",
-    "timestamp": "2026-08-27T13:54:59.695550",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:54",
-    "timestamp": "2026-08-27T13:54:02.847797",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:52",
-    "timestamp": "2026-08-27T13:52:43.344305",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:36",
-    "timestamp": "2026-08-27T13:36:22.139135",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 13:32",
-    "timestamp": "2026-08-27T13:32:20.788012",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:31",
-    "timestamp": "2026-08-27T12:31:53.852861",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:30",
-    "timestamp": "2026-08-27T12:30:30.218726",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:24",
-    "timestamp": "2026-08-27T12:24:51.092909",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:19",
-    "timestamp": "2026-08-27T12:19:58.360271",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:11",
-    "timestamp": "2026-08-27T12:11:08.033403",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 12:02",
-    "timestamp": "2026-08-27T12:02:03.923569",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.9
-  },
-  {
-    "filename": "комната приёма пищи_tech_card.docx",
-    "display_name": "комната приёма пищи",
-    "objects": 26,
-    "datetime": "27.08.2026 11:49",
-    "timestamp": "2026-08-27T11:49:38.090579",
-    "download_url": "/download/комната приёма пищи_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 6,
-    "datetime": "25.08.2026 12:40",
-    "timestamp": "2026-08-25T12:40:10.574502",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 6,
-    "datetime": "25.08.2026 12:24",
-    "timestamp": "2026-08-25T12:24:45.168808",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 16:07",
-    "timestamp": "2026-08-24T16:07:25.947438",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 16:02",
-    "timestamp": "2026-08-24T16:02:32.453077",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 16:01",
-    "timestamp": "2026-08-24T16:01:24.101676",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 16:00",
-    "timestamp": "2026-08-24T16:00:10.000043",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:55",
-    "timestamp": "2026-08-24T15:55:28.407860",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:52",
-    "timestamp": "2026-08-24T15:52:08.421481",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:46",
-    "timestamp": "2026-08-24T15:46:23.462381",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:42",
-    "timestamp": "2026-08-24T15:42:43.263123",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:38",
-    "timestamp": "2026-08-24T15:38:40.547533",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:37",
-    "timestamp": "2026-08-24T15:37:26.061698",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:35",
-    "timestamp": "2026-08-24T15:35:24.930640",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 6,
-    "datetime": "24.08.2026 15:15",
-    "timestamp": "2026-08-24T15:15:10.677366",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.7
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 15:15",
-    "timestamp": "2026-08-24T15:15:08.908350",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 6,
-    "datetime": "24.08.2026 14:20",
-    "timestamp": "2026-08-24T14:20:11.812795",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.7
-  },
-  {
-    "filename": "Ванная_tech_card.docx",
-    "display_name": "Ванная",
-    "objects": 5,
-    "datetime": "24.08.2026 14:20",
-    "timestamp": "2026-08-24T14:20:10.065653",
-    "download_url": "/download/Ванная_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 14:18",
-    "timestamp": "2026-08-24T14:18:35.227996",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 14:18",
-    "timestamp": "2026-08-24T14:18:33.985444",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 14:15",
-    "timestamp": "2026-08-24T14:15:33.078317",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 14:15",
-    "timestamp": "2026-08-24T14:15:31.853051",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 12:41",
-    "timestamp": "2026-08-24T12:41:26.505765",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.6
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "24.08.2026 12:40",
-    "timestamp": "2026-08-24T12:40:18.755289",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "21.08.2026 13:58",
-    "timestamp": "2026-08-21T13:58:14.625526",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.8
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 19:34",
-    "timestamp": "2026-08-20T19:34:42.937759",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 19:30",
-    "timestamp": "2026-08-20T19:30:50.182376",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 19:26",
-    "timestamp": "2026-08-20T19:26:25.379142",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 19:24",
-    "timestamp": "2026-08-20T19:24:42.422319",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.2
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 19:21",
-    "timestamp": "2026-08-20T19:21:51.225427",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.2
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 18:44",
-    "timestamp": "2026-08-20T18:44:13.220899",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 18:42",
-    "timestamp": "2026-08-20T18:42:05.789931",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.2
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 18:41",
-    "timestamp": "2026-08-20T18:41:04.423237",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.2
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 18:39",
-    "timestamp": "2026-08-20T18:39:23.222186",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.2
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 5,
-    "datetime": "20.08.2026 18:37",
-    "timestamp": "2026-08-20T18:37:55.666510",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.1
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 4,
-    "datetime": "20.08.2026 18:11",
-    "timestamp": "2026-08-20T18:11:06.555196",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.0
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 4,
-    "datetime": "20.08.2026 18:04",
-    "timestamp": "2026-08-20T18:04:15.649839",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 26.0
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 4,
-    "datetime": "20.08.2026 18:02",
-    "timestamp": "2026-08-20T18:02:39.738485",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 4,
-    "datetime": "20.08.2026 18:01",
-    "timestamp": "2026-08-20T18:01:30.391174",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "Туалет_tech_card.docx",
-    "display_name": "Туалет",
-    "objects": 4,
-    "datetime": "20.08.2026 17:59",
-    "timestamp": "2026-08-20T17:59:13.797677",
-    "download_url": "/download/Туалет_tech_card.docx",
-    "size_kb": 25.9
-  },
-  {
-    "filename": "20260820_175731_3343a88e_Новый чек-лист_tech_card.docx",
-    "display_name": "20260820_175731_3343a88e_Новый чек-лист",
-    "objects": 0,
-    "datetime": "20.08.2026 17:57",
-    "timestamp": "2026-08-20T17:57:31.375456",
-    "download_url": "/download/20260820_175731_3343a88e_Новый чек-лист_tech_card.docx",
-    "size_kb": 25.2
-  },
-  {
-    "filename": "Санитарная зона_tech_card.docx",
-    "display_name": "Санитарная зона",
-    "objects": 22,
-    "datetime": "03.06.2026 14:13",
-    "timestamp": "2026-06-03T14:13:04.966485",
-    "download_url": "/download/Санитарная зона_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Санитарная зона_tech_card.docx",
-    "display_name": "Санитарная зона",
-    "objects": 22,
-    "datetime": "03.06.2026 14:12",
-    "timestamp": "2026-06-03T14:12:00.564699",
-    "download_url": "/download/Санитарная зона_tech_card.docx",
-    "size_kb": 26.6
-  },
-  {
-    "filename": "Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "display_name": "Цех вакуумной упаковки готовой продукции",
-    "objects": 45,
-    "datetime": "26.05.2026 16:48",
-    "timestamp": "2026-05-26T16:48:42.503375",
-    "download_url": "/download/Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "size_kb": 28.5
-  },
-  {
-    "filename": "Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "display_name": "Цех вакуумной упаковки готовой продукции",
-    "objects": 45,
-    "datetime": "25.05.2026 19:38",
-    "timestamp": "2026-05-25T19:38:59.272950",
-    "download_url": "/download/Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "size_kb": 29.0
-  },
-  {
-    "filename": "Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "display_name": "Цех вакуумной упаковки готовой продукции",
-    "objects": 45,
-    "datetime": "25.05.2026 19:17",
-    "timestamp": "2026-05-25T19:17:10.822144",
-    "download_url": "/download/Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "size_kb": 29.3
-  },
-  {
-    "filename": "Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "display_name": "Цех вакуумной упаковки готовой продукции",
-    "objects": 45,
-    "datetime": "25.05.2026 19:01",
-    "timestamp": "2026-05-25T19:01:00.879921",
-    "download_url": "/download/Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "size_kb": 29.2
-  },
-  {
-    "filename": "Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "display_name": "Цех вакуумной упаковки готовой продукции",
-    "objects": 45,
-    "datetime": "25.05.2026 18:34",
-    "timestamp": "2026-05-25T18:34:58.605732",
-    "download_url": "/download/Цех вакуумной упаковки готовой продукции_tech_card.docx",
-    "size_kb": 29.2
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 17:14",
-    "timestamp": "2026-05-25T17:14:01.458357",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 17:09",
-    "timestamp": "2026-05-25T17:09:29.803186",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 17:06",
-    "timestamp": "2026-05-25T17:06:14.370215",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 17:01",
-    "timestamp": "2026-05-25T17:01:50.560109",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 17:00",
-    "timestamp": "2026-05-25T17:00:00.758977",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 16:55",
-    "timestamp": "2026-05-25T16:55:12.985905",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 16:54",
-    "timestamp": "2026-05-25T16:54:32.095171",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.8
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 16:40",
-    "timestamp": "2026-05-25T16:40:16.303836",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 16:30",
-    "timestamp": "2026-05-25T16:30:25.605810",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 23,
-    "datetime": "25.05.2026 16:22",
-    "timestamp": "2026-05-25T16:22:10.849384",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 22,
-    "datetime": "25.05.2026 16:01",
-    "timestamp": "2026-05-25T16:01:50.933482",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.3
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 40,
-    "datetime": "22.05.2026 12:07",
-    "timestamp": "2026-05-22T12:07:50.038735",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.9
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 40,
-    "datetime": "22.05.2026 11:47",
-    "timestamp": "2026-05-22T11:47:47.870848",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.9
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 40,
-    "datetime": "22.05.2026 11:43",
-    "timestamp": "2026-05-22T11:43:08.186831",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.7
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 40,
-    "datetime": "22.05.2026 11:32",
-    "timestamp": "2026-05-22T11:32:00.983881",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.7
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 40,
-    "datetime": "22.05.2026 11:22",
-    "timestamp": "2026-05-22T11:22:37.150800",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.7
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 37,
-    "datetime": "22.05.2026 11:16",
-    "timestamp": "2026-05-22T11:16:07.052865",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.3
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 37,
-    "datetime": "22.05.2026 09:45",
-    "timestamp": "2026-05-22T09:45:57.411846",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.5
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 37,
-    "datetime": "22.05.2026 09:43",
-    "timestamp": "2026-05-22T09:43:52.385010",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.4
-  },
-  {
-    "filename": "Раздевалка мужская  женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская / женская)",
-    "objects": 36,
-    "datetime": "22.05.2026 09:13",
-    "timestamp": "2026-05-22T09:13:40.828236",
-    "download_url": "/download/Раздевалка мужская  женская_tech_card.docx",
-    "size_kb": 28.3
-  },
-  {
-    "filename": "Раздевалка мужская   женская_tech_card.docx",
-    "display_name": "Раздевалка (мужская ,  женская)",
-    "objects": 36,
-    "datetime": "22.05.2026 09:01",
-    "timestamp": "2026-05-22T09:01:49.607054",
-    "download_url": "/download/Раздевалка мужская   женская_tech_card.docx",
-    "size_kb": 28.3
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 19,
-    "datetime": "22.05.2026 08:30",
-    "timestamp": "2026-05-22T08:30:16.926464",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 19,
-    "datetime": "22.05.2026 08:27",
-    "timestamp": "2026-05-22T08:27:38.613808",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "Мясной участок_tech_card.docx",
-    "display_name": "Мясной участок",
-    "objects": 27,
-    "datetime": "21.05.2026 13:35",
-    "timestamp": "2026-05-21T13:35:27.979493",
-    "download_url": "/download/Мясной участок_tech_card.docx",
-    "size_kb": 27.9
-  },
-  {
-    "filename": "Мясной участок_tech_card.docx",
-    "display_name": "Мясной участок",
-    "objects": 27,
-    "datetime": "21.05.2026 13:17",
-    "timestamp": "2026-05-21T13:17:55.351220",
-    "download_url": "/download/Мясной участок_tech_card.docx",
-    "size_kb": 27.9
-  },
-  {
-    "filename": "Мясной участок_tech_card.docx",
-    "display_name": "Мясной участок",
-    "objects": 27,
-    "datetime": "21.05.2026 13:15",
-    "timestamp": "2026-05-21T13:15:57.466256",
-    "download_url": "/download/Мясной участок_tech_card.docx",
-    "size_kb": 27.5
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 19,
-    "datetime": "20.05.2026 16:51",
-    "timestamp": "2026-05-20T16:51:49.458757",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 27.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 19,
-    "datetime": "20.05.2026 16:46",
-    "timestamp": "2026-05-20T16:46:14.863223",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 27.8
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 15,
-    "datetime": "20.05.2026 16:16",
-    "timestamp": "2026-05-20T16:16:30.590915",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 27.0
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 13,
-    "datetime": "20.05.2026 08:45",
-    "timestamp": "2026-05-20T08:45:16.206031",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 13,
-    "datetime": "20.05.2026 08:43",
-    "timestamp": "2026-05-20T08:43:57.772329",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 13,
-    "datetime": "20.05.2026 08:42",
-    "timestamp": "2026-05-20T08:42:49.253804",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  },
-  {
-    "filename": "Раздевалка мужскаяженская_tech_card.docx",
-    "display_name": "Раздевалка (мужская/женская)",
-    "objects": 13,
-    "datetime": "20.05.2026 08:40",
-    "timestamp": "2026-05-20T08:40:03.152726",
-    "download_url": "/download/Раздевалка мужскаяженская_tech_card.docx",
-    "size_kb": 26.4
-  }
-]
 
 ================================================================================
 ФАЙЛ: templates\admin.html
